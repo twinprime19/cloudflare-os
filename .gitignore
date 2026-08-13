@@ -39,3 +39,6 @@ wrangler.dev.jsonc
 .dev.vars.*
 **/.dev.vars
 **/.dev.vars.*
+
+# The template holds no values, so it is tracked. Must stay after the patterns above.
+!.dev.vars.example

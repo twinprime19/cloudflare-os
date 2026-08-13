@@ -227,6 +227,8 @@ When developing, you'll want to run the front-end and back-end as two separate c
 
 Then visit: http://localhost:3000
 
+Local configuration (OAuth credentials, feature toggles) goes in a gitignored root `.dev.vars` — see [`.dev.vars.example`](.dev.vars.example).
+
 ### Contributing
 
 At this time, we are not seeking outside contribution.
