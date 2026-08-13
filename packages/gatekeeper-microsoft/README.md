@@ -58,9 +58,9 @@ their first sign-in and can never get past it.
 
 Under **Certificates & secrets** > **Client secrets** > **New client secret**:
 
-1. Pick an expiry. Entra's maximum is **24 months**; the console's default is commonly **180 days**.
-   Longer means fewer rotations; shorter limits how long a leaked secret is useful. Pick
-   deliberately — this is not a value to accept by reflex.
+1. Pick an expiry. The admin center caps new secrets at **24 months** and commonly defaults to
+   **180 days**. Longer means fewer rotations; shorter limits how long a leaked secret is useful.
+   Pick deliberately — this is not a value to accept by reflex.
 2. Click **Add** and copy the secret **Value** immediately. It is displayed once, and only the
    Secret ID is retrievable afterwards.
 3. **Record the expiry date** somewhere your team will see it, with a reminder at least two weeks

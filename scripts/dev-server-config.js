@@ -82,12 +82,19 @@ export function seedGatekeeperVars(config, gatekeeperName, env) {
   // client secret silently take the rest of the gatekeeper's configuration with it.
   for (const entry of PASSTHROUGH_GATEKEEPER_VARS[gatekeeperName] ?? []) {
     const { from, to, required } = typeof entry === "string" ? { from: entry, to: entry } : entry;
-    if (env[from] !== undefined) {
-      config.vars[to] = env[from];
+    const value = env[from];
+    // A `required` var counts as absent when it is blank: a worker that rejects an empty TENANT_ID
+    // the same way it rejects a missing one gains nothing from seeding `""`, and seeding it would
+    // suppress the warning — leaving the same unexplained "not configured" page this warning
+    // exists to name. An empty line in `.dev.vars` is the usual way to arrive here. Optional
+    // entries keep passing empty values through, since blank can be a meaningful override.
+    const present = required ? Boolean(value?.trim()) : value !== undefined;
+    if (present) {
+      config.vars[to] = value;
     } else if (required && credsSeeded) {
       warnings.push(
-          `${gatekeeperName}: ${from} is not set, so the worker has no ${to} and every request ` +
-          `to it will answer "not configured".`);
+          `${gatekeeperName}: ${from} is empty or not set, so the worker has no ${to} and every ` +
+          `request to it will answer "not configured".`);
     }
   }
 

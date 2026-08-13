@@ -133,15 +133,36 @@ describe("seedGatekeeperVars", () => {
         { vars: { TENANT_ID: "tenant" }, warnings: [] });
   });
 
-  it("warns when the Microsoft credentials are set but the tenant id is not", () => {
-    const { vars, warnings } = seed("gatekeeper-microsoft",
-        { MICROSOFT_CLIENT_ID: "id", MICROSOFT_CLIENT_SECRET: "secret" });
-    assert.deepEqual(vars, { CLIENT_ID: "id", CLIENT_SECRET: "secret" });
-    assert.equal(warnings.length, 1);
-    assert.match(warnings[0], /MICROSOFT_TENANT_ID is not set/);
+  for (const [label, tenantId] of [["missing", undefined], ["empty", ""], ["blank", "  "]]) {
+    it(`warns and seeds no TENANT_ID when the tenant id is ${label} but the creds are set`, () => {
+      const { vars, warnings } = seed("gatekeeper-microsoft", {
+        MICROSOFT_CLIENT_ID: "id",
+        MICROSOFT_CLIENT_SECRET: "secret",
+        ...(tenantId === undefined ? {} : { MICROSOFT_TENANT_ID: tenantId }),
+      });
+      assert.deepEqual(vars, { CLIENT_ID: "id", CLIENT_SECRET: "secret" });
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /MICROSOFT_TENANT_ID is empty or not set/);
+    });
+
+    it(`stays quiet when the tenant id is ${label} and the gatekeeper is unconfigured`, () => {
+      assert.deepEqual(
+          seed("gatekeeper-microsoft", tenantId === undefined ? {} : { MICROSOFT_TENANT_ID: tenantId }),
+          { vars: {}, warnings: [] });
+    });
+  }
+
+  it("still passes an empty value through for a var that is not required", () => {
+    assert.deepEqual(
+        seed("gatekeeper-mcp", { MCP_ALLOW_INSECURE: "" }, { MCP_ALLOW_INSECURE: "false" }),
+        { vars: { MCP_ALLOW_INSECURE: "" }, warnings: [] });
   });
 
-  it("stays quiet about the tenant id when the Microsoft gatekeeper is unconfigured", () => {
-    assert.deepEqual(seed("gatekeeper-microsoft", {}), { vars: {}, warnings: [] });
+  it("creates the vars object when the config has none", () => {
+    const config = {};
+    const warnings = seedGatekeeperVars(config, "gatekeeper-notion",
+        { NOTION_CLIENT_ID: "id", NOTION_CLIENT_SECRET: "secret" });
+    assert.deepEqual(config.vars, { CLIENT_ID: "id", CLIENT_SECRET: "secret" });
+    assert.deepEqual(warnings, []);
   });
 });
