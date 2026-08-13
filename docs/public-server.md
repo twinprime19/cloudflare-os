@@ -2,17 +2,17 @@
 
 By default the Workshop uses built-in username/password accounts (or Cloudflare Access) and gives
 every user unlimited AI usage — ideal for self-hosting. It can optionally run as a public,
-multi-user service instead: users sign in with Google, GitHub, or Cloudflare, every account gets a
+multi-user service instead: users sign in with Google, GitHub, Microsoft 365, or Cloudflare, every account gets a
 free daily allowance of AI usage, and once that runs out they connect their own Cloudflare account
 and top up credits in the Cloudflare dashboard (their account is then billed for further usage).
 
-Sign-in is provided by **authentication gatekeepers**: each auth-capable gatekeeper (Google, GitHub,
+Sign-in is provided by **authentication gatekeepers**: each auth-capable gatekeeper (Google, GitHub, Microsoft,
 Cloudflare) uses its single OAuth app both to authenticate the user (by verified email) and to
 connect the account's capabilities. There's no single switch — the pieces turn on independently:
 
 | Configure | Effect |
 | --- | --- |
-| `AUTH_GATEKEEPERS=cloudflare,google,github` | Allowlists which connected gatekeepers may be used to sign in. Each shows a "Continue with …" button alongside username/password. |
+| `AUTH_GATEKEEPERS=cloudflare,google,github,microsoft` | Allowlists which connected gatekeepers may be used to sign in. Each shows a "Continue with …" button alongside username/password. |
 | Each gatekeeper's OAuth credentials (on the gatekeeper Worker) | Required for that gatekeeper to actually authenticate. In dev, seeded from `GOOGLE_*` / `GITHUB_*` / `CLOUDFLARE_OAUTH_*` shell vars (see `run-dev-server.js`). |
 | `ENABLE_CLOUDFLARE_LIMITS=true` | Enables the free daily limit + Cloudflare-credits top-up flow. Billing reads a token from the connected Cloudflare gatekeeper. |
 | `DISABLE_PASSWORD_AUTH=true` | Hides username/password, leaving gatekeeper sign-in only (ignored unless `AUTH_GATEKEEPERS` is non-empty, to avoid lockout). |
@@ -26,7 +26,7 @@ For local development, set the required variables in a root `.dev.vars` file (gi
 ```
 ENABLE_CLOUDFLARE_LIMITS=true
 PUBLIC_BASE_URL=http://localhost:8787
-AUTH_GATEKEEPERS=cloudflare,google,github
+AUTH_GATEKEEPERS=cloudflare,google,github,microsoft
 
 # Each gatekeeper's OAuth app (client id/secret). In dev these seed the gatekeeper Workers:
 GITHUB_CLIENT_ID=...
@@ -35,6 +35,9 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 CLOUDFLARE_OAUTH_CLIENT_ID=...
 CLOUDFLARE_OAUTH_CLIENT_SECRET=...
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
+MICROSOFT_TENANT_ID=...
 
 # Platform AI Gateway used for the free tier:
 CF_AI_GATEWAY=your-gateway
@@ -65,6 +68,7 @@ with `PUBLIC_BASE_URL`):
 
 - GitHub: `${PUBLIC_BASE_URL}/gatekeeper/github/oauth`
 - Google: `${PUBLIC_BASE_URL}/gatekeeper/google/oauth`
+- Microsoft: `${PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth` (must register under **Web** platform in Entra, not "Single-page application")
 - Cloudflare: `${PUBLIC_BASE_URL}/gatekeeper/cloudflare/oauth`
 
 See [docs/oauth-signin.md](oauth-signin.md) and [docs/ai-gateway-billing.md](ai-gateway-billing.md)
