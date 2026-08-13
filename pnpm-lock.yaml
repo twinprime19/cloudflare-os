@@ -462,6 +462,9 @@ importers:
       '@gadgets/backend-utils':
         specifier: workspace:*
         version: link:../backend-utils
+      '@gadgets/configurator-ui':
+        specifier: workspace:*
+        version: link:../configurator-ui
       '@gadgets/workshop-shared':
         specifier: workspace:*
         version: link:../workshop-shared

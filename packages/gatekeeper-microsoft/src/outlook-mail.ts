@@ -190,27 +190,39 @@ class OutlookMessageCursorImpl extends RpcTarget implements Cursor<OutlookMessag
           "of paging further.");
     }
 
+    // Pagination state is staged in locals and only written back once the observation has been
+    // authorized. Committing first would let a refused (or failed) authorization advance the
+    // cursor, so the retry the caller makes would silently return the page AFTER the one it never
+    // received.
     let page: { items: OutlookMessageInfo[]; nextLink?: string };
+    let nextLink = this.#nextLink;
+    let started = this.#started;
+    let pages = this.#pages;
     let skipped = 0;
     do {
-      if (!this.#started) {
+      if (!started) {
         page = await this.#firstPage();
-        this.#started = true;
-      } else if (this.#nextLink) {
-        page = await this.#ctx.api.nextMessagePage(this.#nextLink);
+        started = true;
+      } else if (nextLink) {
+        page = await this.#ctx.api.nextMessagePage(nextLink);
       } else {
         this.#exhausted = true;
         return null;
       }
-      this.#nextLink = page.nextLink;
-      this.#pages++;
+      nextLink = page.nextLink;
+      pages++;
       // Graph can answer with an empty page that still carries a next link (e.g. every message on
       // the page was filtered out server-side). Skip those rather than reporting exhaustion.
       skipped++;
     } while (page.items.length === 0 && page.nextLink && skipped < 5 &&
-             this.#pages < MAX_CURSOR_PAGES);
+             pages < MAX_CURSOR_PAGES);
 
     if (page.items.length === 0) {
+      // Nothing was returned to the caller, so only the terminal state is recorded — an empty page
+      // is not a page anyone can be asked to re-read.
+      this.#started = started;
+      this.#nextLink = nextLink;
+      this.#pages = pages;
       this.#exhausted = !page.nextLink;
       return null;
     }
@@ -227,6 +239,9 @@ class OutlookMessageCursorImpl extends RpcTarget implements Cursor<OutlookMessag
           formatApprovalField("Subjects", entries.map(entry => entry.info.subject).join("\n")),
     });
 
+    this.#started = started;
+    this.#nextLink = nextLink;
+    this.#pages = pages;
     if (!page.nextLink) this.#exhausted = true;
     return entries;
   }
@@ -496,11 +511,12 @@ export type OutlookMailGatekeeperImplProps = {
 export class OutlookMailGatekeeperImpl
     extends DurableObject<Env, OutlookMailGatekeeperImplProps>
     implements Gatekeeper<OutlookMailSession> {
-  #tokens = new AccessTokenCache(opts => {
-    let stub: DurableObjectStub<UserAccount> = this.ctx.exports.UserAccount.get(
+  #tokens = new AccessTokenCache(opts => this.#account().getAccessToken(opts));
+
+  #account(): DurableObjectStub<UserAccount> {
+    return this.ctx.exports.UserAccount.get(
         this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId));
-    return stub.getAccessToken(opts);
-  });
+  }
 
   #getAccessToken(opts?: AccessTokenRequest): Promise<string> {
     return this.#tokens.get(opts);
@@ -513,13 +529,16 @@ export class OutlookMailGatekeeperImpl
    * token and tells the Workshop the credentials are dead — the same path a permanently failed
    * token mint takes, so a Conditional Access rejection surfaces a reconnect prompt instead of an
    * account that refreshes happily while every mailbox call fails.
+   *
+   * This object's own token memo is dropped first. It is the only copy the account authority cannot
+   * reach, and it outlives the reconnect that fixes the account: keeping it would serve the rejected
+   * token again after the user has reconnected, re-reporting a death that no longer exists.
    */
   #api(): GraphMailApi {
     return new GraphMailApi(opts => this.#getAccessToken(opts), {
       onCredentialsRejected: async (detail: string) => {
-        let stub: DurableObjectStub<UserAccount> = this.ctx.exports.UserAccount.get(
-            this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId));
-        await stub.reportCredentialsRejected(detail);
+        this.#tokens.invalidate();
+        await this.#account().reportCredentialsRejected(detail);
       },
     });
   }

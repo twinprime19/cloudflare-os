@@ -82,6 +82,27 @@ describe("URL construction", () => {
     // /v1.0/me/messages/<id> — the id never becomes extra path segments.
     expect(new URL(calls[0].url).pathname.split("/")).toHaveLength(5);
   });
+
+  it("refuses a dot or empty segment, which URL parsing would collapse", () => {
+    // `/v1.0/me/mailFolders/..` would normalize to `/v1.0/me` — a different endpoint, reached with
+    // this mailbox's bearer token.
+    expect(() => graphUrl(["me", "mailFolders", ".."])).toThrow(/empty or relative/);
+    expect(() => graphUrl(["me", "mailFolders", "."])).toThrow(/empty or relative/);
+    expect(() => graphUrl(["me", "mailFolders", ""])).toThrow(/empty or relative/);
+    // A dot inside an id is still an ordinary character.
+    expect(graphUrl(["me", "mailFolders", "a..b"]))
+      .toBe("https://graph.microsoft.com/v1.0/me/mailFolders/a..b");
+  });
+
+  it("rejects a relative folder id before any request is made", async () => {
+    const calls = stubFetch(() => jsonResponse({}));
+
+    // `getFolder` is the only place an agent-supplied id reaches a path (message ids come from
+    // Graph itself); a move's destination travels in the JSON body, where it cannot retarget a URL.
+    await expect(newApi().getFolder("..")).rejects.toThrow(/empty or relative/);
+
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe("pagination link pinning", () => {
@@ -134,6 +155,65 @@ describe("pagination link pinning", () => {
 
     expect(folders).toHaveLength(10);
     expect(calls).toHaveLength(10);
+  });
+});
+
+describe("folder traversal", () => {
+  it("descends into nested folders, which the root listing omits", async () => {
+    // /me/mailFolders returns only the root's children, so "Clients/Acme" is reachable only via
+    // childFolders.
+    const calls = stubFetch(call => {
+      const path = new URL(call.url).pathname;
+      if (path.endsWith("/me/mailFolders")) {
+        return jsonResponse({ value: [
+          { id: "inbox", displayName: "Inbox", childFolderCount: 0 },
+          { id: "clients", displayName: "Clients", childFolderCount: 2 },
+        ] });
+      }
+      if (path.endsWith("/mailFolders/clients/childFolders")) {
+        return jsonResponse({ value: [
+          { id: "acme", displayName: "Acme", parentFolderId: "clients", childFolderCount: 1 },
+          { id: "globex", displayName: "Globex", parentFolderId: "clients", childFolderCount: 0 },
+        ] });
+      }
+      if (path.endsWith("/mailFolders/acme/childFolders")) {
+        return jsonResponse({ value: [
+          { id: "acme-2026", displayName: "2026", parentFolderId: "acme", childFolderCount: 0 },
+        ] });
+      }
+      throw new Error(`unexpected request: ${call.url}`);
+    });
+
+    const folders = await newApi().listFolders();
+
+    // Breadth-first: shallow folders first.
+    expect(folders.map(folder => folder.name))
+      .toEqual(["Inbox", "Clients", "Acme", "Globex", "2026"]);
+    expect(folders.find(folder => folder.id === "acme")!.parentFolderId).toBe("clients");
+    // Leaves are never visited: 1 root + 2 parents with children, not 1 + 5.
+    expect(calls).toHaveLength(3);
+  });
+
+  it("costs exactly one request for a mailbox with no subfolders", async () => {
+    const calls = stubFetch(() => jsonResponse({ value: [
+      { id: "inbox", displayName: "Inbox", childFolderCount: 0 },
+      { id: "archive", displayName: "Archive" },
+    ] }));
+
+    expect(await newApi().listFolders()).toHaveLength(2);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("bounds a pathologically nested mailbox by total requests", async () => {
+    let created = 0;
+    const calls = stubFetch(() => jsonResponse({
+      value: [{ id: `folder-${created++}`, displayName: "Folder", childFolderCount: 1 }],
+    }));
+
+    const folders = await newApi().listFolders();
+
+    expect(calls).toHaveLength(25);
+    expect(folders).toHaveLength(25);
   });
 });
 

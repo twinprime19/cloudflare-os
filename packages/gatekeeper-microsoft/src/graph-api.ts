@@ -36,17 +36,24 @@ const MESSAGE_SELECT = [
   "hasAttachments", "bodyPreview", "parentFolderId", "webLink", "conversationId",
 ].join(",");
 
+// `childFolderCount` is what makes the folder walk cheap: a folder reporting none is never asked
+// for its children.
 const FOLDER_SELECT = [
-  "id", "displayName", "parentFolderId", "totalItemCount", "unreadItemCount",
+  "id", "displayName", "parentFolderId", "totalItemCount", "unreadItemCount", "childFolderCount",
 ].join(",");
 
 /** Page sizes Graph is asked for. `$top` above 100 is rejected for mail collections. */
 export const DEFAULT_MESSAGE_PAGE_SIZE = 25;
 const MAX_MESSAGE_PAGE_SIZE = 50;
 
-/** Ceilings on the folder walk, which pages internally rather than through a cursor. */
+/**
+ * Ceilings on the folder walk, which pages internally rather than through a cursor. Three
+ * independent bounds: pages within one collection, requests across the whole nested walk, and
+ * folders returned.
+ */
 const FOLDER_PAGE_SIZE = 100;
 const MAX_FOLDER_PAGES = 10;
+const MAX_FOLDER_REQUESTS = 25;
 const MAX_FOLDERS = 500;
 
 /** Longest KQL search string accepted from an agent. */
@@ -81,6 +88,7 @@ type GraphMailFolder = {
   parentFolderId?: string;
   totalItemCount?: number;
   unreadItemCount?: number;
+  childFolderCount?: number;
 };
 
 type GraphCollection<T> = {
@@ -130,9 +138,19 @@ function truncate(value: string, max = MAX_GRAPH_ERROR_CHARS): string {
  * Parameter NAMES are written literally, which is what keeps the OData system options readable as
  * `$select` rather than `%24select`. That is safe only because every name comes from a literal in
  * this file — no caller-supplied string ever becomes a parameter name.
+ *
+ * Empty and dot segments are rejected rather than encoded: percent-encoding leaves `.` and `..`
+ * intact, and URL parsing collapses them at request time, so an id of `..` would retarget the
+ * request one level up the path (`/me/mailFolders/..` becomes `/me`) with the bearer token
+ * attached. Refusing them keeps "one segment stays one segment" literally true.
  */
 export function graphUrl(segments: string[], params?: Record<string, string>): string {
-  let path = segments.map(segment => encodeURIComponent(segment)).join("/");
+  let path = segments.map(segment => {
+    if (segment === "" || segment === "." || segment === "..") {
+      throw new Error("Microsoft Graph path segments must not be empty or relative.");
+    }
+    return encodeURIComponent(segment);
+  }).join("/");
   let query = Object.entries(params ?? {})
       .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
       .join("&");
@@ -343,25 +361,53 @@ export class GraphMailApi {
 
   // ── Reads ─────────────────────────────────────────────────────────────────────
 
-  /** Every mail folder in the mailbox, paged internally under a hard cap. */
+  /**
+   * Every mail folder in the mailbox, including nested ones.
+   *
+   * `GET /me/mailFolders` returns only the root folder's children, so each folder that reports
+   * children is visited in turn — otherwise a message could never be moved into a subfolder,
+   * because its id would never be discoverable. The walk is breadth-first (shallow folders, the
+   * ones a user actually names, are found first) and bounded three ways: total requests, pages per
+   * collection, and folders returned. Folders reporting no children are never visited, so a flat
+   * mailbox costs exactly the requests the old root-only listing did.
+   */
   async listFolders(): Promise<OutlookFolderInfo[]> {
     let folders: OutlookFolderInfo[] = [];
-    let url: string | undefined = graphUrl(["me", "mailFolders"], {
-      $select: FOLDER_SELECT,
-      $top: String(FOLDER_PAGE_SIZE),
-      // Mailboxes nest folders arbitrarily; the flat listing is what an agent can act on.
-      includeHiddenFolders: "false",
-    });
+    // `undefined` stands for the mailbox root, whose children come from a different path.
+    let pending: (string | undefined)[] = [undefined];
+    let requests = 0;
 
-    for (let page = 0; url && page < MAX_FOLDER_PAGES; page++) {
-      let body: GraphCollection<GraphMailFolder> =
-          await this.#fetchJson<GraphCollection<GraphMailFolder>>(url);
-      for (let folder of body.value ?? []) {
-        if (folders.length >= MAX_FOLDERS) return folders;
-        folders.push(folderInfoFrom(folder));
+    while (pending.length > 0 && requests < MAX_FOLDER_REQUESTS && folders.length < MAX_FOLDERS) {
+      let parentId = pending.shift();
+      let url: string | undefined = parentId === undefined
+          ? graphUrl(["me", "mailFolders"], {
+              $select: FOLDER_SELECT,
+              $top: String(FOLDER_PAGE_SIZE),
+              // Hidden folders (recoverable items, sync artifacts) are not places to file mail.
+              includeHiddenFolders: "false",
+            })
+          : graphUrl(["me", "mailFolders", parentId, "childFolders"], {
+              $select: FOLDER_SELECT,
+              $top: String(FOLDER_PAGE_SIZE),
+            });
+
+      for (let page = 0;
+           url && page < MAX_FOLDER_PAGES && requests < MAX_FOLDER_REQUESTS;
+           page++) {
+        requests++;
+        let body: GraphCollection<GraphMailFolder> =
+            await this.#fetchJson<GraphCollection<GraphMailFolder>>(url);
+        for (let folder of body.value ?? []) {
+          if (folders.length >= MAX_FOLDERS) return folders;
+          folders.push(folderInfoFrom(folder));
+          if (folder.id && typeof folder.childFolderCount === "number" &&
+              folder.childFolderCount > 0) {
+            pending.push(folder.id);
+          }
+        }
+        let next = body["@odata.nextLink"];
+        url = next ? assertGraphUrl(next) : undefined;
       }
-      let next = body["@odata.nextLink"];
-      url = next ? assertGraphUrl(next) : undefined;
     }
     return folders;
   }

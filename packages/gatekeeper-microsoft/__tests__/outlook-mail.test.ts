@@ -69,6 +69,12 @@ function methodsUsed(calls: Call[]): string[] {
 
 const reportCredentialsRejected = vi.fn(async (_detail?: string) => {});
 
+/** Hands out a new token on every mint, so a test can tell a cache hit from a fresh fetch. */
+let mints = 0;
+const getAccessToken = vi.fn(async () => ({
+  token: `token-${++mints}`, expires: new Date(Date.now() + 30 * 60 * 1000),
+}));
+
 function fakeGatekeeperContext() {
   const values = new Map<string, unknown>();
   return {
@@ -86,12 +92,7 @@ function fakeGatekeeperContext() {
     exports: {
       UserAccount: {
         idFromString: (id: string) => id,
-        get: () => ({
-          getAccessToken: async () => ({
-            token: "access-token", expires: new Date(Date.now() + 30 * 60 * 1000),
-          }),
-          reportCredentialsRejected,
-        }),
+        get: () => ({ getAccessToken, reportCredentialsRejected }),
       },
     },
   };
@@ -132,7 +133,9 @@ beforeEach(() => {
   context = fakeGatekeeperContext();
   gatekeeper = new OutlookMailGatekeeperImpl(context as never, {} as never);
   approvals = fakeApprovalQueue();
+  mints = 0;
   reportCredentialsRejected.mockClear();
+  getAccessToken.mockClear();
 });
 
 afterEach(() => {
@@ -203,6 +206,29 @@ describe("reads", () => {
 
     await expect(cursor.next()).rejects.toThrow(/outside https:\/\/graph.microsoft.com/);
   });
+
+  it("re-serves the same page when the observation was refused", async () => {
+    // Two pages, distinguishable by subject.
+    stubFetch(call => call.url.includes("skiptoken")
+      ? jsonResponse({ value: [{ ...MESSAGE, id: "second", subject: "Page two" }] })
+      : jsonResponse({
+        value: [MESSAGE],
+        "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/messages?$skiptoken=abc",
+      }));
+    const session = await startSession();
+    const cursor = await session.listMessages();
+    // The overseer refuses the first page (e.g. the gadget is shared and the data is private).
+    approvals.queue.authorizeObservation.mockRejectedValueOnce(new Error("observation refused"));
+
+    await expect(cursor.next()).rejects.toThrow(/observation refused/);
+
+    // The refused page must still be the next one served — advancing here would skip it silently.
+    const retried = await cursor.next();
+    expect(retried!.map(entry => entry.info.subject)).toEqual(["Quarterly report"]);
+    const second = await cursor.next();
+    expect(second!.map(entry => entry.info.subject)).toEqual(["Page two"]);
+    expect(await cursor.next()).toBeNull();
+  });
 });
 
 describe("queued mutations", () => {
@@ -254,6 +280,19 @@ describe("queued mutations", () => {
     const description = String(approvals.actions[0].description.description);
     expect(description).toContain("Thanks, reviewing now.");
     expect(description).toContain("team@example.com");
+  });
+
+  it("rejects a relative destination folder id before queueing anything", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+    const message = await firstMessage(session);
+    const readsBefore = calls.length;
+
+    await expect(message.moveToFolder("..")).rejects.toThrow(/empty or relative/);
+
+    expect(approvals.actions).toHaveLength(0);
+    // The destination lookup never left the process.
+    expect(calls.slice(readsBefore)).toHaveLength(0);
   });
 
   it("rejects an oversized reply body before queueing anything", async () => {
@@ -345,6 +384,41 @@ describe("credential death", () => {
 
     await expect(session.listFolders()).rejects.toThrow(/sign in again/i);
     expect(reportCredentialsRejected).toHaveBeenCalledWith("insufficient_claims");
+  });
+
+  it("drops its own token memo, so the call after a reconnect uses the new token", async () => {
+    // The policy rejects the token the session started with; anything newer is accepted, which is
+    // what a reconnect produces.
+    const calls = stubFetch(call =>
+      new Headers(call.init.headers).get("Authorization") === "Bearer token-1"
+        ? jsonResponse({ error: { code: "InvalidAuthenticationToken" } }, 401, {
+          "WWW-Authenticate": 'Bearer error="insufficient_claims", claims="eyJhIjoxfQ=="',
+        })
+        : jsonResponse({ value: [FOLDERS[0]] }));
+    const session = await startSession();
+
+    await expect(session.listFolders()).rejects.toThrow(/sign in again/i);
+    expect(reportCredentialsRejected).toHaveBeenCalledTimes(1);
+
+    // Same still-alive gatekeeper object, after the user reconnected: it must ask the account for a
+    // token again rather than serving the revoked one from memory, or the account would be declared
+    // dead again the moment it was fixed.
+    const folders = await session.listFolders();
+
+    expect(folders.map(entry => entry.info.name)).toEqual(["Inbox"]);
+    expect(getAccessToken).toHaveBeenCalledTimes(2);
+    expect(new Headers(calls[1].init.headers).get("Authorization")).toBe("Bearer token-2");
+    expect(reportCredentialsRejected).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps memoizing the token when nothing rejected it", async () => {
+    stubFetch();
+    const session = await startSession();
+
+    await session.listFolders();
+    await session.listFolders();
+
+    expect(getAccessToken).toHaveBeenCalledTimes(1);
   });
 });
 

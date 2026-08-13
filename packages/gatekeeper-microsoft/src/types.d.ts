@@ -81,7 +81,13 @@ export interface OutlookMailSession {
    */
   search(query: string): Promise<Cursor<OutlookMessageEntry>>;
 
-  /** List the mailbox's folders, so messages can be moved to one of them. */
+  /**
+   * List the mailbox's folders, so messages can be moved to one of them.
+   *
+   * Nested folders are included: the result is the folder tree flattened, shallowest first, with
+   * `parentFolderId` linking a folder to its parent. Very large or deeply nested mailboxes may be
+   * truncated.
+   */
   listFolders(): Promise<OutlookFolderEntry[]>;
 }
 

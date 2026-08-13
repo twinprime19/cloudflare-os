@@ -206,6 +206,17 @@ describe("resource surface", () => {
       .rejects.toThrow(/cannot connect this URL/i);
     await expect(user.getGatekeeperClassFor("https://outlook.office.com/calendar/view/month"))
       .rejects.toThrow(/cannot connect this URL/i);
+    // The path must match on a segment boundary, not as a prefix.
+    await expect(user.getGatekeeperClassFor("https://outlook.office.com/mailbox"))
+      .rejects.toThrow(/cannot connect this URL/i);
+    await expect(user.getGatekeeperClassFor("https://outlook.office.com/mailfoo/inbox"))
+      .rejects.toThrow(/cannot connect this URL/i);
+  });
+
+  it("accepts the mailbox path with or without a trailing slash", async () => {
+    await expect(user.getGatekeeperClassFor("https://outlook.office.com/mail")).resolves.toBeDefined();
+    await expect(user.getGatekeeperClassFor("https://outlook.office.com/mail/inbox/id/123"))
+      .resolves.toBeDefined();
   });
 
   it("serves the mailbox configurator frame", async () => {

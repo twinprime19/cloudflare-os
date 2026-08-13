@@ -259,4 +259,19 @@ export class AccessTokenCache {
     }
     return cached.token;
   }
+
+  /**
+   * Forget the memoized token, so the next `get()` asks the authority again.
+   *
+   * Needed for the claims-challenge path, which deliberately does not pass `forceRefresh`: a
+   * re-mint before the user reconnects would produce another token carrying the same rejected
+   * claims. Without this, the rejected token would keep being served from memory until its recorded
+   * expiry — including after a successful reconnect, so every call would report the account dead
+   * again and the reconnect prompt would keep reappearing. Dropping it locally means the first call
+   * after a reconnect reaches the authority and gets the new grant (or the recorded failure, if the
+   * account really is still dead).
+   */
+  invalidate(): void {
+    this.#cached = undefined;
+  }
 }

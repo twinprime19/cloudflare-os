@@ -867,9 +867,11 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
   }> {
     let parsed = new URL(url);
 
-    // Exact host match: a substring test would also accept `outlook.office.com.example.com`, and
-    // the path prefix keeps a calendar or people URL on the same host from binding the mailbox.
-    if (parsed.hostname === "outlook.office.com" && parsed.pathname.startsWith("/mail")) {
+    // Exact host match: a substring test would also accept `outlook.office.com.example.com`. The
+    // path is matched on a segment boundary so a calendar, people, or `/mailbox…` URL on the same
+    // host cannot bind the mailbox.
+    let isMailPath = parsed.pathname === "/mail" || parsed.pathname.startsWith("/mail/");
+    if (parsed.hostname === "outlook.office.com" && isMailPath) {
       let props: OutlookMailGatekeeperImplProps = { userObjectId: this.ctx.props.userObjectId };
       return {
         class: this.ctx.exports.OutlookMailGatekeeperImpl({props}),
