@@ -71,6 +71,14 @@ async function connect(account: UserAccount, callback: ReturnType<typeof fakeCal
   return await account.acceptAuthCode("auth-code", begun!.oauthNonce);
 }
 
+/** Drive a reconnect through the same nonce lifecycle. */
+async function reconnect(account: UserAccount, nonce = "r".repeat(64)) {
+  await account.prepareReconnect(nonce, IDENTITY_SCOPES);
+  const begun = await account.beginOAuthFlow(nonce);
+  expect(begun).not.toBeNull();
+  return await account.acceptAuthCode("auth-code-2", begun!.oauthNonce);
+}
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
@@ -149,24 +157,84 @@ describe("connect flow", () => {
     expect(await account.acceptAuthCode("auth-code", begun!.oauthNonce)).toBe(false);
   });
 
-  it("reports restoration rather than completion on a reconnect", async () => {
-    const { account } = newAccount();
+  it("reports restoration rather than completion when the same account reconnects", async () => {
+    const { context, account } = newAccount();
     const callback = fakeCallback();
     fetchMock.mockResolvedValue(jsonResponse({
       access_token: "access-1", expires_in: 3600, refresh_token: "refresh-1", scope: "openid",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
     }));
     await connect(account, callback);
 
-    const reconnectNonce = "r".repeat(64);
-    await account.prepareReconnect(reconnectNonce, IDENTITY_SCOPES);
-    const begun = await account.beginOAuthFlow(reconnectNonce);
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-2", expires_in: 3600, refresh_token: "refresh-2", scope: "openid",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+    expect(await reconnect(account)).toBe(true);
+
+    expect(context.storage.kv.get("refreshToken")).toBe("refresh-2");
+    expect(callback.complete).toHaveBeenCalledTimes(1);
+    expect(callback.credentialsRestored).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a reconnect that signs in as a different Microsoft account", async () => {
+    const { context, account } = newAccount();
+    const callback = fakeCallback();
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-1", expires_in: 3600, refresh_token: "refresh-1", scope: "openid",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+    await connect(account, callback);
+
+    // Same tenant, different directory principal: the consent screen lets the user pick any
+    // account, and adopting it would silently repoint an established connection.
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-intruder", expires_in: 3600, refresh_token: "refresh-intruder",
+      scope: "openid", id_token: idToken({ tid: TENANT, oid: "object-2" }),
+    }));
+    await expect(reconnect(account)).rejects.toThrow(/different Microsoft account/i);
+
+    expect(context.storage.kv.get("refreshToken")).toBe("refresh-1");
+    expect(context.storage.kv.get("idTokenClaims")).toEqual({ tid: TENANT, oid: "object-1" });
+    expect(callback.credentialsRestored).not.toHaveBeenCalled();
+    // The reconnect stays armed so the user can retry with the right account.
+    expect(context.storage.kv.get("reconnecting")).toBe(true);
+  });
+
+  it("refuses a reconnect whose grant names no principal at all", async () => {
+    const { context, account } = newAccount();
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-1", expires_in: 3600, refresh_token: "refresh-1", scope: "openid",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+    await connect(account, fakeCallback());
+
     fetchMock.mockResolvedValue(jsonResponse({
       access_token: "access-2", expires_in: 3600, refresh_token: "refresh-2", scope: "openid",
     }));
-    expect(await account.acceptAuthCode("auth-code-2", begun!.oauthNonce)).toBe(true);
+    await expect(reconnect(account)).rejects.toThrow(/different Microsoft account/i);
 
-    expect(callback.complete).toHaveBeenCalledTimes(1);
-    expect(callback.credentialsRestored).toHaveBeenCalledTimes(1);
+    expect(context.storage.kv.get("refreshToken")).toBe("refresh-1");
+  });
+
+  it("discards the whole grant when the Workshop cannot accept the completed connection",
+     async () => {
+    const { context, account } = newAccount();
+    const callback = fakeCallback();
+    callback.complete.mockRejectedValue(new Error("workshop unreachable") as never);
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-1", expires_in: 3600, refresh_token: "refresh-1", scope: "openid",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+
+    await expect(connect(account, callback)).rejects.toThrow("workshop unreachable");
+
+    // Nobody holds a usable account, so no part of the grant may survive — an access token left
+    // behind is one a concurrent mint could still publish.
+    expect(context.storage.kv.get("refreshToken")).toBeUndefined();
+    expect(context.storage.kv.get("accessToken")).toBeUndefined();
+    expect(context.storage.kv.get("idTokenClaims")).toBeUndefined();
+    expect(context.storage.kv.get("grantScopes")).toBeUndefined();
   });
 });
 
@@ -276,13 +344,10 @@ describe("mint failure taxonomy", () => {
     await expect(account.getAccessToken()).rejects.toThrow();
     expect(context.storage.kv.get("mintFailure")).toBeDefined();
 
-    const reconnectNonce = "r".repeat(64);
-    await account.prepareReconnect(reconnectNonce, IDENTITY_SCOPES);
-    const begun = await account.beginOAuthFlow(reconnectNonce);
     fetchMock.mockResolvedValue(jsonResponse({
       access_token: "access-3", expires_in: 3600, refresh_token: "refresh-3", scope: "openid",
     }));
-    await account.acceptAuthCode("auth-code", begun!.oauthNonce);
+    await reconnect(account);
 
     expect(context.storage.kv.get("mintFailure")).toBeUndefined();
     expect(callback.credentialsRestored).toHaveBeenCalledTimes(1);

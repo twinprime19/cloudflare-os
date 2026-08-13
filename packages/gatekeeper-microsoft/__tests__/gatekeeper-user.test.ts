@@ -111,7 +111,7 @@ describe("getAuthenticatedEmail", () => {
     await expect(user.getAuthenticatedEmail()).resolves.toBe("alex@contoso.com");
   });
 
-  it("caches the tenant's verified domains across sign-ins", async () => {
+  it("reads the tenant's verified domains once per account, not once per lookup", async () => {
     const { calls } = stubGraph({});
 
     await user.getAuthenticatedEmail();

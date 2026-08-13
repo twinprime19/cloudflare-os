@@ -64,7 +64,9 @@ const GRAPH_TIMEOUT_MS = 20 * 1000;
 const MINT_FAILURE_COOLDOWN_MS = 60 * 1000;
 
 // The tenant's verified domains change only when an administrator adds or removes a domain, so a
-// day-old answer is fine and keeps sign-in to a single Graph call in the common case.
+// day-old answer is fine. This spares repeat lookups on a persistent account; it does NOT speed up
+// sign-in, since each login runs on a freshly minted account object that self-destructs minutes
+// later, so every login pays for its own lookup.
 const VERIFIED_DOMAIN_CACHE_MS = 24 * 60 * 60 * 1000;
 
 // How far ahead of its recorded expiry an access token is treated as already expired, so a token
@@ -387,6 +389,15 @@ export class UserAccount extends DurableObject<Env> {
     }
   }
 
+  // Drop every piece of a grant. Callers must hold the credential mutex.
+  #clearGrant(): void {
+    this.ctx.storage.kv.delete("refreshToken");
+    this.ctx.storage.kv.delete("accessToken");
+    this.ctx.storage.kv.delete("idTokenClaims");
+    this.ctx.storage.kv.delete("grantedScopes");
+    this.ctx.storage.kv.delete("grantScopes");
+  }
+
   async setCallback(
       callback: Fetcher<GatekeeperConnectCallback>, initiationNonce: string,
       requestedScopes: string[], authOnly?: boolean) {
@@ -477,6 +488,7 @@ export class UserAccount extends DurableObject<Env> {
 
       let scopes = this.ctx.storage.kv.get<string[]>("requestedScopes") ?? IDENTITY_SCOPES;
       let authOnly = this.ctx.storage.kv.get<boolean>("authOnly") ?? false;
+      let reconnecting = !!this.ctx.storage.kv.get<boolean>("reconnecting");
 
       let grant = await exchangeAuthCode({
         ...config,
@@ -492,15 +504,29 @@ export class UserAccount extends DurableObject<Env> {
         throw new Error("Microsoft did not return a refresh token for this connection.");
       }
 
+      // Re-authorizing must return the SAME directory principal. Nothing stops a user from picking
+      // a different Microsoft account at the consent screen, and adopting it would silently repoint
+      // an established connection — the Workshop's records (and any resources bound through this
+      // account) still name the original identity. `oid` is the tenant-immutable handle for that
+      // principal: unlike the address, it survives renames, so a mismatch is a real identity swap.
+      // The grant is left untouched, exactly as if the user had refused consent.
+      if (reconnecting) {
+        let priorObjectId = this.ctx.storage.kv.get<IdTokenClaims>("idTokenClaims")?.oid;
+        if (priorObjectId && grant.idTokenClaims?.oid !== priorObjectId) {
+          throw new Error(
+              "This connection belongs to a different Microsoft account. Sign in with the " +
+              "account that was originally connected.");
+        }
+      }
+
       this.#storeGrant(grant);
       this.ctx.storage.kv.put<string[]>("grantScopes", scopes);
       this.ctx.storage.kv.delete("requestedScopes");
       // These credentials are new, so any recorded permanent failure no longer applies.
       this.ctx.storage.kv.delete("mintFailure");
 
-      let reconnecting = this.ctx.storage.kv.get<boolean>("reconnecting");
       if (reconnecting) this.ctx.storage.kv.delete("reconnecting");
-      return { callback, reconnecting: !!reconnecting, authOnly };
+      return { callback, reconnecting, authOnly };
     });
 
     let callback = completion.callback;
@@ -518,7 +544,10 @@ export class UserAccount extends DurableObject<Env> {
         let props: GatekeeperUserImplProps = { userObjectId: this.ctx.id.toString() };
         await callback.complete(this.ctx.exports.GatekeeperUserImpl({props}));
       } catch (err) {
-        this.ctx.storage.kv.delete("refreshToken");
+        // Nobody received a usable account, so the whole grant is orphaned — not just the refresh
+        // token. Leaving the access token behind would let a concurrent mint publish it for an
+        // account that never completed. Serialized like every other credential mutation.
+        await this.#updateCredentials(async () => { this.#clearGrant(); });
         throw err;
       }
       // Sign-in-only grants are transient: the caller has read the email via complete(), so
@@ -677,8 +706,8 @@ export class UserAccount extends DurableObject<Env> {
     });
   }
 
-  // The tenant's verified domains, cached: the sign-in path needs them on every login, and they
-  // change only when an administrator edits the tenant.
+  // The tenant's verified domains, cached per account so repeated identity checks on one account
+  // cost one Graph call rather than one each.
   async getVerifiedDomains(): Promise<string[]> {
     let cached = this.ctx.storage.kv.get<CachedVerifiedDomains>("verifiedDomains");
     if (cached && Date.now() - cached.fetchedAt < VERIFIED_DOMAIN_CACHE_MS) {

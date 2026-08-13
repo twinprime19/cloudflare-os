@@ -99,6 +99,22 @@ const PERMANENT_AADSTS_CODES = new Set([
 /** Codes meaning the deployment's own client secret is wrong or lapsed, not the user's grant. */
 const CLIENT_SECRET_AADSTS_CODES = new Set([7000215, 7000222]);
 
+/**
+ * OAuth error identifiers that, by definition, cannot be resolved without the user going through an
+ * interactive sign-in — Conditional Access step-up, an MFA challenge, an expired session, or a
+ * consent prompt.
+ *
+ * Classifying on the identifier rather than the numeric code matters: the code space behind these
+ * (50076, 50079, 50097, 530003, …) is large, policy-dependent, and grows, so a refresh loop would
+ * otherwise retry forever on an account only a reconnect can revive, and the Workshop would never
+ * be told to offer one.
+ */
+const INTERACTION_REQUIRED_ERRORS = new Set([
+  "interaction_required",
+  "login_required",
+  "consent_required",
+]);
+
 function truncate(value: string, max: number = MAX_PROVIDER_ERROR_CHARS): string {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
@@ -116,7 +132,9 @@ export function tokenEndpoint(tenantId: string): string {
  *
  * Entra reports the specific cause twice: as `error_codes` (numeric) and embedded in
  * `error_description` as `AADSTS<code>`. Both are read, because the array is absent from some error
- * shapes (notably certain HTTP-level failures) while the description is present.
+ * shapes (notably certain HTTP-level failures) while the description is present. The top-level
+ * OAuth `error` identifier is read as well, since it classifies the whole interaction-required
+ * family without enumerating its codes.
  */
 export function classifyTokenFailure(body: unknown): TokenFailure {
   const record = (body ?? {}) as {
@@ -136,14 +154,18 @@ export function classifyTokenFailure(body: unknown): TokenFailure {
   }
 
   const codeList = [...codes];
-  const permanent = codeList.some(code => PERMANENT_AADSTS_CODES.has(code));
+  const interactionRequired = INTERACTION_REQUIRED_ERRORS.has(error);
   const secretProblem = codeList.some(code => CLIENT_SECRET_AADSTS_CODES.has(code));
+  const permanent = interactionRequired || codeList.some(code => PERMANENT_AADSTS_CODES.has(code));
   const detail = truncate(description || error || "no detail provided");
 
   let message: string;
   if (secretProblem) {
     message = "This Cloudflare OS instance's Microsoft client secret is invalid or has expired. " +
         `An administrator must rotate it — reconnecting will not help (${detail})`;
+  } else if (interactionRequired) {
+    message = `Microsoft requires you to sign in again to satisfy an access policy (${detail}). ` +
+        "Please reconnect the account.";
   } else if (permanent) {
     message = `Microsoft credentials have expired or been revoked (${detail}). ` +
         "Please reconnect the account.";

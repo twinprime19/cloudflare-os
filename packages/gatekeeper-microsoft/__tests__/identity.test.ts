@@ -121,6 +121,24 @@ describe("classifyTokenFailure", () => {
     });
   }
 
+  it("treats the interaction-required family as permanent, whatever code it carries", () => {
+    // Conditional Access step-up and MFA challenges surface here with codes we deliberately do not
+    // enumerate; without this the account refreshes forever and never prompts a reconnect.
+    for (const error of ["interaction_required", "login_required", "consent_required"]) {
+      const failure = classifyTokenFailure({
+        error,
+        error_codes: [50076],
+        error_description: "AADSTS50076: Due to a configuration change made by your administrator…",
+      });
+      expect(failure.permanent).toBe(true);
+      expect(failure.message).toMatch(/reconnect the account/i);
+    }
+  });
+
+  it("classifies interaction_required even when the body carries no codes at all", () => {
+    expect(classifyTokenFailure({ error: "interaction_required" }).permanent).toBe(true);
+  });
+
   it("treats an uncatalogued code as transient so a live account is never killed by guesswork", () => {
     const failure = classifyTokenFailure({ error: "temporarily_unavailable", error_codes: [90033] });
     expect(failure.permanent).toBe(false);
