@@ -296,6 +296,9 @@ describe("refresh token rotation", () => {
 
     expect(tokens.map(token => token.token)).toEqual(["access-2", "access-2", "access-2"]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Rotation happens inside the same locked section, so the racing callers cannot strand the
+    // account by presenting or storing a retired refresh token.
+    expect(context.storage.kv.get("refreshToken")).toBe("refresh-new");
   });
 });
 

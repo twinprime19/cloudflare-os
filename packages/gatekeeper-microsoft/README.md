@@ -123,7 +123,71 @@ See [docs/oauth-signin.md](../../docs/oauth-signin.md) for how the allowlist and
 
 ## Manual verification
 
-_Filled in by the manual verification phase._
+Everything below needs a real Entra tenant, so it cannot be unit-tested. Run it once against the
+tenant before trusting a deployment, and again after any change to the auth path.
+
+Set these in the gitignored root `.dev.vars` and start the dev server (`pnpm dev-server`):
+
+```
+MICROSOFT_CLIENT_ID=<Application (client) ID>
+MICROSOFT_CLIENT_SECRET=<client secret value>
+MICROSOFT_TENANT_ID=<Directory (tenant) ID>
+AUTH_GATEKEEPERS=microsoft
+```
+
+When a step fails, capture the `AADSTS…` code from the pop-up or the worker log — it is what
+identifies the cause, and guessing without it wastes a round trip.
+
+### Sign-in
+
+- [ ] **Member happy path.** "Continue with Microsoft" → sign in as a tenant member on a verified
+      domain → lands in the Workshop. The account's email is the address, **lowercased**; signing
+      in as `First.Last@Domain.com` must produce `first.last@domain.com`, not a second account.
+- [ ] **Foreign tenant rejected.** Sign in with a Microsoft account from another tenant (or a
+      personal `outlook.com` account). Expected: refused with a visible reason, no account created.
+- [ ] **B2B guest rejected.** Same, with a guest invited into this tenant. If the tenant has no
+      guest and you will not invite one, record this item as **untested** — it is an assumption,
+      not a verified control, until somebody runs it.
+- [ ] **Misconfiguration is actionable.** Unset `MICROSOFT_TENANT_ID`, restart, retry sign-in. The
+      pop-up must show the "Microsoft Gatekeeper Not Configured" page — a user must never be left
+      watching an infinite spinner with nothing to act on. Restore the var afterwards.
+
+### Mailbox connection
+
+- [ ] **Connect.** Connections → Microsoft → the configurator frame shows "Outlook mailbox" →
+      Connect → consent for `Mail.ReadWrite`.
+- [ ] **No re-consent loop.** Reopen the configurator and connect the same mailbox again. It must
+      go straight through: the granted scopes come back resource-qualified
+      (`https://graph.microsoft.com/Mail.ReadWrite`) and must be recognized as already granted, not
+      re-requested every time.
+
+### Mailbox behavior (via a gadget)
+
+- [ ] **Reads produce observations.** List and read messages; each read shows up as an observation
+      in the approval feed, and nothing is written.
+- [ ] **Writes queue.** Mark-read, move, and reply-draft each land in the approval queue instead of
+      taking effect, and the approval description shows the real subject, sender, and draft text.
+- [ ] **Immutable ids survive a move.** Approve a move of a message to another folder, then have the
+      agent act on **the same message again** (mark it read, or draft a reply) and approve that too.
+      Both must succeed: Outlook re-keys a moved message unless the immutable-id preference holds,
+      and a broken preference shows up here as a 404 on the second action.
+- [ ] **Nested folders are reachable.** Create a subfolder in Outlook (e.g. `Clients/Acme`), then
+      ask the agent to list folders and move a message into it. The subfolder must appear —
+      Graph's root listing omits child folders, so this exercises the traversal — and the move must
+      apply.
+- [ ] **A reply draft cannot inject markup.** Have the agent draft a reply whose comment contains
+      `<b>bold</b> <script>alert(1)</script>`, approve it, then open the draft in Outlook. Record
+      what you see: inert text (expected) or rendered HTML. If Graph interprets the comment as HTML,
+      the text still cannot execute in the approval UI, but say so here and escape it at the API
+      layer before this ships to anyone but you.
+
+### Password-auth coexistence
+
+Password accounts key on the address exactly as typed, while Microsoft sign-in lowercases it. The
+same human signing up with `Alex@contoso.com` by password and then with Microsoft would end up
+with two accounts. Deployments that set `DISABLE_PASSWORD_AUTH=true` (the expected staging shape)
+have no exposure. If a deployment keeps password auth on alongside Microsoft, verify the address
+casing your password accounts use before enabling this gatekeeper.
 
 ## Troubleshooting
 

@@ -335,6 +335,31 @@ describe("error taxonomy", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("reports a continuous-access challenge that carries claims under another error code",
+     async () => {
+    // The revocation shape: Entra answers `error="invalid_token"` and puts the demand in `claims`.
+    // Keying detection on the `insufficient_claims` string alone would retry this forever.
+    const blob = "eyJhY2Nlc3NfdG9rZW4iOnsibmJmIjp7ImVzc2VudGlhbCI6dHJ1ZX19fQ==";
+    const rejected: string[] = [];
+    const calls = stubFetch(() => jsonResponse(
+      { error: { code: "InvalidAuthenticationToken", message: "revoked" } }, 401, {
+        "WWW-Authenticate":
+          `Bearer realm="", authorization_uri="https://login.microsoftonline.com/common", ` +
+          `error="invalid_token", claims="${blob}"`,
+      }));
+
+    const api = newApi({ onCredentialsRejected: async detail => { rejected.push(detail); } });
+
+    const error = await api.listMessages().catch(err => err) as GraphApiError;
+
+    expect(error.credentialsRejected).toBe(true);
+    expect(rejected).toEqual(["invalid_token"]);
+    expect(calls).toHaveLength(1);
+    // The opaque policy demand is for a token request, never for a human-readable message.
+    expect(error.message).not.toContain(blob);
+    expect(rejected[0]).not.toContain(blob);
+  });
+
   it("surfaces a 403 as a permission problem", async () => {
     stubFetch(() => jsonResponse(
       { error: { code: "ErrorAccessDenied", message: "Access is denied." } }, 403));
