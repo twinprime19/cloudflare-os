@@ -68,7 +68,8 @@ OAuth app with its own redirect URI:
 - Google: `${PUBLIC_BASE_URL}/gatekeeper/google/oauth`
 - GitHub: `${PUBLIC_BASE_URL}/gatekeeper/github/oauth`
 - Cloudflare: `${PUBLIC_BASE_URL}/gatekeeper/cloudflare/oauth`
-- Microsoft 365: `${PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth`
+- Microsoft 365: `${PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth` (must register under **Web**
+  platform in Entra, not "Single-page application")
 
 In local dev, `run-dev-server.js` seeds each gatekeeper's `CLIENT_ID`/`CLIENT_SECRET` from
 `GOOGLE_*` / `GITHUB_*` / `CLOUDFLARE_OAUTH_*` / `MICROSOFT_*` shell vars. Microsoft additionally

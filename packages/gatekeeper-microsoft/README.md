@@ -33,8 +33,12 @@ same address.
 4. **Supported account types**: **Accounts in this organizational directory only (single tenant)**.
    The gatekeeper builds every OAuth URL from `TENANT_ID`, and only tenant members can sign in
    anyway, so a multi-tenant registration would only widen the app's exposure.
-5. **Redirect URI**: platform **Web**, value `${PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth` — for
-   local dev that is `http://localhost:8787/gatekeeper/microsoft/oauth`.
+5. **Redirect URI**: platform **Web** (do not use "Single-page application"), value
+   `${PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth` — for local dev that is
+   `http://localhost:8787/gatekeeper/microsoft/oauth` (no trailing slash, http not https). Choosing
+   "Single-page application" instead causes sign-in to fail at code redemption with `AADSTS9002325`
+   (the gatekeeper redeems the code itself using the client secret; SPA platform mandates browser
+   PKCE, which this server-side flow does not use).
 6. Click **Register**, then copy the **Application (client) ID** and **Directory (tenant) ID** from
    the Overview page.
 
@@ -199,6 +203,9 @@ The token exchange failed. Open the pop-up's error text before it closes, or che
 - `AADSTS7000215` — the client secret value is wrong (a Secret ID was copied instead of the Value,
   or the secret was rotated without updating the deployment).
 - `AADSTS65001` — admin consent was never granted for the delegated permissions (Step 2).
+- `AADSTS9002325` — the app's redirect URI is registered under the "Single-page application"
+  platform instead of "Web". Delete the SPA platform entry in the app registration and register the
+  URI under "Web" platform only.
 
 ### "Not configured" page during authorization
 
@@ -214,6 +221,17 @@ exactly — no trailing slash, and `http` (not `https`) for `localhost`.
 
 The account is a guest, an `#EXT#` account, or its address is not on a verified domain of the
 tenant. That is the identity policy above, not a misconfiguration.
+
+### How to confirm sign-in worked
+
+After completing the sign-in flow, verify success in two places:
+
+1. **Dev server log**: watch `pnpm dev-server` output for a log line containing `gatekeeper login
+   finished` with `"outcome":"ok"` (from the component workshop.auth).
+2. **Workshop UI**: sign-in redirects to the Workshop itself (if a gadget is available) or the main
+   interface. A connected Microsoft account appears under **Gatekeepers** → **Connections** or via
+   the **/gatekeepers** endpoint. Note: the backend origin (localhost:8787) intentionally serves 404
+   for pages; the UI is on the Vite dev client (localhost:3000).
 
 ## Build
 
