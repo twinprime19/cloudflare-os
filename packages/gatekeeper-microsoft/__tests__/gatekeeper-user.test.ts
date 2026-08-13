@@ -177,6 +177,34 @@ describe("describe", () => {
 
     expect(description.avatar.url).toContain("image/svg+xml");
   });
+
+  it("tolerates media-type parameters on the photo response", async () => {
+    stubGraph({
+      photo: () => new Response(new Uint8Array([1, 2, 3]), {
+        headers: { "Content-Type": "image/PNG; charset=binary" },
+      }),
+    });
+
+    await expect(user.describe()).resolves.toMatchObject({
+      avatar: { url: "data:image/png;base64,AQID" },
+    });
+  });
+
+  it("falls back to the logo for a media type outside the image allowlist", async () => {
+    // The type is copied into a URL the Workshop renders, so anything but a plain raster image is
+    // treated exactly like "no photo" rather than passed through.
+    for (const contentType of ["image/svg+xml", "text/html", "application/octet-stream", ""]) {
+      stubGraph({
+        photo: () => new Response(new Uint8Array([1, 2, 3]),
+          contentType ? { headers: { "Content-Type": contentType } } : { headers: {} }),
+      });
+
+      const description = await user.describe();
+
+      expect(description.avatar.url).toContain("image/svg+xml,");
+      expect(description.avatar.url).not.toContain("base64");
+    }
+  });
 });
 
 const MAIL_PATTERN = "https://outlook.office.com/mail/*";

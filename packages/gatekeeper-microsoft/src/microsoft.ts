@@ -560,12 +560,17 @@ export class UserAccount extends DurableObject<Env> {
       // Re-authorizing must return the SAME directory principal. Nothing stops a user from picking
       // a different Microsoft account at the consent screen, and adopting it would silently repoint
       // an established connection — the Workshop's records (and any resources bound through this
-      // account) still name the original identity. `oid` is the tenant-immutable handle for that
-      // principal: unlike the address, it survives renames, so a mismatch is a real identity swap.
-      // The grant is left untouched, exactly as if the user had refused consent.
+      // account) still name the original identity, and a mailbox bound through it would start
+      // serving someone else's mail. `oid` is the tenant-immutable handle for that principal:
+      // unlike the address, it survives renames, so a mismatch is a real identity swap.
+      //
+      // Fail closed on a missing value on either side. Entra always returns `oid` for an
+      // openid-scoped grant, so "no principal recorded" is not a legitimate established account —
+      // it is a state we cannot verify, and an unverifiable reconnect is exactly what this check
+      // exists to refuse. The grant is left untouched, as if the user had refused consent.
       if (reconnecting) {
         let priorObjectId = this.ctx.storage.kv.get<IdTokenClaims>("idTokenClaims")?.oid;
-        if (priorObjectId && grant.idTokenClaims?.oid !== priorObjectId) {
+        if (!priorObjectId || grant.idTokenClaims?.oid !== priorObjectId) {
           throw new Error(
               "This connection belongs to a different Microsoft account. Sign in with the " +
               "account that was originally connected.");

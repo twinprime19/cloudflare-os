@@ -411,6 +411,24 @@ export async function fetchVerifiedDomains(
   return [...domains];
 }
 
+/**
+ * Image types allowed to appear in an avatar data URI.
+ *
+ * The media type is copied into a URL that the Workshop renders, so it is an allowlist rather than
+ * a sanitizer: anything Graph reports that is not a plain raster image (a rewritten proxy, a
+ * document type, `image/svg+xml` with its scripting surface) is treated exactly like "no photo".
+ */
+const ALLOWED_AVATAR_TYPES = new Set([
+  "image/jpeg", "image/png", "image/gif", "image/webp",
+]);
+
+function allowedAvatarType(header: string | null): string | null {
+  if (!header) return null;
+  // Strip any parameters (`image/jpeg; charset=…`) before matching.
+  const mediaType = header.split(";")[0].trim().toLowerCase();
+  return ALLOWED_AVATAR_TYPES.has(mediaType) ? mediaType : null;
+}
+
 function toBase64(bytes: Uint8Array): string {
   // Chunked so a large photo cannot blow the argument limit of String.fromCharCode.
   let binary = "";
@@ -424,7 +442,8 @@ function toBase64(bytes: Uint8Array): string {
  * Fetch the user's profile photo as a data URI, or null if there isn't one.
  *
  * Accounts without a photo are the common case (Graph answers 404), so this never throws: the
- * caller falls back to the vendor logo rather than failing the whole account description.
+ * caller falls back to the vendor logo rather than failing the whole account description. An
+ * unrecognized media type takes that same fallback.
  */
 export async function fetchAvatarDataUrl(
     accessToken: string, signal?: AbortSignal): Promise<string | null> {
@@ -434,7 +453,11 @@ export async function fetchAvatarDataUrl(
       await response.body?.cancel();
       return null;
     }
-    const contentType = response.headers.get("Content-Type") ?? "image/jpeg";
+    const contentType = allowedAvatarType(response.headers.get("Content-Type"));
+    if (!contentType) {
+      await response.body?.cancel();
+      return null;
+    }
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength === 0 || buffer.byteLength > MAX_AVATAR_BYTES) return null;
     return `data:${contentType};base64,${toBase64(new Uint8Array(buffer))}`;

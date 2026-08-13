@@ -217,6 +217,24 @@ describe("connect flow", () => {
     expect(context.storage.kv.get("refreshToken")).toBe("refresh-1");
   });
 
+  it("refuses a reconnect on an account that never recorded a principal", async () => {
+    // Entra returns `oid` on every openid-scoped grant, so an account with none is a state we
+    // cannot verify — and an unverifiable reconnect is what this check exists to refuse.
+    const { context, account } = newAccount();
+    context.storage.kv.put("callback", fakeCallback());
+    context.storage.kv.put("refreshToken", "refresh-1");
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-2", expires_in: 3600, refresh_token: "refresh-2", scope: "openid",
+      id_token: idToken({ tid: TENANT, oid: "object-2" }),
+    }));
+
+    await expect(reconnect(account)).rejects.toThrow(/different Microsoft account/i);
+
+    expect(context.storage.kv.get("refreshToken")).toBe("refresh-1");
+    expect(context.storage.kv.get("idTokenClaims")).toBeUndefined();
+    expect(context.storage.kv.get("reconnecting")).toBe(true);
+  });
+
   it("discards the whole grant when the Workshop cannot accept the completed connection",
      async () => {
     const { context, account } = newAccount();
@@ -343,12 +361,14 @@ describe("mint failure taxonomy", () => {
     const callback = fakeCallback();
     context.storage.kv.put("callback", callback);
     context.storage.kv.put("refreshToken", "refresh-old");
+    context.storage.kv.put("idTokenClaims", { tid: TENANT, oid: "object-1" });
     fetchMock.mockResolvedValue(jsonResponse({ error_codes: [50173] }, 400));
     await expect(account.getAccessToken()).rejects.toThrow();
     expect(context.storage.kv.get("mintFailure")).toBeDefined();
 
     fetchMock.mockResolvedValue(jsonResponse({
       access_token: "access-3", expires_in: 3600, refresh_token: "refresh-3", scope: "openid",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
     }));
     await reconnect(account);
 
