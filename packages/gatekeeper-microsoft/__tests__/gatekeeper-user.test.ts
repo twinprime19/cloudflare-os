@@ -94,6 +94,7 @@ beforeEach(() => {
     exports: {
       UserAccount: { idFromString: (id: string) => id, get: () => account },
       MicrosoftVerifier: vi.fn((init: unknown) => ({ verifierStub: init })),
+      OutlookMailGatekeeperImpl: vi.fn((init: unknown) => ({ gatekeeperStub: init })),
     },
   };
   user = new GatekeeperUserImpl(userContext as never, env as never);
@@ -178,15 +179,72 @@ describe("describe", () => {
   });
 });
 
+const MAIL_PATTERN = "https://outlook.office.com/mail/*";
+
 describe("resource surface", () => {
-  it("offers no connectable resources yet", async () => {
-    await expect(user.getSupportedResources()).resolves.toEqual([]);
-    await expect(user.ensureResources([])).resolves.toEqual({});
-    await expect(user.getGatekeeperClassFor("https://outlook.office.com/mail/"))
-      .rejects.toThrow(/connectable resources/i);
-    await expect(user.startResourceConfigurator("https://outlook.office.com/mail/*"))
+  it("offers the Outlook mailbox as the one grantable resource", async () => {
+    const resources = await user.getSupportedResources();
+
+    expect(resources).toHaveLength(1);
+    expect(resources[0].urlPattern).toBe(MAIL_PATTERN);
+    expect(resources[0].grantable).toBe(true);
+  });
+
+  it("routes a mailbox URL to the Outlook gatekeeper", async () => {
+    const result = await user.getGatekeeperClassFor("https://outlook.office.com/mail/");
+
+    expect(result.resource.urlPattern).toBe(MAIL_PATTERN);
+    expect(result.class).toEqual({
+      gatekeeperStub: { props: { userObjectId: DO_ID } },
+    });
+  });
+
+  it("refuses a lookalike host and a non-mail path on the real host", async () => {
+    await expect(user.getGatekeeperClassFor("https://outlook.office.com.evil.example/mail/"))
+      .rejects.toThrow(/cannot connect this URL/i);
+    await expect(user.getGatekeeperClassFor("https://evil.example/outlook.office.com/mail/"))
+      .rejects.toThrow(/cannot connect this URL/i);
+    await expect(user.getGatekeeperClassFor("https://outlook.office.com/calendar/view/month"))
+      .rejects.toThrow(/cannot connect this URL/i);
+  });
+
+  it("serves the mailbox configurator frame", async () => {
+    const frame = await user.startResourceConfigurator(MAIL_PATTERN);
+
+    // The generated configurator HTML is a Text module the worker bundler inlines; under vitest the
+    // import resolves to the module reference instead, so this asserts the wiring, not the markup.
+    expect(typeof frame.iframeHtml).toBe("string");
+    expect(frame.iframeHtml.length).toBeGreaterThan(0);
+    expect(frame.ui).toBeDefined();
+    await expect(user.startResourceConfigurator("https://example.com/*"))
       .rejects.toThrow(/Unsupported resource configurator/i);
-    await expect(user.ensureResources(["https://outlook.office.com/mail/*"]))
+  });
+
+  it("asks for a reconnect only when the mailbox scope is missing", async () => {
+    await expect(user.ensureResources([])).resolves.toEqual({});
+
+    // No recorded scopes: the sign-in grant does not cover the mailbox.
+    const expansion = await user.ensureResources([MAIL_PATTERN]);
+    expect(expansion.url).toContain(`/gatekeeper/microsoft/${DO_ID}/`);
+
+    // Entra reported the permission resource-qualified and differently cased; that still counts.
+    context.storage.kv.put("grantedScopes", [
+      "https://graph.microsoft.com/Mail.readwrite", "User.Read",
+    ]);
+    await expect(user.ensureResources([MAIL_PATTERN])).resolves.toEqual({});
+  });
+
+  it("rejects unknown resource patterns", async () => {
+    await expect(user.ensureResources(["https://example.com/*"]))
       .rejects.toThrow(/Unknown grantable resource/i);
+  });
+
+  it("reports the granted resources on the account description", async () => {
+    stubGraph({});
+    context.storage.kv.put("grantedScopes", ["Mail.ReadWrite"]);
+
+    const description = await user.describe();
+
+    expect(description.grantedResourceUrlPatterns).toEqual([MAIL_PATTERN]);
   });
 });

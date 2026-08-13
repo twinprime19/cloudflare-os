@@ -177,6 +177,44 @@ export function classifyTokenFailure(body: unknown): TokenFailure {
 }
 
 /**
+ * Prefix Entra puts in front of a Graph permission when it reports granted scopes in resource-
+ * qualified form.
+ */
+const GRAPH_RESOURCE_PREFIX = "https://graph.microsoft.com/";
+
+/**
+ * Reserved OpenID Connect scopes. Entra never lists these in a token response's `scope`, so a
+ * grant that asked for them must be treated as having them.
+ */
+const IMPLIED_OIDC_SCOPES = new Set(["openid", "profile", "email", "offline_access"]);
+
+/**
+ * Reduce a scope string to the form scopes are compared in.
+ *
+ * Entra's token response does not echo the scopes we requested: a Graph permission may come back
+ * resource-qualified (`https://graph.microsoft.com/Mail.ReadWrite`) or in different casing
+ * (`Mail.Readwrite`), and reserved OIDC scopes are omitted entirely. Comparing the raw strings
+ * would decide a permission was never granted, so every caller would ask for consent again — and
+ * the next response would look exactly the same, forever.
+ */
+export function normalizeScope(scope: string): string {
+  let normalized = scope.trim().toLowerCase();
+  return normalized.startsWith(GRAPH_RESOURCE_PREFIX)
+      ? normalized.slice(GRAPH_RESOURCE_PREFIX.length)
+      : normalized;
+}
+
+/** Whether a grant reporting `grantedScopes` covers everything in `requiredScopes`. */
+export function grantCoversScopes(grantedScopes: string[], requiredScopes: string[]): boolean {
+  const granted = new Set(
+      grantedScopes.map(normalizeScope).filter(Boolean));
+  return requiredScopes.every(scope => {
+    const normalized = normalizeScope(scope);
+    return !normalized || IMPLIED_OIDC_SCOPES.has(normalized) || granted.has(normalized);
+  });
+}
+
+/**
  * Read the claims out of an id_token WITHOUT verifying its signature.
  *
  * This is sound only because every id_token reaching this function came straight from the

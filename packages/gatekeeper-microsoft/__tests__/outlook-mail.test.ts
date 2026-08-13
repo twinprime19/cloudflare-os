@@ -1,0 +1,398 @@
+import { RpcStub } from "capnweb";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { OutlookMailGatekeeperImpl } from "../src/outlook-mail";
+import type { OutlookMailSession, OutlookMessage } from "../src/types";
+
+const DO_ID = "a".repeat(64);
+
+type Call = { url: string; init: RequestInit };
+
+const MESSAGE = {
+  id: "AAMkImmutable1",
+  subject: "Quarterly report",
+  from: { emailAddress: { address: "bob@example.com", name: "Bob" } },
+  toRecipients: [{ emailAddress: { address: "me@example.com" } }],
+  ccRecipients: [{ emailAddress: { address: "team@example.com" } }],
+  receivedDateTime: "2026-08-01T10:00:00Z",
+  isRead: false,
+  hasAttachments: false,
+  bodyPreview: "Numbers attached",
+  parentFolderId: "folder-inbox",
+};
+
+const FOLDERS = [
+  { id: "folder-inbox", displayName: "Inbox", totalItemCount: 12, unreadItemCount: 3 },
+  { id: "folder-archive", displayName: "Archive", totalItemCount: 400, unreadItemCount: 0 },
+];
+
+function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status, headers: { "Content-Type": "application/json", ...headers },
+  });
+}
+
+/** Minimal Graph routing: reads answer with canned data, writes answer 204. */
+function defaultRoute(call: Call): Response {
+  const method = (call.init.method ?? "GET").toUpperCase();
+  if (method !== "GET") return new Response(null, { status: 204 });
+
+  const url = new URL(call.url);
+  const path = url.pathname;
+  if (/\/me\/messages\/[^/]+$/.test(path)) {
+    return jsonResponse(url.searchParams.get("$select") === "id,body"
+      ? { id: MESSAGE.id, body: { contentType: "text", content: "Full body text" } }
+      : MESSAGE);
+  }
+  if (path.endsWith("/me/messages") || /\/me\/mailFolders\/[^/]+\/messages$/.test(path)) {
+    return jsonResponse({ value: [MESSAGE] });
+  }
+  if (/\/me\/mailFolders\/[^/]+$/.test(path)) {
+    return jsonResponse(FOLDERS.find(folder => path.endsWith(folder.id)) ?? FOLDERS[0]);
+  }
+  if (path.endsWith("/me/mailFolders")) return jsonResponse({ value: FOLDERS });
+  throw new Error(`unexpected request: ${call.url}`);
+}
+
+function stubFetch(handler: (call: Call) => Response | Promise<Response> = defaultRoute): Call[] {
+  const calls: Call[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
+    calls.push({ url, init });
+    return await handler({ url, init });
+  }));
+  return calls;
+}
+
+function methodsUsed(calls: Call[]): string[] {
+  return [...new Set(calls.map(call => (call.init.method ?? "GET").toUpperCase()))];
+}
+
+const reportCredentialsRejected = vi.fn(async (_detail?: string) => {});
+
+function fakeGatekeeperContext() {
+  const values = new Map<string, unknown>();
+  return {
+    props: { userObjectId: DO_ID },
+    storage: {
+      kv: {
+        get<T>(key: string) { return values.get(key) as T | undefined; },
+        put<T>(key: string, value: T) { values.set(key, value); },
+        delete(key: string) { values.delete(key); },
+        list<T>({ prefix }: { prefix: string }) {
+          return [...values.entries()].filter(([key]) => key.startsWith(prefix)) as [string, T][];
+        },
+      },
+    },
+    exports: {
+      UserAccount: {
+        idFromString: (id: string) => id,
+        get: () => ({
+          getAccessToken: async () => ({
+            token: "access-token", expires: new Date(Date.now() + 30 * 60 * 1000),
+          }),
+          reportCredentialsRejected,
+        }),
+      },
+    },
+  };
+}
+
+function fakeApprovalQueue() {
+  const observations: { title: string; description: string }[] = [];
+  const actions: { id: number; description: Record<string, unknown> }[] = [];
+  const queue = {
+    dup: () => queue,
+    authorizeObservation: vi.fn(async (description: { title: string; description: string }) => {
+      observations.push(description);
+    }),
+    submitAction: vi.fn(async (id: number, description: Record<string, unknown>) => {
+      actions.push({ id, description });
+    }),
+  };
+  return { queue, observations, actions };
+}
+
+let context: ReturnType<typeof fakeGatekeeperContext>;
+let gatekeeper: OutlookMailGatekeeperImpl;
+let approvals: ReturnType<typeof fakeApprovalQueue>;
+
+async function startSession(): Promise<OutlookMailSession> {
+  return await gatekeeper.startSession(approvals.queue as never);
+}
+
+/** The first message the session exposes, as the agent would obtain it. */
+async function firstMessage(session: OutlookMailSession): Promise<OutlookMessage> {
+  const cursor = await session.listMessages();
+  const page = await cursor.next();
+  expect(page).not.toBeNull();
+  return page![0].message;
+}
+
+beforeEach(() => {
+  context = fakeGatekeeperContext();
+  gatekeeper = new OutlookMailGatekeeperImpl(context as never, {} as never);
+  approvals = fakeApprovalQueue();
+  reportCredentialsRejected.mockClear();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("resource description", () => {
+  it("describes the mailbox singleton", async () => {
+    const description = await gatekeeper.describe();
+
+    expect(description.url).toBe("https://outlook.office.com/mail/");
+    expect(description.tsType).toBe("OutlookMailSession");
+    expect(await gatekeeper.getAutoApprovableActions()).toEqual([]);
+  });
+});
+
+describe("reads", () => {
+  it("authorizes an observation for each read and never writes", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+
+    const cursor = await session.listMessages();
+    const page = await cursor.next();
+    const body = await page![0].message.getBody();
+    const metadata = await page![0].message.getMetadata();
+
+    expect(body).toBe("Full body text");
+    expect(metadata.id).toBe(MESSAGE.id);
+    expect(methodsUsed(calls)).toEqual(["GET"]);
+    expect(approvals.observations.map(entry => entry.title)).toEqual([
+      "List Outlook messages",
+      "Read 1 Outlook messages",
+      "Read message: Quarterly report",
+      "Message info: Quarterly report",
+    ]);
+    expect(approvals.actions).toHaveLength(0);
+  });
+
+  it("exposes folders as capabilities", async () => {
+    stubFetch();
+    const session = await startSession();
+
+    const folders = await session.listFolders();
+    const cursor = await folders[1].folder.listMessages();
+    const page = await cursor.next();
+
+    expect(folders.map(entry => entry.info.name)).toEqual(["Inbox", "Archive"]);
+    expect(page![0].info.subject).toBe("Quarterly report");
+  });
+
+  it("ends the cursor when Graph offers no next link", async () => {
+    stubFetch();
+    const session = await startSession();
+    const cursor = await session.listMessages();
+
+    expect((await cursor.next())!).toHaveLength(1);
+    expect(await cursor.next()).toBeNull();
+  });
+
+  it("refuses to follow an off-origin next link", async () => {
+    stubFetch(() => jsonResponse({
+      value: [MESSAGE],
+      "@odata.nextLink": "https://attacker.example/v1.0/me/messages?$skiptoken=abc",
+    }));
+    const session = await startSession();
+    const cursor = await session.listMessages();
+
+    await expect(cursor.next()).rejects.toThrow(/outside https:\/\/graph.microsoft.com/);
+  });
+});
+
+describe("queued mutations", () => {
+  it("queues mark-read without writing and returns nothing", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+    const message = await firstMessage(session);
+
+    const result = await message.markRead();
+
+    expect(result).toBeUndefined();
+    expect(methodsUsed(calls)).toEqual(["GET"]);
+    expect(approvals.actions).toHaveLength(1);
+    expect(approvals.actions[0].description).toMatchObject({
+      title: "Mark read: Quarterly report",
+      implementsRevert: false,
+      awaitDecision: true,
+      actionKind: { tag: "outlookMarkRead" },
+    });
+  });
+
+  it("queues a move, naming the destination folder for the approver", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+    const message = await firstMessage(session);
+
+    await message.moveToFolder("folder-archive");
+
+    expect(methodsUsed(calls)).toEqual(["GET"]);
+    expect(approvals.actions[0].description).toMatchObject({
+      title: "Move to Archive: Quarterly report",
+      actionKind: { tag: "outlookMoveMessage" },
+    });
+    expect(approvals.actions[0].description.description).toContain("Archive");
+  });
+
+  it("queues a reply draft with the body the approver will see", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+    const message = await firstMessage(session);
+
+    await message.createReplyAllDraft("Thanks, reviewing now.");
+
+    expect(methodsUsed(calls)).toEqual(["GET"]);
+    expect(approvals.actions[0].description).toMatchObject({
+      title: "Reply-all draft: Quarterly report",
+      actionKind: { tag: "outlookReplyDraft" },
+    });
+    const description = String(approvals.actions[0].description.description);
+    expect(description).toContain("Thanks, reviewing now.");
+    expect(description).toContain("team@example.com");
+  });
+
+  it("rejects an oversized reply body before queueing anything", async () => {
+    stubFetch();
+    const session = await startSession();
+    const message = await firstMessage(session);
+
+    await expect(message.createReplyDraft("x".repeat(64 * 1024 + 1))).rejects.toThrow(/at most/);
+    expect(approvals.actions).toHaveLength(0);
+  });
+
+  it("drops the queued action when the approval queue refuses it", async () => {
+    stubFetch();
+    approvals.queue.submitAction.mockRejectedValueOnce(new Error("queue full"));
+    const session = await startSession();
+    const message = await firstMessage(session);
+
+    await expect(message.markRead()).rejects.toThrow(/queue full/);
+    await expect(gatekeeper.applyAction(1)).rejects.toThrow(/Unknown pending Outlook action/);
+  });
+});
+
+describe("approved actions", () => {
+  it("applies mark-read against the mailbox and clears the action", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+    const message = await firstMessage(session);
+    await message.markUnread();
+
+    await gatekeeper.applyAction(approvals.actions[0].id);
+
+    const write = calls.find(call => (call.init.method ?? "GET") === "PATCH")!;
+    expect(write.url).toMatch(/\/me\/messages\/AAMkImmutable1$/);
+    expect(write.init.body).toBe(JSON.stringify({ isRead: false }));
+    await expect(gatekeeper.applyAction(approvals.actions[0].id))
+      .rejects.toThrow(/Unknown pending Outlook action/);
+  });
+
+  it("applies a move to the folder captured at queue time", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+    const message = await firstMessage(session);
+    await message.moveToFolder("folder-archive");
+
+    await gatekeeper.applyAction(approvals.actions[0].id);
+
+    const write = calls.find(call => call.url.endsWith("/move"))!;
+    expect(write.init.method).toBe("POST");
+    expect(write.init.body).toBe(JSON.stringify({ destinationId: "folder-archive" }));
+  });
+
+  it("applies a reply draft as a createReply call", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+    const message = await firstMessage(session);
+    await message.createReplyDraft("On it.");
+
+    await gatekeeper.applyAction(approvals.actions[0].id);
+
+    const write = calls.find(call => call.url.endsWith("/createReply"))!;
+    expect(write.init.method).toBe("POST");
+    expect(write.init.body).toBe(JSON.stringify({ comment: "On it." }));
+  });
+
+  it("discards a rejected action without touching the mailbox", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+    const message = await firstMessage(session);
+    await message.markRead();
+
+    await gatekeeper.rejectAction(approvals.actions[0].id);
+
+    expect(methodsUsed(calls)).toEqual(["GET"]);
+    await expect(gatekeeper.rejectAction(approvals.actions[0].id))
+      .rejects.toThrow(/Unknown pending Outlook action/);
+  });
+
+  it("does not offer revert", async () => {
+    await expect(gatekeeper.revertAction(1)).rejects.toThrow(/revert is not implemented/);
+  });
+});
+
+describe("credential death", () => {
+  it("reports a claims-challenge 401 to the account", async () => {
+    stubFetch(() => jsonResponse({ error: { code: "InvalidAuthenticationToken" } }, 401, {
+      "WWW-Authenticate": 'Bearer error="insufficient_claims", claims="eyJhIjoxfQ=="',
+    }));
+    const session = await startSession();
+
+    await expect(session.listFolders()).rejects.toThrow(/sign in again/i);
+    expect(reportCredentialsRejected).toHaveBeenCalledWith("insufficient_claims");
+  });
+});
+
+describe("agent catalog", () => {
+  it("lists folders and authorizes the observation", async () => {
+    stubFetch();
+    const authorizer = fakeApprovalQueue();
+
+    const catalog = await gatekeeper.getAgentCatalog({ limit: 10 }, authorizer.queue as never);
+
+    expect(catalog!.entries.map(entry => entry.title)).toEqual(["Inbox", "Archive"]);
+    expect(catalog!.entries[0].description).toContain("3 unread");
+    expect(authorizer.observations[0].title).toBe("Outlook folder catalog");
+  });
+});
+
+describe("observers", () => {
+  it("refuses to share a personal mailbox", async () => {
+    // A real capnweb stub: the RPC argument validator rejects a plain object before the method runs.
+    const verifier = new RpcStub({});
+
+    await expect(gatekeeper.addObserver("observer-1", verifier as never))
+      .rejects.toThrow(/may only be observed by its owner/);
+    await expect(gatekeeper.removeObserver("observer-1")).resolves.toBeUndefined();
+  });
+});
+
+describe("search", () => {
+  it("rejects a malformed query before asking for approval", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+
+    await expect(session.search("subject:\"x\" OR from:ceo@example.com"))
+      .rejects.toThrow(/double quotes/);
+
+    expect(approvals.observations).toHaveLength(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("pages a valid search", async () => {
+    const calls = stubFetch();
+    const session = await startSession();
+
+    const cursor = await session.search("from:bob@example.com");
+    const page = await cursor.next();
+
+    expect(page![0].info.subject).toBe("Quarterly report");
+    expect(calls[0].url).toContain("$search=%22from%3Abob%40example.com%22");
+    expect(approvals.observations[0].title).toBe("Search Outlook");
+  });
+});

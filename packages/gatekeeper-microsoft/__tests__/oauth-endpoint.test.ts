@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import worker, { UserAccount } from "../src/microsoft";
+import { RpcStub } from "capnweb";
+
+import worker, { GatekeeperVendor, UserAccount } from "../src/microsoft";
 
 const TENANT = "11111111-2222-3333-4444-555555555555";
 const BASE_URL = "https://gatekeeper.example/gatekeeper/microsoft";
@@ -191,5 +193,53 @@ describe("routing", () => {
     await expect(worker.fetch(
       new Request("https://gatekeeper.example/elsewhere"), env as never, executionContext as never))
       .rejects.toThrow(/does not match BASE_URL path/);
+  });
+});
+
+describe("requested scopes", () => {
+  /** A vendor whose UserAccount namespace mints one id and records what setCallback received. */
+  function newVendor() {
+    const setCallback = vi.fn(async () => {});
+    const vendorContext = {
+      exports: {
+        UserAccount: {
+          newUniqueId: () => ({ toString: () => DO_ID }),
+          get: () => ({ setCallback }),
+        },
+      },
+    };
+    return {
+      setCallback,
+      vendor: new GatekeeperVendor(vendorContext as never, env as never),
+    };
+  }
+
+  it("asks for the mailbox permission when connecting the mailbox resource", async () => {
+    const { vendor, setCallback } = newVendor();
+
+    const result = await vendor.connectAccount(new RpcStub({}) as never, {
+      resourceUrlPatterns: ["https://outlook.office.com/mail/*"],
+    });
+
+    expect(result.url).toBe(`${BASE_URL}/${DO_ID}/${setCallback.mock.calls[0][1]}`);
+    expect(setCallback.mock.calls[0][2]).toEqual([...IDENTITY_SCOPES, "Mail.ReadWrite"]);
+  });
+
+  it("asks for identity scopes only on a sign-in-only connection", async () => {
+    const { vendor, setCallback } = newVendor();
+
+    await vendor.connectAccount(new RpcStub({}) as never, { scopes: "auth" });
+
+    expect(setCallback.mock.calls[0][2]).toEqual(
+      IDENTITY_SCOPES.filter(scope => scope !== "offline_access"));
+    expect(setCallback.mock.calls[0][3]).toBe(true);
+  });
+
+  it("refuses to connect an unknown resource pattern", async () => {
+    const { vendor } = newVendor();
+
+    await expect(vendor.connectAccount(new RpcStub({}) as never, {
+      resourceUrlPatterns: ["https://example.com/*"],
+    })).rejects.toThrow(/Unknown grantable resource/);
   });
 });

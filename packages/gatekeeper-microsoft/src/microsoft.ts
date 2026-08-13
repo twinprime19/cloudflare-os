@@ -1,4 +1,4 @@
-import { WorkerEntrypoint, DurableObject } from "cloudflare:workers";
+import { WorkerEntrypoint, DurableObject, RpcStub, RpcTarget } from "cloudflare:workers";
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import {
   AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions,
@@ -8,10 +8,18 @@ import {
 import {
   AccessTokenRequest, EntraAccessToken, EntraTokenGrant, IdTokenClaims, TokenFailure,
   authorizeEndpoint, exchangeAuthCode, fetchAvatarDataUrl, fetchGraphProfile, fetchVerifiedDomains,
-  refreshAccessToken, resolveVerifiedEmail,
+  grantCoversScopes, refreshAccessToken, resolveVerifiedEmail,
 } from "./microsoft-api";
+import type { OutlookMailGatekeeperImplProps } from "./outlook-mail";
+import type {
+  OutlookMailConfiguratorRpc,
+} from "./configurator/outlook-mail-configurator-types";
 import MICROSOFT_LOGO_SVG from "./microsoft-logo.svg";
+import OUTLOOK_MAIL_CONFIGURATOR_HTML from "./generated/outlook-mail-configurator-ui.txt";
+import TYPES_CODE from "./types.txt";
 import { obsContext } from "./observability.js";
+
+export { OutlookMailGatekeeperImpl } from "./outlook-mail";
 
 // Vendor id = GATEKEEPER_<NAME> binding suffix (lowercased).
 const VENDOR_ID = "microsoft";
@@ -93,7 +101,7 @@ function constantTimeEqual(a: string, b: string): boolean {
 }
 
 // Declare optional environment variables here since they may be omitted from wrangler.jsonc.
-type Env = Cloudflare.Env & {
+export type Env = Cloudflare.Env & {
   // Base URL (protocol+host+optional path) at which the default fetch handler is served. Should
   // NOT include a trailing slash. Omit for localhost dev server.
   BASE_URL?: string;
@@ -175,18 +183,54 @@ const AUTH_SCOPES = ["openid", "profile", "email", "User.Read"];
 // Scopes requested for a persistent connection, which has to survive past one access token.
 const IDENTITY_SCOPES = [...AUTH_SCOPES, "offline_access"];
 
-// No resource types are connectable yet: this vendor signs users in, and mailbox access is a
-// separate piece of work.
-const SUPPORTED_RESOURCES: SupportedResource[] = [];
+const OUTLOOK_MAIL_RESOURCE: SupportedResource = {
+  urlPattern: "https://outlook.office.com/mail/*",
+  title: "Outlook Mailbox",
+  description: "Read emails, organize folders, and draft replies.",
+  grantable: true,
+};
+
+// `Mail.ReadWrite` covers reading messages and folders, flipping read state, moving messages, and
+// creating drafts. `Mail.Send` is deliberately absent: this gatekeeper never sends mail, it leaves
+// drafts for the user.
+const RESOURCE_SCOPES: {resource: SupportedResource, scopes: string[]}[] = [
+  { resource: OUTLOOK_MAIL_RESOURCE, scopes: ["Mail.ReadWrite"] },
+];
+
+const SUPPORTED_RESOURCES: SupportedResource[] = RESOURCE_SCOPES.map(entry => entry.resource);
 
 function validateResourceUrlPatterns(resourceUrlPatterns?: string[]): void {
   if (resourceUrlPatterns === undefined) return;
 
-  let knownPatterns = new Set(SUPPORTED_RESOURCES.map(resource => resource.urlPattern));
+  let knownPatterns = new Set(RESOURCE_SCOPES.map(entry => entry.resource.urlPattern));
   let unknownPatterns = resourceUrlPatterns.filter(pattern => !knownPatterns.has(pattern));
   if (unknownPatterns.length > 0) {
     throw new Error(`Unknown grantable resource URL pattern(s): ${unknownPatterns.join(", ")}`);
   }
+}
+
+// The OAuth scopes to request for the given grantable resource `urlPattern`s. Undefined means
+// "every resource this vendor offers".
+function resourceUrlPatternsToOAuthScopes(resourceUrlPatterns?: string[]): string[] {
+  validateResourceUrlPatterns(resourceUrlPatterns);
+
+  let scopes = new Set<string>(IDENTITY_SCOPES);
+  for (let entry of RESOURCE_SCOPES) {
+    if (resourceUrlPatterns === undefined ||
+        resourceUrlPatterns.includes(entry.resource.urlPattern)) {
+      for (let scope of entry.scopes) scopes.add(scope);
+    }
+  }
+  return [...scopes];
+}
+
+// The resources covered by a grant that reported `grantedOAuthScopes`. Comparison is normalized —
+// see `grantCoversScopes`, which is what keeps a resource-qualified or differently-cased response
+// from looking like a missing permission and re-prompting for consent forever.
+function grantedResourcesFromScopes(grantedOAuthScopes: string[]): string[] {
+  return RESOURCE_SCOPES
+      .filter(entry => grantCoversScopes(grantedOAuthScopes, entry.scopes))
+      .map(entry => entry.resource.urlPattern);
 }
 
 const MICROSOFT_LOGO_URL = `data:image/svg+xml,${encodeURIComponent(MICROSOFT_LOGO_SVG)}`;
@@ -319,7 +363,9 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
     let initiationNonce = generateNonce();
 
     let authOnly = options?.scopes === "auth";
-    let requestedScopes = authOnly ? AUTH_SCOPES : IDENTITY_SCOPES;
+    let requestedScopes = authOnly
+        ? AUTH_SCOPES
+        : resourceUrlPatternsToOAuthScopes(options?.resourceUrlPatterns);
     await this.ctx.exports.UserAccount.get(userObjectId)
         .setCallback(callback, initiationNonce, requestedScopes, authOnly);
 
@@ -339,7 +385,7 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
   }
 
   async getTypeScriptTypes(): Promise<string> {
-    return "";
+    return TYPES_CODE;
   }
 }
 
@@ -435,6 +481,13 @@ export class UserAccount extends DurableObject<Env> {
   // access.
   async getGrantScopes(): Promise<string[]> {
     return this.ctx.storage.kv.get<string[]>("grantScopes") ?? IDENTITY_SCOPES;
+  }
+
+  // The grantable resource `urlPattern`s this account's consent actually covers, used to decide
+  // whether ensureResources() has to expand the grant. Derived from the scopes Entra reported, not
+  // from the scopes we asked for: a user can decline part of a consent screen.
+  async getGrantedResourceUrlPatterns(): Promise<string[]> {
+    return grantedResourcesFromScopes(this.ctx.storage.kv.get<string[]>("grantedScopes") ?? []);
   }
 
   // The id_token claims recorded at grant time. Only ever populated from a token-endpoint response.
@@ -762,12 +815,15 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
   }
 
   async describe(): Promise<AccountDescription> {
-    let token = await this.#account().getAccessToken();
+    let account = this.#account();
+    let grantedResourcesPromise = account.getGrantedResourceUrlPatterns();
+    let token = await account.getAccessToken();
     // Accounts without a photo are common, and a missing avatar is not a reason to fail the whole
     // description, so the logo stands in.
-    let [profile, avatarUrl] = await Promise.all([
+    let [profile, avatarUrl, grantedResourceUrlPatterns] = await Promise.all([
       fetchGraphProfile(token.token, AbortSignal.timeout(GRAPH_TIMEOUT_MS)),
       fetchAvatarDataUrl(token.token, AbortSignal.timeout(GRAPH_TIMEOUT_MS)),
+      grantedResourcesPromise,
     ]);
 
     return {
@@ -776,6 +832,7 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
           ? profile.mail
           : typeof profile.userPrincipalName === "string" ? profile.userPrincipalName : undefined,
       avatar: { url: avatarUrl ?? MICROSOFT_LOGO_URL },
+      grantedResourceUrlPatterns,
     };
   }
 
@@ -804,15 +861,34 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     return SUPPORTED_RESOURCES;
   }
 
-  async getGatekeeperClassFor(_url: string): Promise<{
+  async getGatekeeperClassFor(url: string): Promise<{
     class: DurableObjectClass<Gatekeeper<any>>;
     resource: SupportedResource;
   }> {
-    throw new Error("The Microsoft gatekeeper does not offer any connectable resources yet.");
+    let parsed = new URL(url);
+
+    // Exact host match: a substring test would also accept `outlook.office.com.example.com`, and
+    // the path prefix keeps a calendar or people URL on the same host from binding the mailbox.
+    if (parsed.hostname === "outlook.office.com" && parsed.pathname.startsWith("/mail")) {
+      let props: OutlookMailGatekeeperImplProps = { userObjectId: this.ctx.props.userObjectId };
+      return {
+        class: this.ctx.exports.OutlookMailGatekeeperImpl({props}),
+        resource: OUTLOOK_MAIL_RESOURCE,
+      };
+    }
+
+    throw new Error(`The Microsoft gatekeeper cannot connect this URL: ${url}`);
   }
 
   async startResourceConfigurator(
       resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
+    if (resourceUrlPattern === OUTLOOK_MAIL_RESOURCE.urlPattern) {
+      return {
+        iframeHtml: OUTLOOK_MAIL_CONFIGURATOR_HTML,
+        ui: new RpcStub(new OutlookMailConfiguratorUI()),
+      };
+    }
+
     throw new Error(`Unsupported resource configurator type: ${resourceUrlPattern}`);
   }
 
@@ -830,9 +906,20 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
 
   async ensureResources(resourceUrlPatterns: string[]): Promise<{url?: string}> {
     validateResourceUrlPatterns(resourceUrlPatterns);
-    // Nothing here is separately grantable yet, so the sign-in grant already covers every resource
-    // this vendor offers.
-    return {};
+
+    let account = this.#account();
+    let granted = new Set(await account.getGrantedResourceUrlPatterns());
+    if (resourceUrlPatterns.every(pattern => granted.has(pattern))) {
+      return {};
+    }
+
+    // Request the union of what's already granted and what's newly needed, so the expansion never
+    // drops existing access.
+    let unionPatterns = new Set([...granted, ...resourceUrlPatterns]);
+    let requestedScopes = resourceUrlPatternsToOAuthScopes([...unionPatterns]);
+    let initiationNonce = generateNonce();
+    await account.prepareReconnect(initiationNonce, requestedScopes);
+    return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${initiationNonce}` };
   }
 
   // Mint a verifier representing this account. The overseer mints one on every open, so it must
@@ -860,3 +947,12 @@ type MicrosoftVerifierProps = {
 export class MicrosoftVerifier extends WorkerEntrypoint<Env, MicrosoftVerifierProps>
     implements GatekeeperUserVerifier {
 }
+
+// ---------------------------------------------------------------------------
+// Resource configurator
+//
+// RPC interface exposed to the resource-selection iframe. The mailbox is a singleton — a connected
+// account has exactly one — so the frame confirms the choice and needs nothing from the gatekeeper.
+
+@validateRpc()
+export class OutlookMailConfiguratorUI extends RpcTarget implements OutlookMailConfiguratorRpc {}
