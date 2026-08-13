@@ -19,7 +19,8 @@ The primary account key is always the user's **verified email**. Signing in with
 gatekeeper that yields the same verified email resolves to the same account — its `UserDurableObject`
 is addressed by `idFromName(email)` (the same scheme as Cloudflare Access). Each gatekeeper must only
 return an email the provider has verified (Google `email_verified`, a GitHub primary+verified email,
-the Cloudflare account email); otherwise it returns null and can't be used to sign in.
+the Cloudflare account email, a Microsoft tenant member's address on a verified domain); otherwise
+it returns null and can't be used to sign in.
 
 ## Incremental scopes
 
@@ -55,7 +56,7 @@ full scopes and persists the connection).
 
 ```
 PUBLIC_BASE_URL=https://your-host
-AUTH_GATEKEEPERS=cloudflare,google,github   # which gatekeepers may sign users in (order = button order)
+AUTH_GATEKEEPERS=cloudflare,google,github,microsoft   # which gatekeepers may sign users in (order = button order)
 
 # Optional: gatekeeper sign-in only (hide username/password).
 DISABLE_PASSWORD_AUTH=true
@@ -67,9 +68,12 @@ OAuth app with its own redirect URI:
 - Google: `${PUBLIC_BASE_URL}/gatekeeper/google/oauth`
 - GitHub: `${PUBLIC_BASE_URL}/gatekeeper/github/oauth`
 - Cloudflare: `${PUBLIC_BASE_URL}/gatekeeper/cloudflare/oauth`
+- Microsoft 365: `${PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth`
 
 In local dev, `run-dev-server.js` seeds each gatekeeper's `CLIENT_ID`/`CLIENT_SECRET` from
-`GOOGLE_*` / `GITHUB_*` / `CLOUDFLARE_OAUTH_*` shell vars.
+`GOOGLE_*` / `GITHUB_*` / `CLOUDFLARE_OAUTH_*` / `MICROSOFT_*` shell vars. Microsoft additionally
+needs `MICROSOFT_TENANT_ID`, which seeds the worker's `TENANT_ID`: Entra pins every OAuth endpoint
+to a single tenant, so the gatekeeper is unusable without it.
 
 ## Storage / bindings
 

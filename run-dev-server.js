@@ -16,7 +16,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "jsonc-parser";
-import { getDevServerConfig } from "./scripts/dev-server-config.js";
+import { getDevServerConfig, seedGatekeeperVars } from "./scripts/dev-server-config.js";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PACKAGES_DIR = join(ROOT, "packages");
@@ -175,35 +175,10 @@ function bindingName(gk) {
 // because this script starts a multi-config Wrangler process from the repo root.
 // We also inject OAuth credentials shared with the sign-in flow, so a single
 // OAuth app can drive both; gatekeepers without shared creds keep their raw config,
-// and any creds already defined in the gatekeeper's own config still win.
+// and any creds already defined in the gatekeeper's own config still win. Those tables and the
+// seeding they drive live in scripts/dev-server-config.js, so they can be unit-tested without
+// starting a dev server.
 // ---------------------------------------------------------------------------
-
-// Maps a gatekeeper name to the shared env vars whose values seed its CLIENT_ID / CLIENT_SECRET.
-const SHARED_GATEKEEPER_CREDS = {
-  "gatekeeper-github": { id: "GITHUB_CLIENT_ID", secret: "GITHUB_CLIENT_SECRET" },
-  "gatekeeper-google": { id: "GOOGLE_CLIENT_ID", secret: "GOOGLE_CLIENT_SECRET" },
-  "gatekeeper-cloudflare": { id: "CLOUDFLARE_OAUTH_CLIENT_ID", secret: "CLOUDFLARE_OAUTH_CLIENT_SECRET" },
-  "gatekeeper-supabase": { id: "SUPABASE_CLIENT_ID", secret: "SUPABASE_CLIENT_SECRET" },
-  "gatekeeper-notion": { id: "NOTION_CLIENT_ID", secret: "NOTION_CLIENT_SECRET" },
-  "gatekeeper-zoominfo": { id: "ZOOMINFO_CLIENT_ID", secret: "ZOOMINFO_CLIENT_SECRET" },
-  "gatekeeper-confluence": { id: "CONFLUENCE_CLIENT_ID", secret: "CONFLUENCE_CLIENT_SECRET" },
-  "gatekeeper-slack": { id: "SLACK_CLIENT_ID", secret: "SLACK_CLIENT_SECRET" },
-};
-
-// Deployment-configured vars a gatekeeper reads that its committed `wrangler.jsonc` deliberately
-// leaves unset, passed through from the shell or the root `.dev.vars`.
-//
-// Without this the only way to point the portal connector somewhere for local testing is to edit a
-// tracked file, and a URL committed there becomes the default for everyone who deploys this repo.
-// `.dev.vars` is gitignored, so it cannot leave the machine. Secrets travel the same way
-// `CLIENT_SECRET` already does, via SHARED_GATEKEEPER_CREDS above.
-const PASSTHROUGH_GATEKEEPER_VARS = {
-  "gatekeeper-mcp-portal": [
-    "MCP_PORTAL_URL", "MCP_PORTAL_NAME", "MCP_PORTAL_AUTH", "MCP_PORTAL_TOKEN",
-    "MCP_PORTAL_TRUST_ANNOTATIONS", "MCP_ALLOW_INSECURE",
-  ],
-  "gatekeeper-mcp": ["MCP_ALLOW_INSECURE"],
-};
 
 for (const gk of gatekeepers) {
   const srcPath = join(gk.dir, "wrangler.jsonc");
@@ -212,18 +187,8 @@ for (const gk of gatekeepers) {
   config.vars = config.vars || {};
   config.vars.BASE_URL = `http://${backendHost}/gatekeeper/${gk.name.slice("gatekeeper-".length)}`;
 
-  const shared = SHARED_GATEKEEPER_CREDS[gk.name];
-  if (shared && process.env[shared.id] && process.env[shared.secret]) {
-    if (config.vars.CLIENT_ID === undefined) config.vars.CLIENT_ID = process.env[shared.id];
-    if (config.vars.CLIENT_SECRET === undefined) config.vars.CLIENT_SECRET = process.env[shared.secret];
-  }
-
-  // The shell wins over the committed default, so `MCP_ALLOW_INSECURE=true` can override the
-  // `"false"` in wrangler.jsonc without editing it.
-  for (const name of PASSTHROUGH_GATEKEEPER_VARS[gk.name] ?? []) {
-    if (process.env[name] !== undefined) {
-      config.vars[name] = process.env[name];
-    }
+  for (const warning of seedGatekeeperVars(config, gk.name, process.env)) {
+    console.warn(warning);
   }
 
   const outPath = join(gk.dir, "wrangler.dev.jsonc");
@@ -259,7 +224,8 @@ for (const gk of gatekeepers) {
     "CF_AI_GATEWAY_API_TOKEN", "CF_AI_GATEWAY_WAI", "CF_AI_GATEWAY_WAI_DIRECT",
   ];
   // OAuth app credentials (GOOGLE_/GITHUB_/CLOUDFLARE_OAUTH_*) are NOT passed to the backend anymore;
-  // they are injected into the gatekeeper Workers (see SHARED_GATEKEEPER_CREDS below).
+  // they are injected into the gatekeeper Workers (see SHARED_GATEKEEPER_CREDS in
+  // scripts/dev-server-config.js).
   for (const name of OPTIONAL_FEATURE_VARS) {
     if (process.env[name] !== undefined) config.vars[name] = process.env[name];
   }

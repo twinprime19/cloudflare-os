@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   getDevServerConfig,
   getWranglerPortFromBackendHost,
+  seedGatekeeperVars,
 } from "./dev-server-config.js";
 
 describe("getWranglerPortFromBackendHost", () => {
@@ -71,4 +72,76 @@ describe("getDevServerConfig", () => {
       assert.throws(() => getDevServerConfig(args), /--port must be an integer between 1 and 65535/);
     });
   }
+});
+
+function seed(name, env, vars = {}) {
+  const config = { vars };
+  const warnings = seedGatekeeperVars(config, name, env);
+  return { vars: config.vars, warnings };
+}
+
+describe("seedGatekeeperVars", () => {
+  it("seeds CLIENT_ID/CLIENT_SECRET from the gatekeeper's shared shell vars", () => {
+    assert.deepEqual(
+        seed("gatekeeper-github", { GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret" }),
+        { vars: { CLIENT_ID: "id", CLIENT_SECRET: "secret" }, warnings: [] });
+  });
+
+  it("keeps credentials the gatekeeper's own config already defines", () => {
+    assert.deepEqual(
+        seed("gatekeeper-google",
+            { GOOGLE_CLIENT_ID: "shell-id", GOOGLE_CLIENT_SECRET: "shell-secret" },
+            { CLIENT_ID: "committed-id" }),
+        { vars: { CLIENT_ID: "committed-id", CLIENT_SECRET: "shell-secret" }, warnings: [] });
+  });
+
+  it("seeds nothing when only one half of the credential pair is set", () => {
+    assert.deepEqual(
+        seed("gatekeeper-slack", { SLACK_CLIENT_ID: "id" }),
+        { vars: {}, warnings: [] });
+  });
+
+  it("leaves a gatekeeper with no shared creds and no passthrough vars untouched", () => {
+    assert.deepEqual(
+        seed("gatekeeper-email", { GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret" }),
+        { vars: {}, warnings: [] });
+  });
+
+  it("lets the shell override a passthrough var the committed config already sets", () => {
+    assert.deepEqual(
+        seed("gatekeeper-mcp", { MCP_ALLOW_INSECURE: "true" }, { MCP_ALLOW_INSECURE: "false" }),
+        { vars: { MCP_ALLOW_INSECURE: "true" }, warnings: [] });
+  });
+
+  it("seeds the Microsoft gatekeeper's credentials and renames the tenant id", () => {
+    assert.deepEqual(
+        seed("gatekeeper-microsoft", {
+          MICROSOFT_CLIENT_ID: "id",
+          MICROSOFT_CLIENT_SECRET: "secret",
+          MICROSOFT_TENANT_ID: "tenant",
+        }),
+        {
+          vars: { CLIENT_ID: "id", CLIENT_SECRET: "secret", TENANT_ID: "tenant" },
+          warnings: [],
+        });
+  });
+
+  it("seeds TENANT_ID even when the Microsoft client secret is missing", () => {
+    assert.deepEqual(
+        seed("gatekeeper-microsoft",
+            { MICROSOFT_CLIENT_ID: "id", MICROSOFT_TENANT_ID: "tenant" }),
+        { vars: { TENANT_ID: "tenant" }, warnings: [] });
+  });
+
+  it("warns when the Microsoft credentials are set but the tenant id is not", () => {
+    const { vars, warnings } = seed("gatekeeper-microsoft",
+        { MICROSOFT_CLIENT_ID: "id", MICROSOFT_CLIENT_SECRET: "secret" });
+    assert.deepEqual(vars, { CLIENT_ID: "id", CLIENT_SECRET: "secret" });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /MICROSOFT_TENANT_ID is not set/);
+  });
+
+  it("stays quiet about the tenant id when the Microsoft gatekeeper is unconfigured", () => {
+    assert.deepEqual(seed("gatekeeper-microsoft", {}), { vars: {}, warnings: [] });
+  });
 });
