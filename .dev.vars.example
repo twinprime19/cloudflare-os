@@ -1,0 +1,153 @@
+# Local development environment variables.
+#
+# Copy this file to `.dev.vars` (gitignored) and fill in the values you need, or export the same
+# names in your shell — a value already present in the shell environment wins over `.dev.vars`
+# (run-dev-server.js:loadDevVars). Everything is optional: unset vars simply leave the matching
+# feature or gatekeeper unconfigured.
+#
+# A Cloudflare deployment does NOT use this file. In production these same settings arrive as
+# Worker vars/secrets supplied by the deploy flow (see each package's `deploy-inputs.json` and
+# `release-manifest.json`); `.dev.vars` only exists so local dev can seed them without editing a
+# tracked config file.
+#
+# Only the names below are read by the dev flow. Every line is commented out; uncomment what you
+# use.
+
+
+# ---------------------------------------------------------------------------------------------
+# Dev server
+# ---------------------------------------------------------------------------------------------
+
+# Host:port the backend listens on and the frontend proxies to. Defaults to localhost:8787.
+# `pnpm dev-server --port <n>` overrides it. The Vite frontend reads this from the shell or a
+# `packages/workshop-frontend/.env` — it does not load `.dev.vars`.
+# VITE_BACKEND_HOST=localhost:8787
+
+# Public base URL of the deployment; production redirect URIs are built from it. Set it locally
+# only if you are mirroring a deployed URL.
+# PUBLIC_BASE_URL=http://localhost:8787
+
+# Alternate source directory for the bundled format blueprints, relative to
+# packages/workshop-backend. Defaults to `format-blueprints`.
+# FORMAT_BLUEPRINTS_DIR=format-blueprints
+
+
+# ---------------------------------------------------------------------------------------------
+# Sign-in
+# ---------------------------------------------------------------------------------------------
+
+# Comma-separated gatekeeper ids allowed to drive sign-in ("Continue with …" on the login page).
+# A listed gatekeeper must also be configured below. Empty = password login only.
+# AUTH_GATEKEEPERS=microsoft,google,github,cloudflare
+
+# "true" turns off username/password login + signup. Ignored unless AUTH_GATEKEEPERS lists at
+# least one gatekeeper, so it cannot lock everyone out on its own.
+# DISABLE_PASSWORD_AUTH=true
+
+
+# ---------------------------------------------------------------------------------------------
+# Gatekeeper OAuth apps
+#
+# Each pair seeds that gatekeeper worker's CLIENT_ID / CLIENT_SECRET. Both halves must be set or
+# neither is seeded. Register the redirect URI shown in the package README — in dev it is
+# http://localhost:8787/gatekeeper/<name>/oauth.
+# ---------------------------------------------------------------------------------------------
+
+# Microsoft 365 / Entra ID — entra.microsoft.com > App registrations (single tenant).
+# CLIENT_ID is the "Application (client) ID"; TENANT_ID is the "Directory (tenant) ID"; the secret
+# is the client secret **Value** (shown once, and it expires — see the rotation runbook in
+# packages/gatekeeper-microsoft/README.md). MICROSOFT_TENANT_ID seeds the worker's TENANT_ID and is
+# mandatory: without it every request answers "not configured".
+# MICROSOFT_CLIENT_ID=<Application (client) ID>
+# MICROSOFT_CLIENT_SECRET=<client secret value>
+# MICROSOFT_TENANT_ID=<Directory (tenant) ID>
+
+# GitHub — github.com/settings/developers > New OAuth App (an OAuth App, not a GitHub App).
+# GITHUB_CLIENT_ID=
+# GITHUB_CLIENT_SECRET=
+
+# Google — console.cloud.google.com > APIs & Services > Credentials > OAuth client ID (Web).
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+
+# Cloudflare — a Cloudflare dashboard OAuth client; see packages/gatekeeper-cloudflare/README.md.
+# A per-package packages/gatekeeper-cloudflare/.env takes precedence over these.
+# CLOUDFLARE_OAUTH_CLIENT_ID=
+# CLOUDFLARE_OAUTH_CLIENT_SECRET=
+
+# Supabase — organization settings > OAuth Apps > Add application.
+# SUPABASE_CLIENT_ID=
+# SUPABASE_CLIENT_SECRET=
+
+# Notion — notion.so/my-integrations, as a public integration.
+# NOTION_CLIENT_ID=
+# NOTION_CLIENT_SECRET=
+
+# Slack — api.slack.com/apps; enable token rotation under OAuth & Permissions.
+# SLACK_CLIENT_ID=
+# SLACK_CLIENT_SECRET=
+
+# Confluence — developer.atlassian.com/console/myapps > OAuth 2.0 integration.
+# CONFLUENCE_CLIENT_ID=
+# CONFLUENCE_CLIENT_SECRET=
+
+# ZoomInfo — api.zoominfo.com developer portal > OAuth application.
+# ZOOMINFO_CLIENT_ID=
+# ZOOMINFO_CLIENT_SECRET=
+
+
+# ---------------------------------------------------------------------------------------------
+# MCP connectors
+# ---------------------------------------------------------------------------------------------
+
+# MCP endpoint of the portal the mcp-portal gatekeeper connects to. Unset hides the connector.
+# MCP_PORTAL_URL=https://portal.example.com/mcp
+
+# Display name shown in the connector list and every approval prompt. Defaults to
+# "MCP Server Portal (<host>)".
+# MCP_PORTAL_NAME=
+
+# Portal auth mode: oauth (default), none, or token.
+# MCP_PORTAL_AUTH=oauth
+
+# Bearer token, required only when MCP_PORTAL_AUTH=token.
+# MCP_PORTAL_TOKEN=
+
+# "true" lets upstream tool annotations drive auto-approval. Off by default.
+# MCP_PORTAL_TRUST_ANNOTATIONS=false
+
+# "true" allows http:// and private/loopback MCP endpoints for the mcp and mcp-portal gatekeepers.
+# Local dev only — it disables the endpoint safety checks.
+# MCP_ALLOW_INSECURE=false
+
+
+# ---------------------------------------------------------------------------------------------
+# AI Gateway and usage limits
+# ---------------------------------------------------------------------------------------------
+
+# Name of the AI Gateway to route inference through; setting it enables gateway mode and the
+# cross-provider model catalog. Create it in the Cloudflare dashboard under AI > AI Gateway.
+# CF_AI_GATEWAY=
+
+# Comma-separated providers to route through the gateway, e.g. anthropic,openai,google,cloudflare.
+# CF_AI_GATEWAY_PROVIDERS=anthropic,openai,google,cloudflare
+
+# Account that owns the gateway, and an API token with AI Gateway Run + Read. Both are required
+# whenever CF_AI_GATEWAY is set. Token: dash.cloudflare.com > My Profile > API Tokens.
+# CF_AI_GATEWAY_ACCOUNT_ID=
+# CF_AI_GATEWAY_API_TOKEN=
+
+# Optional separate gateway name for Workers AI. Cannot be combined with CF_AI_GATEWAY_WAI_DIRECT.
+# CF_AI_GATEWAY_WAI=
+
+# "true" sends Workers AI to its plain REST endpoint instead of through a gateway.
+# CF_AI_GATEWAY_WAI_DIRECT=false
+
+# "true" enables the Cloudflare free-tier limits + BYOK top-up flow.
+# ENABLE_CLOUDFLARE_LIMITS=true
+
+# Per-user daily free-tier LLM call limit. Defaults to DEFAULT_DAILY_LLM_CALL_LIMIT.
+# DAILY_LLM_CALL_LIMIT=1
+
+# Minimum connected-account balance in USD required to proceed via BYOK.
+# MINIMUM_CLOUDFLARE_BALANCE=
