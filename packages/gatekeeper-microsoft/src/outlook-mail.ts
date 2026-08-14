@@ -642,9 +642,11 @@ export class OutlookMailGatekeeperImpl
     throw new Error("revert is not implemented");
   }
 
-  // Observer tracking — private-only. A mailbox has no per-recipient ACL to verify an observer
-  // against, and full access to someone's mail is too personal to extend to a non-owner, so
-  // addObserver always throws. removeObserver is a no-op since none is ever recorded.
+  /**
+   * Observer tracking — private-only. A mailbox has no per-recipient ACL to verify an observer
+   * against, and full access to someone's mail is too personal to extend to a non-owner, so
+   * addObserver always throws. removeObserver is a no-op since none is ever recorded.
+   */
   async addObserver(_id: string, _user: Fetcher<GatekeeperUserVerifier>): Promise<void> {
     throw new Error(
         "Outlook mailbox data cannot be shared with other users: this workspace reads a personal " +

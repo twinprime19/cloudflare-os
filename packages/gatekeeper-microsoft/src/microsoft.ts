@@ -100,16 +100,24 @@ function constantTimeEqual(a: string, b: string): boolean {
   return crypto.subtle.timingSafeEqual(bufA, bufB);
 }
 
-// Declare optional environment variables here since they may be omitted from wrangler.jsonc.
+/**
+ * Declare optional environment variables here since they may be omitted from wrangler.jsonc.
+ */
 export type Env = Cloudflare.Env & {
-  // Base URL (protocol+host+optional path) at which the default fetch handler is served. Should
-  // NOT include a trailing slash. Omit for localhost dev server.
+  /**
+   * Base URL (protocol+host+optional path) at which the default fetch handler is served. Should
+   * NOT include a trailing slash. Omit for localhost dev server.
+   */
   BASE_URL?: string;
-  // Entra ID app registration credentials (wrangler secrets / .dev.vars); not in wrangler.jsonc.
+  /**
+   * Entra ID app registration credentials (wrangler secrets / .dev.vars); not in wrangler.jsonc.
+   */
   CLIENT_ID?: string;
   CLIENT_SECRET?: string;
-  // The single Entra tenant this deployment signs users in from. Pins both the OAuth endpoints and
-  // the id_token `tid` check.
+  /**
+   * The single Entra tenant this deployment signs users in from. Pins both the OAuth endpoints and
+   * the id_token `tid` check.
+   */
   TENANT_ID?: string;
 }
 
@@ -241,7 +249,9 @@ function truncateOAuthError(value: string): string {
       : value;
 }
 
-// Main HTTP UI entrypoint. We only use this to initiate and complete OAuth requests to Entra ID.
+/**
+ * Main HTTP UI entrypoint. We only use this to initiate and complete OAuth requests to Entra ID.
+ */
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext) {
     let url = new URL(req.url);
@@ -463,10 +473,12 @@ export class UserAccount extends DurableObject<Env> {
     });
   }
 
-  // Prepare this account for a reconnect flow. The next acceptAuthCode() call will replace the
-  // existing refresh token and notify via credentialsRestored() instead of complete().
-  //
-  // `requestedScopes` is the full set of OAuth scopes to request on the reauthorization.
+  /**
+   * Prepare this account for a reconnect flow. The next acceptAuthCode() call will replace the
+   * existing refresh token and notify via credentialsRestored() instead of complete().
+   *
+   * `requestedScopes` is the full set of OAuth scopes to request on the reauthorization.
+   */
   async prepareReconnect(initiationNonce: string, requestedScopes: string[]) {
     this.ctx.storage.kv.put<boolean>("reconnecting", true);
     this.ctx.storage.kv.put<string[]>("requestedScopes", requestedScopes);
@@ -477,27 +489,35 @@ export class UserAccount extends DurableObject<Env> {
     });
   }
 
-  // The scopes this account consented to, which a reconnect re-requests so it doesn't narrow
-  // access.
+  /**
+   * The scopes this account consented to, which a reconnect re-requests so it doesn't narrow
+   * access.
+   */
   async getGrantScopes(): Promise<string[]> {
     return this.ctx.storage.kv.get<string[]>("grantScopes") ?? IDENTITY_SCOPES;
   }
 
-  // The grantable resource `urlPattern`s this account's consent actually covers, used to decide
-  // whether ensureResources() has to expand the grant. Derived from the scopes Entra reported, not
-  // from the scopes we asked for: a user can decline part of a consent screen.
+  /**
+   * The grantable resource `urlPattern`s this account's consent actually covers, used to decide
+   * whether ensureResources() has to expand the grant. Derived from the scopes Entra reported, not
+   * from the scopes we asked for: a user can decline part of a consent screen.
+   */
   async getGrantedResourceUrlPatterns(): Promise<string[]> {
     return grantedResourcesFromScopes(this.ctx.storage.kv.get<string[]>("grantedScopes") ?? []);
   }
 
-  // The id_token claims recorded at grant time. Only ever populated from a token-endpoint response.
+  /**
+   * The id_token claims recorded at grant time. Only ever populated from a token-endpoint response.
+   */
   async getIdTokenClaims(): Promise<IdTokenClaims | undefined> {
     return this.ctx.storage.kv.get<IdTokenClaims>("idTokenClaims");
   }
 
-  // Called by the fetch handler when the user visits the initiation URL. Verifies the initiation
-  // nonce, consumes it, and returns a fresh OAuth nonce plus the scopes to request. Returns null if
-  // the nonce is invalid or expired.
+  /**
+   * Called by the fetch handler when the user visits the initiation URL. Verifies the initiation
+   * nonce, consumes it, and returns a fresh OAuth nonce plus the scopes to request. Returns null if
+   * the nonce is invalid or expired.
+   */
   async beginOAuthFlow(initiationNonce: string): Promise<{oauthNonce: string, scopes: string[]} | null> {
     let stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (!stored || stored.stage !== "initiation" ||
@@ -516,7 +536,9 @@ export class UserAccount extends DurableObject<Env> {
     return {oauthNonce, scopes};
   }
 
-  // Returns false if the OAuth nonce is invalid or expired.
+  /**
+   * Returns false if the OAuth nonce is invalid or expired.
+   */
   async acceptAuthCode(code: string, oauthNonce: string): Promise<boolean> {
     // Verify and consume the OAuth nonce.
     let stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
@@ -764,8 +786,10 @@ export class UserAccount extends DurableObject<Env> {
     });
   }
 
-  // The tenant's verified domains, cached per account so repeated identity checks on one account
-  // cost one Graph call rather than one each.
+  /**
+   * The tenant's verified domains, cached per account so repeated identity checks on one account
+   * cost one Graph call rather than one each.
+   */
   async getVerifiedDomains(): Promise<string[]> {
     let cached = this.ctx.storage.kv.get<CachedVerifiedDomains>("verifiedDomains");
     if (cached && Date.now() - cached.fetchedAt < VERIFIED_DOMAIN_CACHE_MS) {
@@ -795,10 +819,12 @@ export class UserAccount extends DurableObject<Env> {
     });
   }
 
-  // Entra publishes no token-revocation endpoint for this flow, so disconnecting is a local delete:
-  // the stored refresh token is destroyed here, and Microsoft keeps its own record of the grant
-  // until it lapses. A tenant administrator can end the sessions org-side (Entra portal, or
-  // `revokeSignInSessions` on the user).
+  /**
+   * Entra publishes no token-revocation endpoint for this flow, so disconnecting is a local delete:
+   * the stored refresh token is destroyed here, and Microsoft keeps its own record of the grant
+   * until it lapses. A tenant administrator can end the sessions org-side (Entra portal, or
+   * `revokeSignInSessions` on the user).
+   */
   async revoke(): Promise<void> {
     await this.#updateCredentials(async () => {
       this.ctx.storage.deleteAlarm();
@@ -929,8 +955,10 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${initiationNonce}` };
   }
 
-  // Mint a verifier representing this account. The overseer mints one on every open, so it must
-  // exist even while no resource type consults it.
+  /**
+   * Mint a verifier representing this account. The overseer mints one on every open, so it must
+   * exist even while no resource type consults it.
+   */
   @skipRpcValidation()
   async getVerifier(): Promise<Fetcher<GatekeeperUserVerifier>> {
     let props: MicrosoftVerifierProps = { userObjectId: this.ctx.props.userObjectId };
