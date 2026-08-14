@@ -1,0 +1,27 @@
+[
+  {
+    "name": "CLIENT_ID",
+    "kind": "secret",
+    "label": "Application (client) ID",
+    "consoleUrl": "https://entra.microsoft.com",
+    "setupSteps": [
+      "In the Microsoft Entra admin center, go to Applications > App registrations > New registration.",
+      "Choose \"Accounts in this organizational directory only\" (single tenant) — only members of your own tenant can sign in.",
+      "Add a redirect URI of platform type \"Web\" matching the URI below.",
+      "Under Certificates & secrets, create a client secret and copy its Value immediately (it is shown once). Record the expiry date: the admin center caps new secrets at 24 months, and sign-in stops working the day it expires.",
+      "Under API permissions, add the delegated Microsoft Graph permissions openid, profile, email, offline_access, User.Read and Mail.ReadWrite, then click \"Grant admin consent\".",
+      "Copy the Application (client) ID, the client secret value, and the Directory (tenant) ID from the app's Overview page here."
+    ],
+    "redirectUriTemplate": "{PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth"
+  },
+  {
+    "name": "CLIENT_SECRET",
+    "kind": "secret",
+    "label": "Client secret value"
+  },
+  {
+    "name": "TENANT_ID",
+    "kind": "secret",
+    "label": "Directory (tenant) ID"
+  }
+]
