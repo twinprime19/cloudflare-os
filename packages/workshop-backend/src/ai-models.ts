@@ -457,6 +457,35 @@ function getModelViaGateway(
     });
   }
 
+  // Unified-catalog ids (provider/model, e.g. alibaba/...) are third-party models the platform
+  // serves through the AI REST endpoint, not the gateway's workers-ai route (which only hosts
+  // @cf models). The cf-aig-gateway-id header keeps logging/billing attribution on the
+  // configured gateway.
+  if (config.provider === "cloudflare" && !config.model.startsWith("@cf/")) {
+    const unifiedGateway = gwConfig.workersAiGateway ?? gwConfig.gateway;
+    const catalog = catalogModel(config.provider, config.model);
+    const model: Model<Api> = {
+      id: config.model,
+      name: catalog?.name ?? config.model,
+      api: "openai-completions",
+      provider: "cloudflare-workers-ai",
+      baseUrl: `https://api.cloudflare.com/client/v4/accounts/${gwConfig.accountId}/ai/v1`,
+      reasoning: catalog?.reasoning ?? false,
+      input: catalog?.input ?? ["text"],
+      cost: catalog?.cost ?? ZERO_COST,
+      ...modelTokenWindow(config, catalog),
+      compat: workersAiCompat(catalog),
+    };
+    return makeHandle({
+      model,
+      apiKey: gwConfig.apiToken,
+      headers: { "cf-aig-gateway-id": unifiedGateway },
+      gatewayMetadata: metadata,
+      sessionAffinity: options.sessionAffinity,
+      aiGatewayLogRoute: logRoute(unifiedGateway),
+    });
+  }
+
   // Workers AI may be routed through a different gateway than the other providers
   // (CF_AI_GATEWAY_WAI); either way, gateway log route and attribution metadata apply.
   const gateway = config.provider === "cloudflare"
