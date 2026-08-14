@@ -11,6 +11,10 @@ const pullRequestTemplate = readFileSync(
   new URL("../.github/pull_request_template.md", import.meta.url),
   "utf8",
 );
+const contributionPolicyWorkflow = readFileSync(
+  new URL("../.github/workflows/contribution-policy.yml", import.meta.url),
+  "utf8",
+);
 const compliantBody = pullRequestTemplate.replaceAll("- [ ]", "- [x]");
 
 function makePullRequest(overrides = {}) {
@@ -111,12 +115,14 @@ describe("getContributionPolicyViolations", () => {
     });
   }
 
-  it("exempts drafts", () => {
+  it("checks draft pull requests", () => {
     const violations = getContributionPolicyViolations(
-      makePullRequest({ additions: 100, body: "", draft: true }),
+      makePullRequest({ additions: 31, deletions: 0, draft: true }),
     );
 
-    assert.deepEqual(violations, []);
+    assert.deepEqual(violations, [
+      "The patch changes 31 lines; the automatic limit is 30.",
+    ]);
   });
 
   for (const [description, pullRequest] of [
@@ -154,6 +160,12 @@ describe("getContributionPolicyViolations", () => {
     );
 
     assert.deepEqual(violations, []);
+  });
+});
+
+describe("contribution policy workflow", () => {
+  it("runs the enforcement job for draft pull requests", () => {
+    assert.doesNotMatch(contributionPolicyWorkflow, /github\.event\.pull_request\.draft/);
   });
 });
 
@@ -215,6 +227,36 @@ describe("enforceContributionPolicy", () => {
     assert.deepEqual(calls, []);
   });
 
+  it("does not close a pull request whose contributor-associated author can push", async () => {
+    const calls = [];
+    const github = makeGitHub(
+      makePullRequest({ additions: 100, author_association: "CONTRIBUTOR", body: "" }),
+      [],
+      calls,
+      { authorPermission: "write" },
+    );
+
+    await enforceContributionPolicy({ github, context, core });
+
+    assert.deepEqual(calls, []);
+  });
+
+  it("still closes a pull request whose contributor-associated author cannot push", async () => {
+    const calls = [];
+    const github = makeGitHub(
+      makePullRequest({ additions: 100, author_association: "CONTRIBUTOR", body: "" }),
+      [],
+      calls,
+    );
+
+    await enforceContributionPolicy({ github, context, core });
+
+    assert.deepEqual(calls.map(({ operation }) => operation), [
+      "createComment",
+      "closePullRequest",
+    ]);
+  });
+
   it("does not close a pull request corrected during evaluation", async () => {
     const calls = [];
     const github = makeGitHub(
@@ -252,7 +294,7 @@ const context = {
 
 const core = { notice() {} };
 
-function makeGitHub(pullRequest, comments, calls) {
+function makeGitHub(pullRequest, comments, calls, { authorPermission = "read" } = {}) {
   const pullRequests = Array.isArray(pullRequest) ? pullRequest : [pullRequest];
   let pullRequestIndex = 0;
   const paginate = async () => comments;
@@ -273,6 +315,11 @@ function makeGitHub(pullRequest, comments, calls) {
           data: pullRequests[Math.min(pullRequestIndex++, pullRequests.length - 1)],
         }),
         update: async (args) => calls.push({ operation: "closePullRequest", ...args }),
+      },
+      repos: {
+        getCollaboratorPermissionLevel: async () => ({
+          data: { permission: authorPermission },
+        }),
       },
     },
   };

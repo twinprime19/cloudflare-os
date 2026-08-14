@@ -56,14 +56,16 @@ function nameTag(discriminator: string): string {
   return hash.toString(16).padStart(8, "0").slice(0, 4);
 }
 
-// The TypeScript interface name generated for one binding's session.
-//
-// `serverId` is a display slug and is not unique: two hosts can reduce to `acme`, and on a portal
-// two grants pinning different tools of one upstream server share both the slug and the endpoint.
-// Either way the agent would be shown two unrelated tool surfaces under one interface name, in
-// separate blocks it cannot compare. `discriminator` is the binding's scoped resource URL --
-// endpoint plus scope, the two things that actually determine the generated surface -- so bindings
-// that differ in what they can call differ in what their type is called.
+/**
+ * The TypeScript interface name generated for one binding's session.
+ *
+ * `serverId` is a display slug and is not unique: two hosts can reduce to `acme`, and on a portal
+ * two grants pinning different tools of one upstream server share both the slug and the endpoint.
+ * Either way the agent would be shown two unrelated tool surfaces under one interface name, in
+ * separate blocks it cannot compare. `discriminator` is the binding's scoped resource URL --
+ * endpoint plus scope, the two things that actually determine the generated surface -- so bindings
+ * that differ in what they can call differ in what their type is called.
+ */
 export function sessionTypeName(serverId: string, discriminator: string): string {
   return `Mcp${pascalCase(serverId)}${nameTag(discriminator)}Session`;
 }
@@ -280,19 +282,23 @@ function argsInterfaceNames(typeName: string, tools: ClassifiedTool[]): Map<stri
   return names;
 }
 
-// Renders the `.d.ts` for one server's session interface.
-//
-// `baseTypes` is prepended verbatim (see `types.d.ts`), because
-// `Gatekeeper.getTypeScriptTypes()` must return a self-contained file that exports every type named
-// by its `ResourceDescription`.
+/**
+ * Renders the `.d.ts` for one server's session interface.
+ *
+ * `baseTypes` is prepended verbatim (see `types.d.ts`), because
+ * `Gatekeeper.getTypeScriptTypes()` must return a self-contained file that exports every type named
+ * by its `ResourceDescription`.
+ */
 export function generateSessionTypes(args: {
   baseTypes: string;
   serverId: string;
   serverName: string;
   endpoint: string;
-  // This binding's scoped resource URL, which names the interface. Must be the same value the
-  // connector passes to `sessionTypeName` in `describe()`, or the agent is told a type name the
-  // generated file does not declare.
+  /**
+   * This binding's scoped resource URL, which names the interface. Must be the same value the
+   * connector passes to `sessionTypeName` in `describe()`, or the agent is told a type name the
+   * generated file does not declare.
+   */
   discriminator: string;
   trust: ServerTrust;
   tools: ClassifiedTool[];
@@ -337,6 +343,9 @@ export function generateSessionTypes(args: {
   lines.push(" * as observations. The remaining " + actionTools.length + " tool(s) are treated as actions:");
   lines.push(" * `callTool` queues them for approval and returns `{ status: \"pending\" }`; the result");
   lines.push(" * becomes available through `getActionResult` once a human approves.");
+  lines.push(" * When using this session from `executeCode`, return from that executeCode call as soon as");
+  lines.push(" * an action is pending so its approval can appear in chat. Approval resumes the agent;");
+  lines.push(" * denial ends the turn. Call `getActionResult` after approval.");
   if (args.trust === "byo") {
     lines.push(" *");
     lines.push(" * This server was supplied by the user, so no action is ever applied automatically.");

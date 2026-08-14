@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite-plus'
 
-// Repo-wide toolchain config. Today this is the lint ruleset, moved here from `.oxlintrc.json` so
-// there is one place to look: `vp lint` reads it, and `vp check` runs lint without the format step
-// because the tree is not oxfmt-clean.
+/**
+ * Repo-wide toolchain config. Today this is the lint ruleset, moved here from `.oxlintrc.json` so
+ * there is one place to look: `vp lint` reads it, and `vp check` runs lint without the format step
+ * because the tree is not oxfmt-clean.
+ */
 export default defineConfig({
   check: {
     // The repo has never been formatted with oxfmt, so `vp check` would report every file. Left off
@@ -15,11 +17,12 @@ export default defineConfig({
       suspicious: 'error',
     },
     plugins: ['typescript', 'unicorn', 'oxc', 'import'],
+    jsPlugins: ['./scripts/oxlint-plugin.mjs'],
     options: {
-      // Note: type-aware linting is intentionally not enabled. The type-aware engine
-      // uses tsgo (TypeScript 7), and three packages do not type-check under it:
-      // workshop-frontend, integration-tests and workshop-backend blow past tsgo's
-      // instantiation depth on capnweb's recursive Stub/Stubify types (TS2321/TS2589).
+      // Note: type-aware linting is intentionally not enabled yet.
+      // Enabling them is its own change: triage the first run's findings, decide a `no-floating-promises` policy (RPC promise
+      // pipelining deliberately leaves promises unawaited, so the default rule flags idiomatic
+      // code), and budget for the tsgo pass every lint run would add on top of today's ~1s.
       // Full type safety is still enforced by `tsc` via the `build` script.
       typeAware: false,
     },
@@ -27,6 +30,10 @@ export default defineConfig({
       es2024: true,
     },
     rules: {
+      // Exported API declaration documentation is surfaced by TypeScript in IDE
+      // hovers only when it uses JSDoc syntax. Ordinary implementation comments stay `//`.
+      'gadgets/prefer-jsdoc': 'error',
+
       // False positives: gatekeepers import `.txt` files as bundled text assets,
       // which the import resolver reports as "no default export".
       'import/default': 'off',
@@ -52,6 +59,24 @@ export default defineConfig({
           caughtErrors: 'none',
           varsIgnorePattern: '^_',
           ignoreRestSiblings: true,
+        },
+      ],
+
+      // TypeScript 7 (tsgo) type-checks only; it currently ships no JS compiler API. The build-time
+      // transpilers that need one import the `typescript6` alias instead. Bare `typescript`
+      // resolves to 7.x, where the missing API is a runtime failure on whichever code path
+      // reaches it rather than anything the type check or the build would catch.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'typescript',
+              message:
+                'TypeScript 7 (tsgo) currently ships no JS compiler API. Import the `typescript6` alias for transpileModule/createProgram. `import type` is fine.',
+              allowTypeImports: true,
+            },
+          ],
         },
       ],
 
@@ -126,6 +151,8 @@ export default defineConfig({
         // restricted to rpc-client.ts, which wraps stub minting in stubFor().
         files: ['packages/integration-tests/**/*.ts'],
         rules: {
+          // Overrides replace this rule's options rather than merging them, so the repo-wide
+          // `typescript` restriction has to be repeated alongside the capnweb one to survive here.
           'no-restricted-imports': [
             'error',
             {
@@ -134,6 +161,12 @@ export default defineConfig({
                   name: 'capnweb',
                   message:
                     'Mint stubs via stubFor() from rpc-client: a consumer repo can hold two capnweb copies, and a stub from the wrong one fails to serialise. `import type` is fine.',
+                  allowTypeImports: true,
+                },
+                {
+                  name: 'typescript',
+                  message:
+                    'TypeScript 7 (tsgo) currently ships no JS compiler API. Import the `typescript6` alias for transpileModule/createProgram. `import type` is fine.',
                   allowTypeImports: true,
                 },
               ],

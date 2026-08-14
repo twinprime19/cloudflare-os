@@ -1,14 +1,19 @@
 import { watch } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import ts from "typescript";
+// typescript6 = npm:typescript@6.0.3. The transpileModule compiler API this script relies on is not
+// shipped by the TypeScript 7 package (it only exports version metadata); type-checking uses
+// the workspace "typescript" (7.x, tsgo), build-time transpilers stay on the JS-based 6.x line.
+import ts from "typescript6";
 import { loadEnv } from "vite";
 
 const packageDir = resolve(process.argv[2] ?? ".");
 const watchMode = process.argv.includes("--watch");
 const quietMode = process.argv.includes("--quiet");
+const devMode = process.argv.includes("--dev");
 const frontendReportingEnabled =
-  loadEnv(watchMode ? "development" : "production", packageDir).VITE_FRONTEND_ERROR_REPORTING === "true";
+  loadEnv(watchMode || devMode ? "development" : "production", packageDir)
+      .VITE_FRONTEND_ERROR_REPORTING === "true";
 const configuratorDir = join(packageDir, "src", "configurator");
 const generatedDir = join(packageDir, "src", "generated");
 const vendorId = basename(packageDir).replace(/^gatekeeper-/, "");

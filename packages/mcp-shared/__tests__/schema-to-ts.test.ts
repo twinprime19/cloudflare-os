@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
+// typescript6 = npm:typescript@6.0.3: this test drives the JS compiler API, which the
+// TypeScript 7 package does not ship. The workspace "typescript" (tsgo) only type-checks.
+import ts from "typescript6";
 import { MCP_BASE_TYPES } from "../src/base-types.js";
 import { generateSessionTypes, sessionTypeName, } from "../src/schema-to-ts.js";
 import { classifyTool } from "../src/tools.js";
@@ -24,6 +26,10 @@ function generate(tools: ClassifiedTool[], baseTypes = "// base\n"): string {
   });
 }
 
+// The only gate on generated output being valid TypeScript: generateSessionTypes emits .d.ts text at
+// runtime (portal.ts, mcp.ts) from live MCP schemas, so tsgo never sees it. Note this is 6.0.3's
+// checker, not the 7.0.2 one the repo type-checks with -- forced, while TS 7 ships no compiler API.
+// The generated types are structural, not the inference corners where the port might plausibly differ.
 function expectTypeScriptToCompile(source: string): void {
   const fileName = "generated.d.ts";
   const options: ts.CompilerOptions = { noEmit: true, strict: true };
@@ -304,6 +310,9 @@ describe("generateSessionTypes", { timeout: 15_000 }, () => {
     ]);
     expect(output).toContain("recorded as an observation");
     expect(output).toContain("queued for approval");
+    expect(output).toContain("return from that executeCode call");
+    expect(output).toContain("Approval resumes the agent;");
+    expect(output).toContain("denial ends the turn");
     expect(output).toContain("supplied by the user, so no action is ever applied automatically");
   });
 
