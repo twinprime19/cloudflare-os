@@ -1182,9 +1182,10 @@ export const SUGGESTED_MODELS: Record<
 > = {
   "cloudflare": {
     // Unified-catalog id (not Workers-AI-hosted): served through the AI REST endpoint and billed
-    // via AI Gateway credits. Window is a conservative floor; the catalog card publishes none.
+    // via AI Gateway credits. The catalog card publishes no window, so this is the vendor's
+    // published 1M held back by 8% -- a buffer against a figure the card doesn't confirm.
     "alibaba/qwen3.7-plus": {
-      name: "Qwen 3.7 Plus", contextWindow: 131072, outputLimit: WORKERS_AI_OUTPUT_LIMIT,
+      name: "Qwen 3.7 Plus", contextWindow: 917504, outputLimit: WORKERS_AI_OUTPUT_LIMIT,
     },
   },
   "anthropic": {

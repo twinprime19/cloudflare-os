@@ -99,7 +99,7 @@ describe("compaction trigger", () => {
     // Workers AI charges the response to the window, so it has to be withheld.
     expect(getModelTokenLimits({
       provider: "cloudflare", model: "alibaba/qwen3.7-plus", apiToken: "",
-    })).toEqual({inputBudget: 98_304, maxOutputTokens: 32_768});
+    })).toEqual({inputBudget: 884_736, maxOutputTokens: 32_768});
 
     // Anthropic publishes an input-only window, so withholding anything would waste it.
     expect(getModelTokenLimits({
