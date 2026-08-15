@@ -467,8 +467,11 @@ function validateBlueprintScreenshotUpload(screenshot: BlueprintScreenshotUpload
   return screenshot;
 }
 
-const MAX_CHAT_ATTACHMENTS_PER_MESSAGE = 5;
-const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 5 * 1024 * 1024;
+const MAX_CHAT_ATTACHMENTS_PER_MESSAGE = 8;
+// Per-file size is capped separately in chat-attachment-validation.ts, bounded by the 2 MB
+// key-plus-value limit on SQLite-backed Durable Object storage. This total bounds how many bytes
+// one message can replay into each model request.
+const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 8 * 1024 * 1024;
 // Staged attachments (not associated with chat) older than this may be deleted when the gadget next stages an attachment.
 const MAX_STAGED_CHAT_ATTACHMENT_AGE_MS = 24 * 60 * 60 * 1000;
 const CHAT_ATTACHMENT_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

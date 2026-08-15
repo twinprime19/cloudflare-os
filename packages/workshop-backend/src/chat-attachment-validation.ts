@@ -3,7 +3,12 @@ import type { AiModelConfig, AiModelProvider, ChatAttachmentUpload } from "@gadg
 import { PDF_MIME_TYPE } from "./chat-attachment-pdf";
 
 // Bounds attachment storage and the bytes replayed into model requests.
-const MAX_CHAT_ATTACHMENT_BYTES = 1024 * 1024;
+//
+// Ceiling is the SQLite-backed Durable Object storage limit: a key and its value combined cannot
+// exceed 2 MB, and each attachment is stored as one key-value record with no chunking. 1.75 MiB
+// leaves roughly 165 KB for the key and the record envelope. Raising this further requires moving
+// attachment bytes out of Durable Object storage.
+const MAX_CHAT_ATTACHMENT_BYTES = 1792 * 1024; // 1.75 MiB
 
 const IMAGE_SIGNATURES = new Map<string, readonly (number | null)[]>([
   ["image/jpeg", [0xFF, 0xD8, 0xFF]],

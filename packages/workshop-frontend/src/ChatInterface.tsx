@@ -387,9 +387,12 @@ type PendingAttachment = {
   error?: string;
 };
 
-const MAX_PENDING_ATTACHMENTS = 5;
-const MAX_CHAT_ATTACHMENT_BYTES = 1024 * 1024;
-const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 5 * 1024 * 1024;
+// These three must stay byte-identical to their server-side counterparts in
+// chat-attachment-validation.ts and overseer.ts, which re-check every upload. The per-file cap is
+// bounded by the 2 MB key-plus-value limit on SQLite-backed Durable Object storage.
+const MAX_PENDING_ATTACHMENTS = 8;
+const MAX_CHAT_ATTACHMENT_BYTES = 1792 * 1024; // 1.75 MiB
+const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 8 * 1024 * 1024;
 const MAX_CHAT_ATTACHMENT_SOURCE_IMAGE_BYTES = 25 * 1024 * 1024;
 const CHAT_ATTACHMENT_IMAGE_MAX_EDGE = 1568;
 
