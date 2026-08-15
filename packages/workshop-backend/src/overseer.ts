@@ -43,8 +43,11 @@ import type { ChatGatewayRpcTarget, SubmitExternalMessageResult } from "@gadgets
 import {
   assertChatAttachmentSupportedByProvider,
   isAllowedChatAttachmentImageMimeType,
+  assertConvertedAttachmentTotalWithinBudget,
+  isChatAttachmentSupportedByProvider,
   validateChatAttachmentUpload,
 } from "./chat-attachment-validation";
+import type { DocToMarkdownEnv } from "./doc-to-markdown";
 import { renderGadgetPdf } from "./browser-export";
 
 const logger = createWorkshopLogger("workshop.overseer");
@@ -490,6 +493,10 @@ type ChatAttachmentContentRecord = {
         uploadedAt: number;
         mimeType: string;
         name?: string;
+        // Original MIME type when the upload was a document converted to Markdown. Set only on
+        // converted uploads, so the send-time budget for converted text can tell them apart from
+        // Markdown the user wrote and attached directly.
+        convertedFrom?: string;
       }
     | {
         type: "committed";
@@ -2824,6 +2831,7 @@ class OverseerImpl implements AgentHooks {
     }
 
     let total = 0;
+    let convertedTotal = 0;
     let result: ChatAttachmentRef[] = [];
     let seenIds = new Set<string>();
     for (let attachment of attachments) {
@@ -2834,8 +2842,18 @@ class OverseerImpl implements AgentHooks {
       if (!content || content.state.type !== "staged") {
         throw new Error("Chat attachment not found.");
       }
+      if (!isChatAttachmentSupportedByProvider(provider, content.state.mimeType)) {
+        // The upload was validated against the model selected at the time, and the chat has since
+        // switched to one that cannot take this file. Say that, rather than repeating the
+        // upload-time "unsupported file type" error, which reads as a bug on a file the user
+        // already attached successfully.
+        let label = content.state.name ? `"${content.state.name}"` : "An attached file";
+        throw new Error(
+            `${label} was prepared for a different model. Remove it and attach it again.`);
+      }
       assertChatAttachmentSupportedByProvider(provider, content.state.mimeType, content.data.byteLength);
       total += content.data.byteLength;
+      if (content.state.convertedFrom !== undefined) convertedTotal += content.data.byteLength;
       result.push({
         id,
         mimeType: content.state.mimeType,
@@ -2846,6 +2864,7 @@ class OverseerImpl implements AgentHooks {
     if (total > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
       throw new Error("Attached files are too large.");
     }
+    assertConvertedAttachmentTotalWithinBudget(convertedTotal);
     return result;
   }
 
@@ -2908,8 +2927,16 @@ class OverseerImpl implements AgentHooks {
     }
   }
 
-  // Provides web-fetch with the Workers AI binding and AI Gateway config it needs to call
-  // `env.WORKERS_AI.toMarkdown()`. The initiator is needed for AI Gateway metadata.
+  // The Workers AI binding and AI Gateway config that `env.WORKERS_AI.toMarkdown()` needs. The
+  // initiator is needed for AI Gateway metadata.
+  #toMarkdownEnv(): DocToMarkdownEnv {
+    return {
+      ai: this.env.WORKERS_AI,
+      gateway: getAiGatewayConfig(this.env),
+    };
+  }
+
+  // Provides web-fetch with the binding it needs to convert fetched documents.
   getWebFetchEnv(): WebFetchEnv {
     if (this.storage.prohibitAllSharing.get()) {
       // TODO: Disallwing fetches is a bit draconian. Ideally, we would have some way to detect
@@ -2921,10 +2948,20 @@ class OverseerImpl implements AgentHooks {
           "from fetching from public web sites.");
     }
 
-    return {
-      ai: this.env.WORKERS_AI,
-      gateway: getAiGatewayConfig(this.env),
-    };
+    return this.#toMarkdownEnv();
+  }
+
+  // Provides attachment upload with the binding it needs to convert uploaded documents. Converting
+  // sends the document's bytes to Workers AI, so a workspace under sharing lockdown is refused for
+  // the same reason web-fetch is.
+  getDocumentConversionEnv(): DocToMarkdownEnv {
+    if (this.storage.prohibitAllSharing.get()) {
+      throw new Error(
+          "This workspace has observed sensitive data. To prevent leaks, the workspace is prohibited " +
+          "from converting uploaded documents. Paste the text you need into the message instead.");
+    }
+
+    return this.#toMarkdownEnv();
   }
 
   // Record an observation that originated from a built-in agent tool (not a gatekeeper).
@@ -8152,10 +8189,12 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
     if (modelId !== null) {
       provider = (await this.#clientUser.getChatContext(modelId)).aiModel?.config.provider;
     }
-    attachment = validateChatAttachmentUpload(
+    let validated = await validateChatAttachmentUpload(
       attachment,
       provider,
+      () => this.impl.getDocumentConversionEnv(),
     );
+    attachment = validated.attachment;
 
     this.impl.sweepStagedChatAttachments();
 
@@ -8168,6 +8207,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
         uploadedAt: Date.now(),
         mimeType: attachment.mimeType,
         name: attachment.name,
+        convertedFrom: validated.convertedFrom,
       },
     });
     return {id};

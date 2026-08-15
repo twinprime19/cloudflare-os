@@ -175,6 +175,12 @@ describe("webFetch document conversion", () => {
     const result = await webFetch(env, { url: "https://example.com/doc.pdf" });
     expect(toMarkdown).toHaveBeenCalledTimes(1);
     expect(toMarkdown.mock.calls[0][0].blob.type).toBe("application/pdf");
+    // Cost boundary: describing images embedded in a fetched document would spend Workers AI
+    // models on every fetch of arbitrary third-party URLs. Chat uploads opt in; this must not.
+    const conversionOptions = toMarkdown.mock.calls[0][1].conversionOptions;
+    expect(conversionOptions.pdf.images.convert).toBe(false);
+    expect(conversionOptions.docx.images.convert).toBe(false);
+    expect(conversionOptions.html.images.convert).toBe(false);
     expect(result.body).toBe("PDF text content");
   });
 

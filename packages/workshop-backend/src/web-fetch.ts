@@ -3,11 +3,11 @@
 // Provides an HTTP GET against arbitrary public HTTPS URLs. There is intentionally no
 // support for POST/PUT/DELETE/PATCH or for forwarding credentials.
 //
-// Document-to-Markdown conversion is delegated to Cloudflare Workers AI's
-// `env.WORKERS_AI.toMarkdown()` utility, which handles HTML, PDF, DOCX, XLSX/XLS, ODT/ODS,
-// CSV, XML, and Apple Numbers documents. Image conversion is intentionally NOT exposed here
-// because it uses paid Workers AI models. Plain-text, JSON, and other unknown content types
-// pass through unconverted.
+// Document-to-Markdown conversion is delegated to the shared helper in doc-to-markdown.ts,
+// which wraps Cloudflare Workers AI's `env.WORKERS_AI.toMarkdown()`. Description of images
+// embedded in fetched documents is intentionally left off: this tool runs automatically against
+// arbitrary third-party URLs, and describing images costs paid Workers AI model usage on every
+// fetch. Plain-text, JSON, and other unknown content types pass through unconverted.
 //
 // SSRF protection: relies on workerd's post-DNS-lookup IP address filtering. The
 // `global_fetch_strictly_public` compatibility flag (set in wrangler.jsonc) restricts
@@ -18,16 +18,14 @@
 // permit fetching from any address (so localhost services stay reachable), so the flag
 // only takes effect in production -- an acceptable tradeoff for dev.
 
-import type { AiGatewayConfig } from "./ai-gateway";
+import { convertDocumentToMarkdown, isToMarkdownSupportedMimeType } from "./doc-to-markdown";
+import type { DocToMarkdownEnv } from "./doc-to-markdown";
 
 /**
- * The bits of the Workers AI binding and gateway config that `webFetch` needs. Kept narrow
- * so the caller can pass a stub in tests without constructing a full Cloudflare.Env.
+ * The bits of the Workers AI binding and gateway config that `webFetch` needs -- the same set
+ * document conversion needs, since that is the only thing either uses them for.
  */
-export type WebFetchEnv = {
-  ai: Ai;
-  gateway: AiGatewayConfig | null;
-};
+export type WebFetchEnv = DocToMarkdownEnv;
 
 export type WebFetchInput = {
   url: string;
@@ -152,41 +150,6 @@ function baseContentType(contentType: string): string {
   return (i >= 0 ? contentType.slice(0, i) : contentType).trim().toLowerCase();
 }
 
-// MIME types that `env.WORKERS_AI.toMarkdown()` can convert for free (no Workers AI model
-// usage). Derived from the public list of supported formats:
-// https://developers.cloudflare.com/workers-ai/features/markdown-conversion/supported-formats/
-//
-// Image MIME types are intentionally excluded -- image conversion uses paid Workers AI
-// models (object detection + Gemma-3 for image-to-text), and we don't want webFetch to
-// silently incur per-fetch costs.
-const TO_MARKDOWN_MIME_TYPES = new Set([
-  "text/html",
-  "application/xhtml+xml",
-  "application/pdf",
-  "application/xml",
-  "text/xml",
-  "text/csv",
-  // Office / OpenDocument
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",       // .xlsx
-  "application/vnd.ms-excel",                                                // .xls
-  "application/vnd.ms-excel.sheet.macroenabled.12",                          // .xlsm
-  "application/vnd.ms-excel.sheet.binary.macroenabled.12",                   // .xlsb
-  "application/vnd.oasis.opendocument.spreadsheet",                          // .ods
-  "application/vnd.oasis.opendocument.text",                                 // .odt
-  "application/vnd.apple.numbers",                                           // .numbers
-]);
-
-// `toMarkdown()` uses the Workers AI binding, so only apply the same-account Workers AI gateway
-// resolved by AiGatewayConfig. A cross-account platform gateway cannot be used by this binding.
-function buildGatewayOptions(
-  gateway: AiGatewayConfig | null,
-): GatewayOptions | undefined {
-  if (!gateway) return undefined;
-  if (!gateway.workersAiGateway) return undefined;
-  return { id: gateway.workersAiGateway, metadata: { tool: "webFetch", automated: true } };
-}
-
 // Attempt to convert a document to Markdown using the Workers AI binding. Returns the
 // Markdown body on success, or null if the document's MIME type isn't in the supported
 // allow-list. Throws (with a contextual error) if the conversion itself fails.
@@ -197,40 +160,22 @@ async function convertToMarkdown(
   url: URL,
 ): Promise<string | null> {
   const mime = baseContentType(contentType);
-  if (!TO_MARKDOWN_MIME_TYPES.has(mime)) {
+  if (!isToMarkdownSupportedMimeType(mime)) {
     return null;
   }
 
   // Build a name from the URL path so toMarkdown's format detection has a hint.
   const pathBasename = url.pathname.split("/").filter(Boolean).pop() || "document";
 
-  const result = await env.ai.toMarkdown(
-    {
-      name: pathBasename,
-      blob: new Blob([bytes], { type: mime }),
-    },
-    {
-      gateway: buildGatewayOptions(env.gateway),
-      conversionOptions: {
-        // Resolve relative links against the page's own origin.
-        html: {
-          hostname: url.origin,
-          // Skip per-image summarization (which would invoke paid Workers AI models). The
-          // agent gets a Markdown skeleton with image alt text and src URLs, which is
-          // sufficient for documentation-lookup use cases.
-          images: { convert: false, convertOGImage: false },
-        },
-      },
-    },
-  );
-
-  if (result.format === "error") {
-    throw new Error(`Markdown conversion failed: ${result.error}`);
-  }
-  return result.data;
+  return await convertDocumentToMarkdown(env, {
+    bytes,
+    mimeType: mime,
+    name: pathBasename,
+    // Resolve relative links against the page's own origin.
+    htmlHostname: url.origin,
+    gatewayMetadata: { tool: "webFetch", automated: true },
+  });
 }
-
-
 
 // Parse the Content-Signal response header (https://contentsignals.org/) and check whether
 // a specific signal is present and set to "no". The header is a comma-separated list of
