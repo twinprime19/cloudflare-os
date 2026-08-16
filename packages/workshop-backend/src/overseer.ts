@@ -43,7 +43,7 @@ import type { ChatGatewayRpcTarget, SubmitExternalMessageResult } from "@gadgets
 import {
   assertChatAttachmentSupportedByProvider,
   isAllowedChatAttachmentImageMimeType,
-  assertConvertedAttachmentTotalWithinBudget,
+  assertChatMessageWithinBudget,
   isChatAttachmentSupportedByProvider,
   validateChatAttachmentUpload,
 } from "./chat-attachment-validation";
@@ -502,6 +502,14 @@ type ChatAttachmentContentRecord = {
         type: "committed";
         chatId: number;
       };
+};
+
+// Canonical refs for one message's attachments, plus the byte total of the converted documents
+// among them. Only converted text counts against the message's combined text budget; attachments
+// stored as-is are bounded by the storage caps instead.
+type CanonicalChatAttachments = {
+  refs: ChatAttachmentRef[];
+  convertedBytes: number;
 };
 
 // Sentinel gatekeeperId used on ActionRecords that originated from built-in agent tools
@@ -2820,11 +2828,13 @@ class OverseerImpl implements AgentHooks {
   // Look up the attachments that the client wants to send.
   //
   // The send message request only contains staged attachment IDs. This fills in metadata from
-  // upload records before the message is stored in chat history.
+  // upload records before the message is stored in chat history. The converted byte total comes
+  // back with the refs because it is only knowable here, while the attachment bytes are in hand,
+  // and the caller needs it to weigh the attachments against the message text.
   canonicalizeChatAttachmentRefs(
     attachments?: ChatAttachmentHandle[],
     provider?: AiModelConfig["provider"],
-  ): ChatAttachmentRef[] | undefined {
+  ): CanonicalChatAttachments | undefined {
     if (!attachments || attachments.length === 0) return undefined;
     if (attachments.length > MAX_CHAT_ATTACHMENTS_PER_MESSAGE) {
       throw new Error(`You can attach up to ${MAX_CHAT_ATTACHMENTS_PER_MESSAGE} attachments.`);
@@ -2864,8 +2874,7 @@ class OverseerImpl implements AgentHooks {
     if (total > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
       throw new Error("Attached files are too large.");
     }
-    assertConvertedAttachmentTotalWithinBudget(convertedTotal);
-    return result;
+    return { refs: result, convertedBytes: convertedTotal };
   }
 
   commitChatAttachments(chatId: number, attachments?: ChatAttachmentRef[]): void {
@@ -3575,8 +3584,15 @@ class OverseerImpl implements AgentHooks {
     if (typeof initialMessage !== "string" && (capsules?.length || attachments?.length)) {
       throw new Error("Slash commands cannot include resources or attachments.");
     }
-    let canonicalAttachments = this.canonicalizeChatAttachmentRefs(
+    let canonical = this.canonicalizeChatAttachmentRefs(
         attachments, userMeta.aiModel?.config.provider);
+    let canonicalAttachments = canonical?.refs;
+    // Rejected up front, before anything is written, so a message that cannot be sent leaves no
+    // chat, no committed attachment and no half-created state behind. Slash commands are refused
+    // above when they carry attachments, and carry no document text of their own.
+    if (typeof initialMessage === "string") {
+      assertChatMessageWithinBudget(initialMessage, canonical?.convertedBytes ?? 0);
+    }
     let prepared = await this.#prepareChatMessage(
         initialMessage, (canonicalAttachments?.length ?? 0) > 0);
 
@@ -3653,8 +3669,13 @@ class OverseerImpl implements AgentHooks {
     if (typeof message !== "string" && (capsules?.length || attachments?.length)) {
       throw new Error("Slash commands cannot include resources or attachments.");
     }
-    let canonicalAttachments = this.canonicalizeChatAttachmentRefs(
+    let canonical = this.canonicalizeChatAttachmentRefs(
         attachments, userMeta.aiModel?.config.provider);
+    let canonicalAttachments = canonical?.refs;
+    // Same up-front rejection as newChat: before the draft is materialized or anything is stored.
+    if (typeof message === "string") {
+      assertChatMessageWithinBudget(message, canonical?.convertedBytes ?? 0);
+    }
     this.assertChatNotActive(chatId);
     using _chatMessageReservation = this.reserveChatMessagePreparation(chatId);
     let prepared = await this.#prepareChatMessage(

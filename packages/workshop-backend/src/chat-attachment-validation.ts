@@ -20,32 +20,41 @@ const MAX_CHAT_ATTACHMENT_BYTES = 1792 * 1024; // 1.75 MiB
 export const MAX_CONVERTIBLE_DOCUMENT_BYTES = 10 * 1024 * 1024; // 10 MiB
 
 /**
- * Ceiling on the Markdown produced from one document. Converted text is replayed into every
- * model request until compaction passes the message, so this is a context budget, not a storage
- * one. Output above the cap is truncated with a note.
+ * Ceiling on everything one message puts in front of the model: the message text plus the Markdown
+ * extracted from every document attached to it, combined.
+ *
+ * This is a context budget, not a storage one. Both halves are replayed into every model request
+ * until compaction passes the message, and the message being sent is the one thing compaction can
+ * never drop, so an oversized turn would fail mid-stream instead of being rejected up front.
+ * Attachments stored as-is -- images, Markdown the user wrote -- are bounded separately by the
+ * per-file and per-message storage caps.
  */
-const MAX_CONVERTED_DOCUMENT_BYTES = 150 * 1024; // 150 KiB
-
-// Ceiling on converted Markdown across all attachments of a single message.
-const MAX_CONVERTED_ATTACHMENT_TOTAL_BYTES = 400 * 1024; // 400 KiB
+const MAX_CHAT_MESSAGE_TEXT_BYTES = 2 * 1024 * 1024; // 2 MiB, roughly 570k tokens
 
 /**
- * Enforce the per-message budget for text extracted from documents, summed at send time.
- *
- * Without it, a message of several large converted documents can exceed the model's context
- * window on its own -- and the message being sent is the one thing compaction can never drop, so
- * the turn would fail mid-stream instead of being rejected up front.
+ * Enforce that budget at send time. `convertedAttachmentBytes` is the summed byte length of the
+ * message's converted attachments; the message text is measured in UTF-8 bytes so both halves are
+ * counted the same way whatever the script.
  */
-export function assertConvertedAttachmentTotalWithinBudget(totalBytes: number): void {
-  if (totalBytes <= MAX_CONVERTED_ATTACHMENT_TOTAL_BYTES) return;
-  throw new Error(
-    "Too much document text in one message. Send the documents across separate messages.");
+export function assertChatMessageWithinBudget(
+  message: string,
+  convertedAttachmentBytes: number,
+): void {
+  let messageBytes = new TextEncoder().encode(message).byteLength;
+  if (messageBytes + convertedAttachmentBytes <= MAX_CHAT_MESSAGE_TEXT_BYTES) return;
+  throw new Error("Message is too big. Shorten the message or attach fewer documents.");
 }
 
 /**
  * Upper bound on images described per converted document. Each described image costs two Workers
  * AI model calls (object detection, then image-to-text) that the upload request waits on, and
- * every description competes with the document's own text for the per-document byte budget.
+ * every description adds text that counts against the message budget.
+ *
+ * Reaches PDF and DOCX only: those are the only converted formats with an embedded-image setting
+ * in the Workers AI `ConversionOptions` type, whose keys are `html`, `docx`, `image` and `pdf`.
+ * Spreadsheet formats (.xlsx/.xls/.ods/.numbers) have no key there, so neither this bound nor the
+ * opt-in itself reaches them -- their embedded images follow the Workers AI default, in either
+ * direction, and are not bounded by us.
  */
 const MAX_DESCRIBED_IMAGES_PER_DOCUMENT = 20;
 
@@ -191,26 +200,6 @@ function assertOoxmlContainer(attachment: ChatAttachmentUpload): void {
   throw new Error("Chat attachment content does not match its MIME type.");
 }
 
-const TRUNCATION_NOTE =
-  "\n\n[This document was too long to include in full; the rest was left out.]\n";
-
-// Encode Markdown into at most `maxBytes`, appending a note when anything was dropped. Cutting on
-// the encoder's own boundary keeps multi-byte characters (and surrogate pairs) intact.
-function encodeCappedMarkdown(markdown: string, maxBytes: number): Uint8Array {
-  let encoder = new TextEncoder();
-  let full = encoder.encode(markdown);
-  if (full.byteLength <= maxBytes) return full;
-
-  let note = encoder.encode(TRUNCATION_NOTE);
-  let body = new Uint8Array(maxBytes - note.byteLength);
-  let { written } = encoder.encodeInto(markdown, body);
-
-  let result = new Uint8Array(written + note.byteLength);
-  result.set(body.subarray(0, written));
-  result.set(note, written);
-  return result;
-}
-
 /** The outcome of validating an upload, including whether it was converted on the way in. */
 export type ValidatedChatAttachmentUpload = {
   attachment: ChatAttachmentUpload;
@@ -252,7 +241,16 @@ async function convertUploadToMarkdown(
     throw new Error("No readable text could be extracted from this document.");
   }
 
-  attachment.content = encodeCappedMarkdown(markdown, MAX_CONVERTED_DOCUMENT_BYTES);
+  let encoded = new TextEncoder().encode(markdown);
+  // Storage-layer invariant, not a context budget: the Markdown takes the document's place as one
+  // Durable Object key-value record and cannot exceed what a record holds. Converted text is
+  // stored whole -- nothing is truncated -- so a document that produces more Markdown than fits
+  // has to be refused rather than silently shortened.
+  if (encoded.byteLength > MAX_CHAT_ATTACHMENT_BYTES) {
+    throw new Error("This document produced too much text to attach.");
+  }
+
+  attachment.content = encoded;
   attachment.mimeType = CONVERTED_ATTACHMENT_MIME_TYPE;
   return { attachment, convertedFrom };
 }

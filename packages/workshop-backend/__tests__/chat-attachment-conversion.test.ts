@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  assertConvertedAttachmentTotalWithinBudget,
+  assertChatMessageWithinBudget,
   validateChatAttachmentUpload,
 } from "../src/chat-attachment-validation.js";
 import type { DocToMarkdownEnv } from "../src/doc-to-markdown.js";
@@ -190,8 +190,9 @@ describe("document upload conversion", () => {
     )).rejects.toThrow("No readable text");
   });
 
-  it("truncates converted output above the per-document cap", async () => {
-    const { getEnv } = makeConversionEnv("x".repeat(200 * 1024));
+  it("stores long converted output whole", async () => {
+    const markdown = "x".repeat(1024 * 1024);
+    const { getEnv } = makeConversionEnv(markdown);
 
     const result = await validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "long.docx" },
@@ -199,22 +200,20 @@ describe("document upload conversion", () => {
       getEnv,
     );
 
-    expect(result.attachment.content.byteLength).toBe(150 * 1024);
-    expect(new TextDecoder().decode(result.attachment.content)).toContain("too long to include in full");
+    expect(result.attachment.content.byteLength).toBe(markdown.length);
+    expect(new TextDecoder().decode(result.attachment.content)).toBe(markdown);
   });
 
-  it("keeps multi-byte characters intact when truncating", async () => {
-    // Cutting mid-character would leave replacement characters at the seam.
-    const { getEnv } = makeConversionEnv("â".repeat(200 * 1024));
+  it("rejects a document whose Markdown does not fit one storage record", async () => {
+    // The converted Markdown is stored as a single Durable Object key-value record, so output
+    // above that ceiling cannot be stored at all -- and nothing truncates it any more.
+    const { getEnv } = makeConversionEnv("x".repeat(1792 * 1024 + 1));
 
-    const result = await validateChatAttachmentUpload(
-      { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "long.docx" },
+    await expect(validateChatAttachmentUpload(
+      { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "enormous.docx" },
       "cloudflare",
       getEnv,
-    );
-
-    const text = new TextDecoder("utf-8", { fatal: false }).decode(result.attachment.content);
-    expect(text).not.toContain("�");
+    )).rejects.toThrow("This document produced too much text to attach.");
   });
 
   it("describes images embedded in uploaded documents", async () => {
@@ -241,10 +240,31 @@ describe("document upload conversion", () => {
   });
 });
 
-describe("assertConvertedAttachmentTotalWithinBudget", () => {
-  it("accepts a message at the budget and rejects one above it", () => {
-    expect(() => assertConvertedAttachmentTotalWithinBudget(400 * 1024)).not.toThrow();
-    expect(() => assertConvertedAttachmentTotalWithinBudget(400 * 1024 + 1))
-      .toThrow("Too much document text in one message.");
+describe("combined message and converted attachment budget", () => {
+  const BUDGET = 2 * 1024 * 1024;
+  const TOO_BIG = "Message is too big.";
+
+  it("accepts converted attachments at the budget and rejects them above it", () => {
+    expect(() => assertChatMessageWithinBudget("", BUDGET)).not.toThrow();
+    expect(() => assertChatMessageWithinBudget("", BUDGET + 1)).toThrow(TOO_BIG);
+  });
+
+  it("counts message text against the same budget", () => {
+    expect(() => assertChatMessageWithinBudget("x".repeat(BUDGET), 0)).not.toThrow();
+    expect(() => assertChatMessageWithinBudget("x".repeat(BUDGET + 1), 0)).toThrow(TOO_BIG);
+  });
+
+  it("adds message text to attachment bytes rather than budgeting them apart", () => {
+    expect(() => assertChatMessageWithinBudget("x".repeat(1024), BUDGET - 1024)).not.toThrow();
+    expect(() => assertChatMessageWithinBudget("x".repeat(1024), BUDGET - 1023)).toThrow(TOO_BIG);
+  });
+
+  it("measures message text in UTF-8 bytes, not characters", () => {
+    // Three bytes per character: a message that fits the budget counted as characters is a third
+    // over it counted as bytes, which is what the model actually has to hold.
+    const message = "\u20ac".repeat(Math.floor(BUDGET / 3) + 1);
+
+    expect(message.length).toBeLessThan(BUDGET);
+    expect(() => assertChatMessageWithinBudget(message, 0)).toThrow(TOO_BIG);
   });
 });

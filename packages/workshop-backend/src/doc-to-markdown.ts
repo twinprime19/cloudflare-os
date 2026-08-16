@@ -8,6 +8,10 @@
 // that spends Workers AI models (object detection followed by image-to-text). webFetch leaves it
 // off: it runs automatically against arbitrary third-party URLs, so its per-call cost would be
 // uncontrolled. Chat upload turns it on: it is user-initiated and bounded by the upload caps.
+//
+// The opt-in only reaches formats that `ConversionOptions` gives an image setting: HTML, DOCX and
+// PDF. Everything else -- spreadsheets above all -- takes the Workers AI default, so neither call
+// site controls its embedded-image handling. See buildConversionOptions.
 
 import type { AiGatewayConfig } from "./ai-gateway";
 
@@ -31,7 +35,10 @@ export type DocToMarkdownInput = {
    * markdown. Costs Workers AI model usage, so it defaults to off; see the file header.
    */
   describeImages?: boolean;
-  /** Upper bound on described images per document. Only meaningful with `describeImages`. */
+  /**
+   * Upper bound on described images per document. Only meaningful with `describeImages`, and only
+   * for the formats `ConversionOptions` covers -- see buildConversionOptions.
+   */
   maxConvertedImages?: number;
   /** Origin that relative links in HTML documents resolve against. */
   htmlHostname?: string;
@@ -79,8 +86,12 @@ function buildGatewayOptions(
   return { id: gateway.workersAiGateway, metadata };
 }
 
-// Image handling is set on every format key that accepts it, so a caller's choice holds whatever
-// the document turns out to be. `convertOGImage` is HTML-only.
+// `ConversionOptions` has exactly four keys -- `html`, `docx`, `image`, `pdf` -- and image
+// handling is set on each of the three that take a document, so a caller's choice holds whatever
+// the document turns out to be *among those formats*. The rest of the supported formats
+// (spreadsheets, CSV, ODT, XML) have no key at all, so their embedded images follow the Workers AI
+// default and are outside a caller's control, opt-in and opt-out alike. `image` is omitted because
+// image MIME types are never converted here; `convertOGImage` is HTML-only.
 function buildConversionOptions(input: DocToMarkdownInput): ConversionOptions {
   const images: EmbeddedImageConversionOptions = input.describeImages
     ? { convert: true, maxConvertedImages: input.maxConvertedImages }

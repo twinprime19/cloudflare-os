@@ -5635,7 +5635,10 @@ function ChatInterface({
       }
     } catch (err) {
       if (!logRpcFailure("Failed to send message:", err, { reportSite: "chat.send" })) {
-        toasts.add({ title: "Failed to send message", variant: "error" });
+        // Server-side rejections (attachment/message size, missing attachment) carry a
+        // user-actionable message; a generic toast would hide which one fired.
+        const title = err instanceof Error && err.message ? err.message : "Failed to send message";
+        toasts.add({ title, variant: "error" });
       }
       throw err;
     }
@@ -5658,7 +5661,8 @@ function ChatInterface({
       onNavigateToChatRef.current(newChatId);
     } catch (err) {
       if (!logRpcFailure("Failed to create new chat:", err, { reportSite: "chat.new" })) {
-        toasts.add({ title: "Failed to start conversation", variant: "error" });
+        const title = err instanceof Error && err.message ? err.message : "Failed to start conversation";
+        toasts.add({ title, variant: "error" });
       }
       throw err;
     }
