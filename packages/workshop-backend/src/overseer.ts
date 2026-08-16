@@ -43,8 +43,11 @@ import type { ChatGatewayRpcTarget, SubmitExternalMessageResult } from "@gadgets
 import {
   assertChatAttachmentSupportedByProvider,
   isAllowedChatAttachmentImageMimeType,
+  assertChatMessageWithinBudget,
+  isChatAttachmentSupportedByProvider,
   validateChatAttachmentUpload,
 } from "./chat-attachment-validation";
+import type { DocToMarkdownEnv } from "./doc-to-markdown";
 import { renderGadgetPdf } from "./browser-export";
 
 const logger = createWorkshopLogger("workshop.overseer");
@@ -490,11 +493,23 @@ type ChatAttachmentContentRecord = {
         uploadedAt: number;
         mimeType: string;
         name?: string;
+        // Original MIME type when the upload was a document converted to Markdown. Set only on
+        // converted uploads, so the send-time budget for converted text can tell them apart from
+        // Markdown the user wrote and attached directly.
+        convertedFrom?: string;
       }
     | {
         type: "committed";
         chatId: number;
       };
+};
+
+// Canonical refs for one message's attachments, plus the byte total of the converted documents
+// among them. Only converted text counts against the message's combined text budget; attachments
+// stored as-is are bounded by the storage caps instead.
+type CanonicalChatAttachments = {
+  refs: ChatAttachmentRef[];
+  convertedBytes: number;
 };
 
 // Sentinel gatekeeperId used on ActionRecords that originated from built-in agent tools
@@ -2813,17 +2828,20 @@ class OverseerImpl implements AgentHooks {
   // Look up the attachments that the client wants to send.
   //
   // The send message request only contains staged attachment IDs. This fills in metadata from
-  // upload records before the message is stored in chat history.
+  // upload records before the message is stored in chat history. The converted byte total comes
+  // back with the refs because it is only knowable here, while the attachment bytes are in hand,
+  // and the caller needs it to weigh the attachments against the message text.
   canonicalizeChatAttachmentRefs(
     attachments?: ChatAttachmentHandle[],
     provider?: AiModelConfig["provider"],
-  ): ChatAttachmentRef[] | undefined {
+  ): CanonicalChatAttachments | undefined {
     if (!attachments || attachments.length === 0) return undefined;
     if (attachments.length > MAX_CHAT_ATTACHMENTS_PER_MESSAGE) {
       throw new Error(`You can attach up to ${MAX_CHAT_ATTACHMENTS_PER_MESSAGE} attachments.`);
     }
 
     let total = 0;
+    let convertedTotal = 0;
     let result: ChatAttachmentRef[] = [];
     let seenIds = new Set<string>();
     for (let attachment of attachments) {
@@ -2834,8 +2852,18 @@ class OverseerImpl implements AgentHooks {
       if (!content || content.state.type !== "staged") {
         throw new Error("Chat attachment not found.");
       }
+      if (!isChatAttachmentSupportedByProvider(provider, content.state.mimeType)) {
+        // The upload was validated against the model selected at the time, and the chat has since
+        // switched to one that cannot take this file. Say that, rather than repeating the
+        // upload-time "unsupported file type" error, which reads as a bug on a file the user
+        // already attached successfully.
+        let label = content.state.name ? `"${content.state.name}"` : "An attached file";
+        throw new Error(
+            `${label} was prepared for a different model. Remove it and attach it again.`);
+      }
       assertChatAttachmentSupportedByProvider(provider, content.state.mimeType, content.data.byteLength);
       total += content.data.byteLength;
+      if (content.state.convertedFrom !== undefined) convertedTotal += content.data.byteLength;
       result.push({
         id,
         mimeType: content.state.mimeType,
@@ -2846,7 +2874,7 @@ class OverseerImpl implements AgentHooks {
     if (total > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
       throw new Error("Attached files are too large.");
     }
-    return result;
+    return { refs: result, convertedBytes: convertedTotal };
   }
 
   commitChatAttachments(chatId: number, attachments?: ChatAttachmentRef[]): void {
@@ -2908,8 +2936,16 @@ class OverseerImpl implements AgentHooks {
     }
   }
 
-  // Provides web-fetch with the Workers AI binding and AI Gateway config it needs to call
-  // `env.WORKERS_AI.toMarkdown()`. The initiator is needed for AI Gateway metadata.
+  // The Workers AI binding and AI Gateway config that `env.WORKERS_AI.toMarkdown()` needs. The
+  // initiator is needed for AI Gateway metadata.
+  #toMarkdownEnv(): DocToMarkdownEnv {
+    return {
+      ai: this.env.WORKERS_AI,
+      gateway: getAiGatewayConfig(this.env),
+    };
+  }
+
+  // Provides web-fetch with the binding it needs to convert fetched documents.
   getWebFetchEnv(): WebFetchEnv {
     if (this.storage.prohibitAllSharing.get()) {
       // TODO: Disallwing fetches is a bit draconian. Ideally, we would have some way to detect
@@ -2921,10 +2957,20 @@ class OverseerImpl implements AgentHooks {
           "from fetching from public web sites.");
     }
 
-    return {
-      ai: this.env.WORKERS_AI,
-      gateway: getAiGatewayConfig(this.env),
-    };
+    return this.#toMarkdownEnv();
+  }
+
+  // Provides attachment upload with the binding it needs to convert uploaded documents. Converting
+  // sends the document's bytes to Workers AI, so a workspace under sharing lockdown is refused for
+  // the same reason web-fetch is.
+  getDocumentConversionEnv(): DocToMarkdownEnv {
+    if (this.storage.prohibitAllSharing.get()) {
+      throw new Error(
+          "This workspace has observed sensitive data. To prevent leaks, the workspace is prohibited " +
+          "from converting uploaded documents. Paste the text you need into the message instead.");
+    }
+
+    return this.#toMarkdownEnv();
   }
 
   // Record an observation that originated from a built-in agent tool (not a gatekeeper).
@@ -3538,8 +3584,15 @@ class OverseerImpl implements AgentHooks {
     if (typeof initialMessage !== "string" && (capsules?.length || attachments?.length)) {
       throw new Error("Slash commands cannot include resources or attachments.");
     }
-    let canonicalAttachments = this.canonicalizeChatAttachmentRefs(
+    let canonical = this.canonicalizeChatAttachmentRefs(
         attachments, userMeta.aiModel?.config.provider);
+    let canonicalAttachments = canonical?.refs;
+    // Rejected up front, before anything is written, so a message that cannot be sent leaves no
+    // chat, no committed attachment and no half-created state behind. Slash commands are refused
+    // above when they carry attachments, and carry no document text of their own.
+    if (typeof initialMessage === "string") {
+      assertChatMessageWithinBudget(initialMessage, canonical?.convertedBytes ?? 0);
+    }
     let prepared = await this.#prepareChatMessage(
         initialMessage, (canonicalAttachments?.length ?? 0) > 0);
 
@@ -3616,8 +3669,13 @@ class OverseerImpl implements AgentHooks {
     if (typeof message !== "string" && (capsules?.length || attachments?.length)) {
       throw new Error("Slash commands cannot include resources or attachments.");
     }
-    let canonicalAttachments = this.canonicalizeChatAttachmentRefs(
+    let canonical = this.canonicalizeChatAttachmentRefs(
         attachments, userMeta.aiModel?.config.provider);
+    let canonicalAttachments = canonical?.refs;
+    // Same up-front rejection as newChat: before the draft is materialized or anything is stored.
+    if (typeof message === "string") {
+      assertChatMessageWithinBudget(message, canonical?.convertedBytes ?? 0);
+    }
     this.assertChatNotActive(chatId);
     using _chatMessageReservation = this.reserveChatMessagePreparation(chatId);
     let prepared = await this.#prepareChatMessage(
@@ -8152,10 +8210,12 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
     if (modelId !== null) {
       provider = (await this.#clientUser.getChatContext(modelId)).aiModel?.config.provider;
     }
-    attachment = validateChatAttachmentUpload(
+    let validated = await validateChatAttachmentUpload(
       attachment,
       provider,
+      () => this.impl.getDocumentConversionEnv(),
     );
+    attachment = validated.attachment;
 
     this.impl.sweepStagedChatAttachments();
 
@@ -8168,6 +8228,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
         uploadedAt: Date.now(),
         mimeType: attachment.mimeType,
         name: attachment.name,
+        convertedFrom: validated.convertedFrom,
       },
     });
     return {id};

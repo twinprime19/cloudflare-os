@@ -387,12 +387,23 @@ type PendingAttachment = {
   error?: string;
 };
 
-// These three must stay byte-identical to their server-side counterparts in
+// These must stay byte-identical to their server-side counterparts in
 // chat-attachment-validation.ts and overseer.ts, which re-check every upload. The per-file cap is
 // bounded by the 2 MB key-plus-value limit on SQLite-backed Durable Object storage.
 const MAX_PENDING_ATTACHMENTS = 8;
 const MAX_CHAT_ATTACHMENT_BYTES = 1792 * 1024; // 1.75 MiB
 const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 8 * 1024 * 1024;
+const MAX_CONVERTIBLE_DOCUMENT_BYTES = 10 * 1024 * 1024; // 10 MiB
+
+// Documents the server may convert to Markdown instead of storing as-is. They are allowed to be
+// far larger than a stored attachment because only the extracted text is kept. Whether a PDF
+// actually converts depends on the selected model's provider, which the server decides -- a large
+// PDF sent to a provider that reads PDFs natively is rejected there, by the stored-as-is cap.
+const CONVERTIBLE_DOCUMENT_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",       // .xlsx
+]);
 const MAX_CHAT_ATTACHMENT_SOURCE_IMAGE_BYTES = 25 * 1024 * 1024;
 const CHAT_ATTACHMENT_IMAGE_MAX_EDGE = 1568;
 
@@ -404,8 +415,11 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number)
 
 async function prepareChatAttachment(file: File): Promise<{blob: Blob, mimeType: string}> {
   if (!file.type.startsWith("image/")) {
-    if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
-      throw new Error(`Attachments must be ${formatAttachmentSize(MAX_CHAT_ATTACHMENT_BYTES)} or smaller.`);
+    const limit = CONVERTIBLE_DOCUMENT_MIME_TYPES.has(file.type)
+      ? MAX_CONVERTIBLE_DOCUMENT_BYTES
+      : MAX_CHAT_ATTACHMENT_BYTES;
+    if (file.size > limit) {
+      throw new Error(`Attachments must be ${formatAttachmentSize(limit)} or smaller.`);
     }
     return { blob: file, mimeType: file.type || "application/octet-stream" };
   }
@@ -1906,6 +1920,10 @@ export const ChatInput = ({
   selectedSlashCommandRef.current = selectedSlashCommand;
   const sendInFlightRef = useRef(false);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
+  // Convertible documents upload one at a time. Each one buffers up to 10 MiB and waits on a
+  // Workers AI conversion inside a single Durable Object isolate; firing eight of those at once
+  // is not a profile the server is sized for.
+  const documentUploadQueueRef = useRef<Promise<void>>(Promise.resolve());
   pendingAttachmentsRef.current = pendingAttachments;
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const attachmentDragDepthRef = useRef(0);
@@ -2276,8 +2294,16 @@ export const ChatInput = ({
         toasts.add({ title: `You can attach up to ${MAX_PENDING_ATTACHMENTS} attachments`, variant: "error" });
         continue;
       }
-      const totalPendingBytes = pendingAttachmentsRef.current.reduce((sum, attachment) => sum + attachment.blob.size, 0);
-      if (totalPendingBytes + blob.size > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
+      // The total budget is on stored bytes. A convertible document is stored as the text
+      // extracted from it -- a fraction of what was uploaded -- so charging its raw size here
+      // would reject documents well inside the limit the server actually enforces.
+      const isConvertibleDocument = CONVERTIBLE_DOCUMENT_MIME_TYPES.has(mimeType);
+      const totalPendingBytes = pendingAttachmentsRef.current.reduce(
+        (sum, attachment) => CONVERTIBLE_DOCUMENT_MIME_TYPES.has(attachment.mimeType)
+          ? sum
+          : sum + attachment.blob.size,
+        0);
+      if (!isConvertibleDocument && totalPendingBytes + blob.size > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
         toasts.add({ title: `Attached files must total ${formatAttachmentSize(MAX_CHAT_ATTACHMENT_TOTAL_BYTES)} or less`, variant: "error" });
         continue;
       }
@@ -2293,7 +2319,14 @@ export const ChatInput = ({
       };
       pendingAttachmentsRef.current = [...pendingAttachmentsRef.current, pending];
       setPendingAttachments((prev) => [...prev, pending]);
-      void uploadPendingAttachment(id, blob, mimeType, file.name || undefined);
+      const upload = () => uploadPendingAttachment(id, blob, mimeType, file.name || undefined);
+      if (isConvertibleDocument) {
+        // Run the next document whether or not the previous one settled cleanly, so one failed
+        // upload cannot strand every document queued behind it.
+        documentUploadQueueRef.current = documentUploadQueueRef.current.then(upload, upload);
+      } else {
+        void upload();
+      }
     }
   };
 
@@ -4879,6 +4912,13 @@ function ChatInterface({
   // Download a committed chat attachment. Image bytes are already inlined on the message; other
   // attachments are fetched on demand over the authenticated RPC connection.
   const downloadChatAttachment = useCallback(async (chatId: number, attachment: ChatAttachmentRef) => {
+    // A document converted at upload keeps its original name but holds Markdown, so saving it as
+    // report.docx would produce a file Word cannot open. Name it for the bytes it contains.
+    const downloadFileNameFor = (name: string | undefined, mimeType: string): string => {
+      if (!name) return "attachment";
+      if (mimeType !== "text/markdown" || name.toLowerCase().endsWith(".md")) return name;
+      return `${name}.md`;
+    };
     try {
       let bytes = attachment.content;
       const mimeType = attachment.mimeType;
@@ -4891,7 +4931,7 @@ function ChatInterface({
       try {
         const a = document.createElement("a");
         a.href = url;
-        a.download = name ?? "attachment";
+        a.download = downloadFileNameFor(name, mimeType);
         a.click();
       } finally {
         setTimeout(() => URL.revokeObjectURL(url), 0);
@@ -5595,7 +5635,10 @@ function ChatInterface({
       }
     } catch (err) {
       if (!logRpcFailure("Failed to send message:", err, { reportSite: "chat.send" })) {
-        toasts.add({ title: "Failed to send message", variant: "error" });
+        // Server-side rejections (attachment/message size, missing attachment) carry a
+        // user-actionable message; a generic toast would hide which one fired.
+        const title = err instanceof Error && err.message ? err.message : "Failed to send message";
+        toasts.add({ title, variant: "error" });
       }
       throw err;
     }
@@ -5618,7 +5661,8 @@ function ChatInterface({
       onNavigateToChatRef.current(newChatId);
     } catch (err) {
       if (!logRpcFailure("Failed to create new chat:", err, { reportSite: "chat.new" })) {
-        toasts.add({ title: "Failed to start conversation", variant: "error" });
+        const title = err instanceof Error && err.message ? err.message : "Failed to start conversation";
+        toasts.add({ title, variant: "error" });
       }
       throw err;
     }
