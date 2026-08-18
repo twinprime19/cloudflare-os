@@ -22,6 +22,16 @@ belongs to the person signing in. The address is lowercased and becomes the acco
 in with Microsoft resolves to the same Workshop account as any other gatekeeper that verifies the
 same address.
 
+## Profile hints: name and avatar
+
+Sign-in also seeds the Workshop's display name and avatar from Microsoft Graph, as best-effort hints
+(see [docs/oauth-signin.md](../../docs/oauth-signin.md) for the seed/backfill policy and the
+never-an-identity-signal guarantee). The name comes from `/me`'s `displayName`; the photo is fetched
+via a size ladder — `/me/photos/240x240/$value` → `/me/photo/$value` → `/me/photos/96x96/$value` —
+accepting only JPEG/PNG bodies up to 100 KB. No additional OAuth scopes or tenant admin consent are
+needed: `User.Read`, already granted for sign-in (see Step 2 in the app registration below), covers
+both `/me` and `/me/photos/…`.
+
 ## Setting up the Entra app registration
 
 ### Step 1: Register the application
