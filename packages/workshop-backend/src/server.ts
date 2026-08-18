@@ -650,8 +650,11 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
     // invocation. The client never sees its id — we hand back an `attempt` stub instead.
     const pendingId = this.ctx.exports.PendingLogin.newUniqueId();
     const pending = this.ctx.exports.PendingLogin.get(pendingId);
+    // Whether the callback should ask this gatekeeper for display-name/photo hints. Read from the
+    // description we already have, so seeding costs no extra RPC round trip at sign-in.
+    const providesProfile = desc.providesAuthProfile === true;
     const callback = this.ctx.exports.LoginConnectCallbackImpl(
-        { props: { pendingId: pendingId.toString(), vendorId } });
+        { props: { pendingId: pendingId.toString(), vendorId, providesProfile } });
     // For most providers, sign-in needs only minimal scopes to verify the user's email (the grant is
     // transient); capability scopes are requested later via an explicit connectAccount. Cloudflare is
     // the exception: signing in with Cloudflare also links AI Gateway billing, so it requests the
