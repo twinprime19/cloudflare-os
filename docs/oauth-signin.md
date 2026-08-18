@@ -71,7 +71,7 @@ OAuth app with its own redirect URI:
 - Microsoft 365: `${PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth` (must register under **Web**
   platform in Entra, not "Single-page application")
 
-In local dev, `run-dev-server.js` seeds each gatekeeper's `CLIENT_ID`/`CLIENT_SECRET` from
+In local dev, `run-dev-server.ts` seeds each gatekeeper's `CLIENT_ID`/`CLIENT_SECRET` from
 `GOOGLE_*` / `GITHUB_*` / `CLOUDFLARE_OAUTH_*` / `MICROSOFT_*` shell vars. Microsoft additionally
 needs `MICROSOFT_TENANT_ID`, which seeds the worker's `TENANT_ID`: Entra pins every OAuth endpoint
 to a single tenant, so the gatekeeper is unusable without it.

@@ -101,7 +101,7 @@ The gatekeeper reads three vars: `CLIENT_ID`, `CLIENT_SECRET`, `TENANT_ID`. Depl
 as secrets (the deploy wizard asks for all three; see `deploy-inputs.json`).
 
 For local dev, put the shell vars in the gitignored root `.dev.vars` (or export them);
-`run-dev-server.js` maps them into the worker:
+`run-dev-server.ts` maps them into the worker:
 
 ```
 MICROSOFT_CLIENT_ID=<Application (client) ID>
