@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GatekeeperUserImpl, UserAccount } from "../src/microsoft";
+import { GatekeeperUserImpl, GatekeeperVendor, UserAccount } from "../src/microsoft";
 
 const TENANT = "11111111-2222-3333-4444-555555555555";
 const DO_ID = "a".repeat(64);
@@ -45,7 +45,8 @@ function fakeDurableObjectContext() {
 type GraphRoutes = {
   me?: () => Response;
   organization?: () => Response;
-  photo?: () => Response;
+  /** Receives the request URL, so a test can answer each photo size differently. */
+  photo?: (url: string) => Response;
 };
 
 /** Routes Graph paths to canned responses and records which paths were hit. */
@@ -53,8 +54,9 @@ function stubGraph(routes: GraphRoutes) {
   const calls: string[] = [];
   const handler = vi.fn(async (url: string) => {
     calls.push(url);
-    if (url.includes("/me/photos/")) {
-      return routes.photo?.() ?? new Response(null, { status: 404 });
+    // Both the sized renditions (/me/photos/<size>/$value) and the original (/me/photo/$value).
+    if (url.includes("/me/photo")) {
+      return routes.photo?.(url) ?? new Response(null, { status: 404 });
     }
     if (url.includes("/organization")) {
       return routes.organization?.()
@@ -204,6 +206,118 @@ describe("describe", () => {
       expect(description.avatar.url).toContain("image/svg+xml,");
       expect(description.avatar.url).not.toContain("base64");
     }
+  });
+});
+
+const PHOTO_240 = "https://graph.microsoft.com/v1.0/me/photos/240x240/$value";
+const PHOTO_ORIGINAL = "https://graph.microsoft.com/v1.0/me/photo/$value";
+const PHOTO_96 = "https://graph.microsoft.com/v1.0/me/photos/96x96/$value";
+
+function photoResponse(byteLength: number, contentType = "image/jpeg"): Response {
+  return new Response(new Uint8Array(byteLength).fill(7), {
+    headers: { "Content-Type": contentType },
+  });
+}
+
+function photoRequests(calls: string[]): string[] {
+  return calls.filter(url => url.includes("/me/photo"));
+}
+
+describe("getAuthenticatedProfile", () => {
+  it("returns the display name and a photo big enough for the Workshop's avatar", async () => {
+    const { calls } = stubGraph({ photo: () => photoResponse(1024) });
+
+    const profile = await user.getAuthenticatedProfile();
+
+    expect(profile.name).toBe("Alex Morgan");
+    expect(profile.photo?.mimeType).toBe("image/jpeg");
+    expect(profile.photo?.data).toHaveLength(1024);
+    // One rung: nothing further is asked for once a usable photo comes back.
+    expect(photoRequests(calls)).toEqual([PHOTO_240]);
+  });
+
+  it("returns the name alone when the account has no photo", async () => {
+    const { calls } = stubGraph({ photo: () => new Response(null, { status: 404 }) });
+
+    // The key is absent, not undefined: the caller distinguishes "no hint" from "empty hint".
+    await expect(user.getAuthenticatedProfile()).resolves.toStrictEqual({ name: "Alex Morgan" });
+    expect(photoRequests(calls)).toEqual([PHOTO_240, PHOTO_ORIGINAL, PHOTO_96]);
+  });
+
+  it("drops a photo the Workshop would reject and keeps the name", async () => {
+    // The Workshop stores these bytes as an avatar and accepts only JPEG and PNG, so a GIF or WebP
+    // photo has to be dropped here rather than failing validation inside the sign-in callback.
+    for (const contentType of ["image/webp", "image/gif", "image/svg+xml"]) {
+      stubGraph({ photo: () => photoResponse(1024, contentType) });
+
+      await expect(user.getAuthenticatedProfile()).resolves.toStrictEqual({ name: "Alex Morgan" });
+    }
+  });
+
+  it("omits a blank display name instead of offering it as a hint", async () => {
+    stubGraph({
+      me: () => new Response(JSON.stringify({ ...MEMBER_PROFILE, displayName: "   " }), {
+        headers: { "Content-Type": "application/json" },
+      }),
+      photo: () => photoResponse(1024),
+    });
+
+    const profile = await user.getAuthenticatedProfile();
+
+    expect(profile.name).toBeUndefined();
+    expect(Object.keys(profile)).toEqual(["photo"]);
+  });
+
+  it("falls back to a smaller rendition when the photo is over the size limit", async () => {
+    // A Worker cannot re-encode an image, so an oversize photo is answered by asking Graph for a
+    // smaller one.
+    const { calls } = stubGraph({
+      photo: url => url === PHOTO_96 ? photoResponse(4 * 1024) : photoResponse(200 * 1024),
+    });
+
+    const profile = await user.getAuthenticatedProfile();
+
+    expect(profile.photo?.data).toHaveLength(4 * 1024);
+    expect(photoRequests(calls)).toEqual([PHOTO_240, PHOTO_ORIGINAL, PHOTO_96]);
+  });
+
+  it("falls back to the original when no sized rendition is served", async () => {
+    const { calls } = stubGraph({
+      photo: url => url === PHOTO_ORIGINAL
+        ? photoResponse(2048, "image/PNG; charset=binary")
+        : new Response(null, { status: 404 }),
+    });
+
+    const profile = await user.getAuthenticatedProfile();
+
+    expect(profile.photo?.mimeType).toBe("image/png");
+    expect(photoRequests(calls)).toEqual([PHOTO_240, PHOTO_ORIGINAL]);
+  });
+
+  it("returns no hints once the transient grant has been cleaned up", async () => {
+    stubGraph({ photo: () => photoResponse(1024) });
+    await account.alarm();
+
+    await expect(user.getAuthenticatedProfile()).resolves.toStrictEqual({});
+  });
+
+  it("returns no hints rather than throwing when Graph fails", async () => {
+    // Sign-in must survive this, and a photo on its own is not worth a partial answer.
+    stubGraph({
+      me: () => new Response("boom", { status: 500 }),
+      photo: () => photoResponse(1024),
+    });
+
+    await expect(user.getAuthenticatedProfile()).resolves.toStrictEqual({});
+  });
+
+  it("is advertised on the vendor, which is where the Workshop reads the capability", async () => {
+    // An RPC stub cannot be probed for an optional method, so the flag is what makes the Workshop
+    // call getAuthenticatedProfile() at all.
+    const description = await new GatekeeperVendor({} as never, env as never).describe();
+
+    expect(description.providesAuth).toBe(true);
+    expect(description.providesAuthProfile).toBe(true);
   });
 });
 
