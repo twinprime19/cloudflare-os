@@ -19,6 +19,7 @@ import { getAiGatewayConfig } from "./ai-gateway.js";
 import { AdminSettings, AdminApiImpl } from "./admin-settings.js";
 import { BlueprintKvRecord, buildBlueprintArchiveStream, sanitizeBlueprintOutput, listFeaturedBlueprintsFromKv, parseBlueprintArchive, randomBlueprintId, readBlueprintContent, readBlueprintKvRecord } from "./blueprint-archive.js";
 import { GatekeeperConnectCallbackImpl, normalizeUsername, UserDurableObject, CLOUDFLARE_VENDOR_ID } from "./user";
+import { validateAvatarBytes, putUserAvatar } from "./avatar.js";
 import { OverseerDurableObject, GatekeeperLoopback, CodeModeTailLoopback, AgentSpawnerGatekeeper, GatekeeperHookLoopback, GadgetTailLoopback, AgentSelfLoopback, TransientStubLoopback } from "./overseer";
 import { ExternalMessageGateway } from "./external-message-gateway";
 import { RpcStub as NativeRpcStub } from "cloudflare:workers";
@@ -170,22 +171,12 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   }
 
   async setAvatar(data: Uint8Array | null): Promise<void> {
-    if (data) {
-      if (data.byteLength > 100 * 1024) {
-        throw new Error("Avatar too large (max 100 KB)");
-      }
-      // Verify the data starts with a known image magic-byte header.
-      let isJpeg = data[0] === 0xFF && data[1] === 0xD8 && data[2] === 0xFF;
-      let isPng = data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47;
-      if (!isJpeg && !isPng) {
-        throw new Error("Avatar must be a JPEG or PNG image");
-      }
-    }
     // Avatar data lives in KV (global), not the user's DO storage, so we
     // read/write it directly here to avoid routing through the DO location.
     let userId = this.#userId.name!;
     if (data) {
-      await this.env.AVATARS.put(userId, data);
+      validateAvatarBytes(data);
+      await putUserAvatar(this.env, userId, data);
     } else {
       await this.env.AVATARS.delete(userId);
     }
