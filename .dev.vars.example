@@ -132,16 +132,24 @@
 # Comma-separated providers to route through the gateway, e.g. anthropic,openai,google,cloudflare.
 # CF_AI_GATEWAY_PROVIDERS=anthropic,openai,google,cloudflare
 
-# Account that owns the gateway, and an API token with AI Gateway Run + Read. Both are required
-# whenever CF_AI_GATEWAY is set. Token: dash.cloudflare.com > My Profile > API Tokens.
+# Account that owns the gateway. Required whenever CF_AI_GATEWAY is set — the backend cannot
+# discover its own account.
 # CF_AI_GATEWAY_ACCOUNT_ID=
+
+# API token with AI Gateway Run + Read, used for the HTTPS transport and cost-log reads.
+# Token: dash.cloudflare.com > My Profile > API Tokens.
+# Optional when the Workers AI binding is the transport (see CF_AI_GATEWAY_USE_BINDING), but
+# still required for the google provider, whose adapter cannot ride the binding.
 # CF_AI_GATEWAY_API_TOKEN=
 
-# Optional separate gateway name for Workers AI. Cannot be combined with CF_AI_GATEWAY_WAI_DIRECT.
-# CF_AI_GATEWAY_WAI=
-
-# "true" sends Workers AI to its plain REST endpoint instead of through a gateway.
-# CF_AI_GATEWAY_WAI_DIRECT=false
+# Gateway transport. The Workers AI binding is used whenever it is present, and binding requests
+# are pre-authenticated in-account, so no API token is needed. In local dev the binding exists only
+# when run-dev-server is started with --use-workers-ai-binding.
+# "false" opts out and forces the HTTPS transport (with CF_AI_GATEWAY_API_TOKEN) — required when
+# the gateway lives in a DIFFERENT account than the Worker, since binding requests only reach
+# gateways in the Worker's own account. "true" fails fast if the binding is missing, instead of
+# silently falling back to HTTPS. Only "true" and "false" are read; anything else counts as unset.
+# CF_AI_GATEWAY_USE_BINDING=
 
 # "true" enables the Cloudflare free-tier limits + BYOK top-up flow.
 # ENABLE_CLOUDFLARE_LIMITS=true
