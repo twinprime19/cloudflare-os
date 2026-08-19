@@ -427,7 +427,7 @@ describe("agent catalog", () => {
     stubFetch();
     const authorizer = fakeApprovalQueue();
 
-    const catalog = await gatekeeper.getAgentCatalog({ limit: 10 }, authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
 
     expect(catalog!.entries.map(entry => entry.title)).toEqual(["Inbox", "Archive"]);
     expect(catalog!.entries[0].description).toContain("3 unread");

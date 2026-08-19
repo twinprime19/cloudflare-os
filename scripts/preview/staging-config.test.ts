@@ -41,7 +41,7 @@ const AI_GATEWAY = {
   accountId: "1".repeat(32),
   apiToken: "example-run-and-read-token",
   providers: "cloudflare",
-  waiDirect: "true",
+  useBinding: "false",
 };
 // Every input is passed explicitly: each resolver defaults to reading the environment, so a machine
 // with any of these set would otherwise change what the tests assert.
@@ -269,7 +269,7 @@ test("the backend's secrets are the admin list, the Access pair and the AI gatew
     CF_AI_GATEWAY_ACCOUNT_ID: AI_GATEWAY.accountId,
     CF_AI_GATEWAY_API_TOKEN: AI_GATEWAY.apiToken,
     CF_AI_GATEWAY_PROVIDERS: AI_GATEWAY.providers,
-    CF_AI_GATEWAY_WAI_DIRECT: AI_GATEWAY.waiDirect,
+    CF_AI_GATEWAY_USE_BINDING: AI_GATEWAY.useBinding,
   });
 });
 
@@ -278,18 +278,54 @@ test("the AI gateway is optional as a group, but not half-configured", () => {
   assert.deepEqual(resolveAiGateway({}), {});
   assert.deepEqual(resolveAiGateway({ accountId: AI_GATEWAY.accountId }), {}, "orphans are ignored");
 
-  // With one, the account and token are what AiGatewayConfig demands: without them it throws on the
+  // With one, the account is what AiGatewayConfig demands: without it the backend throws on the
   // first chat, so the deploy has to be the thing that fails instead.
   assert.throws(() => resolveAiGateway({ gateway: "g" }),
-      /CF_AI_GATEWAY_ACCOUNT_ID and CF_AI_GATEWAY_API_TOKEN must be set when CF_AI_GATEWAY is/);
-  assert.throws(() => resolveAiGateway({ gateway: "g", apiToken: "t" }),
-      /CF_AI_GATEWAY_ACCOUNT_ID must be set/);
-  assert.throws(() => resolveAiGateway({ gateway: "g", accountId: "a" }),
-      /CF_AI_GATEWAY_API_TOKEN must be set/);
+      /CF_AI_GATEWAY_ACCOUNT_ID must be set when CF_AI_GATEWAY is/);
 
-  // The two knobs below the required trio are each independently optional.
+  // The gateway name and its account are the whole requirement: a preview binds Workers AI, and
+  // the binding transport is pre-authenticated in-account, so a tokenless gateway is a complete
+  // configuration. Everything below them is independently optional.
+  assert.deepEqual(resolveAiGateway({ gateway: "g", accountId: "a" }),
+      { CF_AI_GATEWAY: "g", CF_AI_GATEWAY_ACCOUNT_ID: "a" });
   assert.deepEqual(resolveAiGateway({ gateway: "g", accountId: "a", apiToken: "t" }),
       { CF_AI_GATEWAY: "g", CF_AI_GATEWAY_ACCOUNT_ID: "a", CF_AI_GATEWAY_API_TOKEN: "t" });
+});
+
+test("a preview that cannot use the binding transport needs the gateway token", () => {
+  // Both mirror an AiGatewayConfig throw: opting out of the binding leaves only HTTPS, and the
+  // google SDK cannot take the binding's fetch. Each is a deploy failure rather than a chat one.
+  assert.throws(
+      () => resolveAiGateway({ gateway: "g", accountId: "a", useBinding: "false" }),
+      /CF_AI_GATEWAY_API_TOKEN must be set when CF_AI_GATEWAY_USE_BINDING is false/);
+  assert.throws(
+      () => resolveAiGateway({ gateway: "g", accountId: "a", providers: "cloudflare,google" }),
+      /CF_AI_GATEWAY_API_TOKEN must be set when the google provider is enabled/);
+
+  // With the token, both are configurations rather than errors.
+  assert.deepEqual(
+      resolveAiGateway({ gateway: "g", accountId: "a", apiToken: "t", useBinding: "false" }),
+      { CF_AI_GATEWAY: "g", CF_AI_GATEWAY_ACCOUNT_ID: "a", CF_AI_GATEWAY_API_TOKEN: "t",
+        CF_AI_GATEWAY_USE_BINDING: "false" });
+  // Requiring the binding is the other half of the same knob, and needs no token at all.
+  assert.deepEqual(resolveAiGateway({ gateway: "g", accountId: "a", useBinding: "true" }),
+      { CF_AI_GATEWAY: "g", CF_AI_GATEWAY_ACCOUNT_ID: "a", CF_AI_GATEWAY_USE_BINDING: "true" });
+
+  // Case and padding are normalized before the check, and the canonical form is what is emitted,
+  // so the backend never receives a value it would have to normalize itself.
+  assert.deepEqual(
+      resolveAiGateway({ gateway: "g", accountId: "a", apiToken: "t", useBinding: " FALSE " }),
+      { CF_AI_GATEWAY: "g", CF_AI_GATEWAY_ACCOUNT_ID: "a", CF_AI_GATEWAY_API_TOKEN: "t",
+        CF_AI_GATEWAY_USE_BINDING: "false" });
+  // A normalized " FALSE " is still the opt-out, so it needs the token like any other.
+  assert.throws(
+      () => resolveAiGateway({ gateway: "g", accountId: "a", useBinding: " FALSE " }),
+      /CF_AI_GATEWAY_API_TOKEN must be set when CF_AI_GATEWAY_USE_BINDING is false/);
+
+  // The backend compares against the two strings and reads anything else as unset, so a value it
+  // would silently ignore fails here instead
+  assert.throws(() => resolveAiGateway({ gateway: "g", accountId: "a", useBinding: "yes please" }),
+      /CF_AI_GATEWAY_USE_BINDING must be "true" or "false", not "yes please"/);
 });
 
 test("no generated config declares a secret's variable", () => {
@@ -317,7 +353,7 @@ test("no generated config carries a secret's value anywhere", () => {
   // Every value that identifies this deployment — the two whose values are ordinary words are left
   // to the name check above. The bare email as well as its JSON form, so that seeding the admins as
   // anything other than the secret's exact encoding — a comma-joined var, say — is caught too.
-  const generic = new Set(["CF_AI_GATEWAY_PROVIDERS", "CF_AI_GATEWAY_WAI_DIRECT"]);
+  const generic = new Set(["CF_AI_GATEWAY_PROVIDERS", "CF_AI_GATEWAY_USE_BINDING"]);
   const sensitive = [
     ...Object.entries(SECRETS).filter(([key]) => !generic.has(key)),
     ["an admin's email", ADMIN],

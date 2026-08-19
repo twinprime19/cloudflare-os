@@ -529,7 +529,10 @@ export interface AuthenticatedApi extends RpcTarget {
    *
    * `resourceUrlPatterns`, if given, limits the connection to the authorization needed for those
    * grantable resource types (those with `grantable`; see `SupportedResource`). If omitted,
-   * authorization for all of the vendor's resource types is requested.
+   * authorization for all of the vendor's resource types is requested. An empty array is meaningful
+   * and distinct from omitting it: it requests no resource authorization at all, which is how a
+   * caller connects an account for a non-resource purpose (e.g. billing) without asking the user to
+   * grant data access it will never use.
    */
   connectAccount(vendorId: string, resourceUrlPatterns?: string[]): Promise<{url: string}>;
 
@@ -3310,6 +3313,24 @@ export interface WorkpieceClient extends RpcTarget {
   remove(): Promise<void>;
 }
 
+/** Describes a file export format supported by a Gadget. */
+export type GadgetExportFormat = {
+  /** Unique, non-empty identifier for this format. */
+  id: string;
+
+  /** User-facing label for the format. */
+  label: string;
+
+  /** Whether the Workshop captures a browser or invokes a server-side handler. */
+  mode: "browser" | "server";
+
+  /** Media type of the exported file. */
+  contentType: string;
+
+  /** File extension, including the leading dot. */
+  fileExtension: string;
+};
+
 /**
  * Capability representing one gadget workpiece within a workspace. Obtained from
  * Overseer.createGadget() or Overseer.getGadget(). Workspace-level concerns (code sync, chats,
@@ -3335,10 +3356,16 @@ export interface GadgetClient extends WorkpieceClient {
   connectToGadget(chatId?: number): Promise<RpcStub<any>>;
 
   /**
-   * Renders the Gadget's UI as a PDF. If `chatId` is specified, the PDF includes changes currently
-   * proposed in that chat.
+   * Lists the Gadget's supported file export formats. If `chatId` is specified,
+   * the formats are read from the code currently proposed in that chat.
    */
-  exportPdf(chatId?: number): Promise<ReadableStream<Uint8Array>>;
+  getExportFormats(chatId?: number): Promise<GadgetExportFormat[]>;
+
+  /**
+   * Exports the format with the given ID. If `chatId` is specified, the export
+   * uses changes currently proposed in that chat.
+   */
+  export(id: string, chatId?: number): Promise<ReadableStream<Uint8Array>>;
 
   // --- Binding management ---
   //
@@ -3437,7 +3464,7 @@ export interface GatekeeperClient<Session extends RpcCompatible<Session>> extend
  * - "build": full access -- edit code, use and participate in chats, manage bindings, etc. (the
  *   same access the owner has, modulo the owner-only exceptions documented in sharing.md).
  * - "use": may only render, interact with, and export the gadget's deployed UI (getUiBundle(),
- *   connectToGadget(), and exportPdf()), plus read basic metadata.
+ *   connectToGadget(), getExportFormats(), and export()), plus read basic metadata.
  *
  * Roles are ordered build > use. A collaborator's effective role is the maximum role reachable
  * from the owner through their valid permission edges, where each edge grants
