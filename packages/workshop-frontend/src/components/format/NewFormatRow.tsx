@@ -3,8 +3,9 @@
 
 import { FormatGlyph } from './FormatVisuals'
 import { useOutputFormats } from './useOutputFormats'
+import { t } from '@lingui/core/macro'
 
-export default function NewFormatRow({ label = 'Start with' }: { label?: string }) {
+export default function NewFormatRow({ label }: { label: string }) {
   const { formats, creating, create } = useOutputFormats()
 
   if (formats.length === 0) return null
@@ -29,7 +30,7 @@ export default function NewFormatRow({ label = 'Start with' }: { label?: string 
               size="md"
               className={creating === format.blueprintId ? 'animate-pulse' : 'text-kumo-subtle'}
             />
-            {creating === format.blueprintId ? `Creating…` : `New ${format.output.noun}`}
+            {creating === format.blueprintId ? t`Creating…` : t`New ${format.output.noun}`}
           </button>
         ))}
       </div>

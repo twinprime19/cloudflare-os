@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+// `siteLogoUtils.ts` throws messages built with the `t` macro, which resolves against
+// `@lingui/core`'s global instance. This module is a plain function module, not a component tree,
+// so there is no provider to mount; importing `@gadgets/i18n` for its module-scope
+// `i18n.loadAndActivate(...)` side effect is what the real app does at `main.tsx` too.
+import '@gadgets/i18n'
 import { MAX_SITE_LOGO_BYTES } from '@gadgets/workshop-shared/api'
 import {
   applySiteFavicon,

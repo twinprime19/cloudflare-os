@@ -3,6 +3,7 @@ import { Tooltip, useKumoToastManager } from '@cloudflare/kumo'
 import { DownloadSimple } from '@phosphor-icons/react'
 import type { RpcStub } from 'capnweb'
 import type { GadgetClient } from '@gadgets/workshop-shared/api'
+import { t } from '@lingui/core/macro'
 import { WorkshopIconButton } from './components/WorkshopControls'
 import { makeExportFilename, saveStreamToFile } from './fileTransfers'
 
@@ -40,10 +41,10 @@ export default function GadgetExportMenu({ gadget, gadgetTitle, chatId, disabled
   }
 
   return (
-    <Tooltip content={exporting ? 'Exporting to PDF' : 'Export to PDF'} asChild>
+    <Tooltip content={exporting ? t`Exporting to PDF` : t`Export to PDF`} asChild>
       <span className="relative inline-flex">
         <WorkshopIconButton
-          aria-label="Export to PDF"
+          aria-label={t`Export to PDF`}
           disabled={disabled || !gadget || exporting}
           onClick={() => { void download() }}
         >

@@ -15,11 +15,13 @@
     "dev-client": "cd packages/workshop-frontend && pnpm run dev",
     "dev-server": "node scripts/run-dev-server.ts",
     "clean": "vp run -r clean",
+    "i18n:extract": "pnpm --filter @gadgets/i18n run extract",
+    "i18n:check": "node scripts/check-i18n.ts",
     "lint:check": "vp lint",
     "lint:fix": "vp lint --fix",
     "types:check": "pnpm run build",
     "types:scripts": "tsc -p scripts/tsconfig.json",
-    "lint": "pnpm run lint:check && pnpm run types:scripts && pnpm run types:check",
+    "lint": "pnpm run lint:check && pnpm run types:scripts && pnpm run i18n:check && pnpm run types:check",
     "types:generate": "node scripts/generate-worker-types.ts"
   },
   "devDependencies": {

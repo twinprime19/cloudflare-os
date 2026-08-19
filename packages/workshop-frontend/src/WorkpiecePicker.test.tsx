@@ -2,7 +2,8 @@
 /* eslint-disable react/react-in-jsx-scope */
 
 import { act } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { type Root } from 'react-dom/client'
+import { createI18nRoot } from './testI18nRoot'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WorkpiecePicker from './WorkpiecePicker'
 
@@ -15,7 +16,7 @@ describe('WorkpiecePicker', () => {
 
   async function render(expanded: boolean) {
     const container = document.createElement('div')
-    root = createRoot(container)
+    root = createI18nRoot(container)
     await act(async () => root!.render(
       <WorkpiecePicker
         gadgets={[

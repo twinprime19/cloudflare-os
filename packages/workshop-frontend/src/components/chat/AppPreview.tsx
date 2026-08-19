@@ -1,6 +1,7 @@
 import { Badge } from '@cloudflare/kumo'
 import { Text } from '@cloudflare/kumo'
 import { Circle } from '@phosphor-icons/react'
+import { Trans } from '@lingui/react/macro'
 import { sampleDataRows } from '../../data/chat'
 
 /**
@@ -15,12 +16,12 @@ export default function AppPreview() {
         {/* App header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <Text variant="heading2" as="h1">Channel Summarizer</Text>
+            <Text variant="heading2" as="h1"><Trans>Channel Summarizer</Trans></Text>
             <p className="text-sm text-kumo-subtle mt-1">
-              Daily digest of your Slack channels, powered by Workers AI
+              <Trans>Daily digest of your Slack channels, powered by Workers AI</Trans>
             </p>
           </div>
-          <Badge variant="success">Live</Badge>
+          <Badge variant="success"><Trans>Live</Trans></Badge>
         </div>
 
         {/* Channel cards */}
@@ -67,7 +68,7 @@ export default function AppPreview() {
         {/* Quiet channels */}
         <div className="mt-6">
           <div className="text-xs font-semibold text-kumo-subtle uppercase tracking-wider mb-3">
-            No new activity
+            <Trans>No new activity</Trans>
           </div>
           <div className="flex flex-wrap gap-2">
             {sampleDataRows.filter(r => !r.unread).map((row) => (

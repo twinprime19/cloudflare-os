@@ -5,6 +5,8 @@ import { DropdownMenu, Dialog, Button, useKumoToastManager } from '@cloudflare/k
 import { RpcStub } from 'capnweb'
 import { useAuthenticatedApi } from '../AuthContext'
 import { GadgetMetadataWithTimestamps, BlueprintPublicInfo, Overseer, AiChatAuthorInfo } from '@gadgets/workshop-shared/api'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import ShareModal from '../ShareModal'
 import { BindingBadge, getGradient as getBlueprintGradient, uniqueBindingBadges } from './BlueprintCard'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER } from './menuStyles'
@@ -13,10 +15,11 @@ import DeleteConfirmationDialog from './DeleteConfirmationDialog'
 
 // Neutral monogram for a workspace — matches the sidebar treatment (no per-item color noise).
 function initials(title: string | undefined): string {
-  const t = (title || 'Untitled').trim()
-  if (!t) return 'UG'
-  const parts = t.split(/\s+/).slice(0, 2)
-  return parts.map((p) => p[0]?.toUpperCase() ?? '').join('') || t.slice(0, 2).toUpperCase()
+  const trimmed = (title || 'Untitled').trim()
+  if (!trimmed) return 'UG'
+  const parts = trimmed.split(/\s+/).slice(0, 2)
+  return parts.map((p) => p[0]?.toUpperCase() ?? '').join('') ||
+    trimmed.slice(0, 2).toUpperCase()
 }
 
 function formatRelativeTime(date: Date): string {
@@ -104,13 +107,13 @@ function AppRow({
             />
           ) : (
             <h3 className="text-sm font-medium text-kumo-default truncate">
-              {gadget.title || 'Untitled Workspace'}
+              {gadget.title || t`Untitled Workspace`}
             </h3>
           )}
         </div>
         {gadget.owner && (
           <p className="text-xs text-kumo-subtle truncate mt-0.5">
-            Shared by {gadget.owner.name}
+            <Trans>Shared by {gadget.owner.name}</Trans>
           </p>
         )}
       </div>
@@ -136,19 +139,19 @@ function AppRow({
         <DropdownMenu.Content className={MENU_CONTENT}>
           <DropdownMenu.Item onClick={startRenaming} className={MENU_ITEM}>
             <Pencil size={13} className="mr-2" />
-            Rename
+            <Trans>Rename</Trans>
           </DropdownMenu.Item>
           <DropdownMenu.Item onClick={() => onTogglePin(gadget)} className={MENU_ITEM}>
             <Star size={13} className="mr-2" weight={gadget.pinned ? 'fill' : 'regular'} />
-            {gadget.pinned ? 'Unfavorite' : 'Favorite'}
+            {gadget.pinned ? t`Unfavorite` : t`Favorite`}
           </DropdownMenu.Item>
           <DropdownMenu.Item onClick={() => onInfo(gadget)} className={MENU_ITEM}>
             <Info size={13} className="mr-2" />
-            Information
+            <Trans>Information</Trans>
           </DropdownMenu.Item>
           <DropdownMenu.Item onClick={() => onShare(gadget)} className={MENU_ITEM}>
             <ShareNetwork size={13} className="mr-2" />
-            Share
+            <Trans>Share</Trans>
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
           <DropdownMenu.Item
@@ -157,7 +160,7 @@ function AppRow({
             className={MENU_ITEM_DANGER}
           >
             <Trash size={13} className="mr-2" />
-            {gadget.owner ? 'Dismiss' : 'Delete'}
+            {gadget.owner ? t`Dismiss` : t`Delete`}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu>
@@ -334,11 +337,11 @@ export default function GadgetList({ showHeader = true }: { showHeader?: boolean
       {showHeader && (
         <div className="px-6 sm:px-10 lg:px-10 pt-10 lg:pt-10 mb-4">
           <h2 className="text-lg font-semibold text-kumo-default">
-            Your workspaces
+            <Trans>Your workspaces</Trans>
           </h2>
           {!loading && gadgets.length === 0 && !loadError && (
             <p className="mt-1 text-sm text-kumo-inactive">
-              You haven&apos;t created any workspaces yet
+              <Trans>You haven&apos;t created any workspaces yet</Trans>
             </p>
           )}
         </div>
@@ -356,7 +359,7 @@ export default function GadgetList({ showHeader = true }: { showHeader?: boolean
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search workspaces…"
+              placeholder={t`Search workspaces…`}
               className="h-9 w-full rounded-lg border border-kumo-line bg-kumo-base pl-9 pr-4 text-[13px] tracking-[-0.25px] text-kumo-default placeholder:text-kumo-inactive transition-[border-color,box-shadow] duration-150 ease-out focus:border-kumo-ring focus:outline-none focus:ring-[3px] focus:ring-kumo-ring/15"
             />
           </div>
@@ -375,13 +378,13 @@ export default function GadgetList({ showHeader = true }: { showHeader?: boolean
           </>
         ) : loadError ? (
           <div className="text-center py-12 text-sm">
-            <p className="text-kumo-danger">Something went wrong loading your workspaces.</p>
-            <button onClick={loadGadgets} className="text-kumo-brand mt-1 underline">Try again</button>
+            <p className="text-kumo-danger"><Trans>Something went wrong loading your workspaces.</Trans></p>
+            <button onClick={loadGadgets} className="text-kumo-brand mt-1 underline"><Trans>Try again</Trans></button>
           </div>
         ) : filtered.length === 0 ? (
           search ? (
             <div className="text-center py-12 text-kumo-inactive text-sm">
-              No workspaces found
+              <Trans>No workspaces found</Trans>
             </div>
           ) : (
             <FeaturedBlueprintsGallery />
@@ -406,14 +409,14 @@ export default function GadgetList({ showHeader = true }: { showHeader?: boolean
         open={deleteTarget !== null}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
         isDeleting={isDeleting}
-        title={deleteTarget?.owner ? 'Remove workspace' : 'Delete workspace'}
+        title={deleteTarget?.owner ? t`Remove workspace` : t`Delete workspace`}
         description={
           deleteTarget?.owner
-            ? `Remove "${deleteTarget?.title || 'Untitled Workspace'}" from your list? You can still access it via its link.`
-            : `Delete "${deleteTarget?.title || 'Untitled Workspace'}"? This cannot be undone.`
+            ? t`Remove "${deleteTarget?.title || t`Untitled Workspace`}" from your list? You can still access it via its link.`
+            : t`Delete "${deleteTarget?.title || t`Untitled Workspace`}"? This cannot be undone.`
         }
-        confirmLabel={deleteTarget?.owner ? 'Remove' : 'Delete'}
-        confirmingLabel={deleteTarget?.owner ? 'Removing...' : 'Deleting...'}
+        confirmLabel={deleteTarget?.owner ? t`Remove` : t`Delete`}
+        confirmingLabel={deleteTarget?.owner ? t`Removing...` : t`Deleting...`}
         onConfirm={handleDeleteConfirm}
       />
 
@@ -424,27 +427,27 @@ export default function GadgetList({ showHeader = true }: { showHeader?: boolean
       >
         <Dialog className="p-8" size="sm">
           <Dialog.Title className="text-lg font-semibold">
-            {infoTarget?.title || 'Untitled Workspace'}
+            {infoTarget?.title || t`Untitled Workspace`}
           </Dialog.Title>
           <div className="mt-4 flex flex-col gap-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-kumo-subtle">Author</span>
+              <span className="text-kumo-subtle"><Trans>Author</Trans></span>
               <span className="text-kumo-default">{infoTarget?.owner ? infoTarget.owner.name : 'You'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-kumo-subtle">Total cost</span>
+              <span className="text-kumo-subtle"><Trans>Total cost</Trans></span>
               <span className="text-kumo-default">
                 {formatCost(infoTarget?.totalCost ?? 0)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-kumo-subtle">Created</span>
+              <span className="text-kumo-subtle"><Trans>Created</Trans></span>
               <span className="text-kumo-default">
                 {infoTarget?.created?.toLocaleString()}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-kumo-subtle">Last active</span>
+              <span className="text-kumo-subtle"><Trans>Last active</Trans></span>
               <span className="text-kumo-default">
                 {infoTarget?.lastActive?.toLocaleString()}
               </span>
@@ -454,7 +457,7 @@ export default function GadgetList({ showHeader = true }: { showHeader?: boolean
             <Dialog.Close
               render={(props) => (
                 <Button variant="secondary" {...props}>
-                  Close
+                  <Trans>Close</Trans>
                 </Button>
               )}
             />
@@ -493,7 +496,7 @@ function HomeFeaturedBlueprintCard({
       <Link
         to="/blueprint/$id"
         params={{ id: blueprint.id }}
-        aria-label={`Open blueprint ${blueprint.metadata.title}`}
+        aria-label={t`Open blueprint ${blueprint.metadata.title}`}
         className="absolute inset-0 z-10 rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-kumo-brand"
       />
       <div className="pointer-events-none relative z-20 flex flex-1 flex-col p-2.5">
@@ -512,7 +515,7 @@ function HomeFeaturedBlueprintCard({
               {blueprint.metadata.title}
             </p>
             <p className={`mt-0.5 line-clamp-2 min-h-8 text-[12px] leading-4 tracking-[-0.2px] ${blueprint.metadata.description ? 'text-kumo-subtle' : 'text-kumo-inactive italic'}`}>
-              {blueprint.metadata.description || 'No description'}
+              {blueprint.metadata.description || t`No description`}
             </p>
             {badges.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
@@ -572,7 +575,7 @@ function FeaturedBlueprintsGallery() {
     <div className="py-4 pr-4 sm:pr-6">
       <div className="mb-5">
         <h3 className="text-[13px] leading-[18px] font-medium tracking-[-0.25px] text-kumo-default">
-          Start from a featured blueprint.
+          <Trans>Start from a featured blueprint.</Trans>
         </h3>
       </div>
 
@@ -591,7 +594,7 @@ function FeaturedBlueprintsGallery() {
             to="/explore"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-kumo-brand hover:text-kumo-brand-hover transition-colors"
           >
-            Browse all blueprints
+            <Trans>Browse all blueprints</Trans>
             <ArrowRight size={12} weight="bold" />
           </Link>
         </div>

@@ -1,4 +1,5 @@
 import { Hexagon } from '@phosphor-icons/react'
+import { t } from '@lingui/core/macro'
 import { getGradient } from './BlueprintCard'
 
 export function BlueprintPreviewImage({
@@ -17,7 +18,7 @@ export function BlueprintPreviewImage({
       {screenshotUrl ? (
         <img
           src={screenshotUrl}
-          alt={`Screenshot of ${title}`}
+          alt={t`Screenshot of ${title}`}
           className="aspect-[16/9] w-full object-cover"
           loading="lazy"
         />

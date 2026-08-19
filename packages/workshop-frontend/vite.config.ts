@@ -1,8 +1,12 @@
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
+import { lingui } from '@lingui/vite-plugin'
+import { getConfig as getLinguiConfig } from '@lingui/conf'
 import { vitestTask } from '../../scripts/vitest-task-vite-config.js'
 
 // `dist/` is this package's own build output, excluded from the inputs of both tasks: vp declines to
@@ -10,6 +14,14 @@ import { vitestTask } from '../../scripts/vitest-task-vite-config.js'
 // `typed-storage` emits, and its `exports` resolves to `dist/index.js`, so a pattern matching every
 // package's `dist` would drop a real input.
 const ownDist = { pattern: '!dist/**', base: 'package' } as const
+
+// `@gadgets/i18n` owns `lingui.config.ts` and the catalogs beside it. Both Lingui plugins below
+// otherwise discover that config by searching upwards from `process.cwd()`, which finds nothing
+// from either of the two directories they actually run in: `vp run -r` loads this file from the
+// workspace root to build its task graph, and the Babel pass runs with the cwd set to this package.
+// So the config is resolved once, here, from a path relative to this file.
+const linguiConfigCwd = resolve(dirname(fileURLToPath(import.meta.url)), '../i18n')
+const linguiConfig = getLinguiConfig({ cwd: linguiConfigCwd })
 
 const runConfig = {
   run: {
@@ -70,7 +82,24 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       TanStackRouterVite({ target: 'react', autoCodeSplitting: true }),
-      react(),
+      // The Lingui macros (`<Trans>`, `` t`...` ``) are a compile-time transform, so they ride
+      // plugin-react's existing Babel pass rather than adding a second one. This is scoped to this
+      // package and leaves the workspace-wide esbuild transform untouched.
+      //
+      // `descriptorFields: 'message'` rather than the default `'auto'`: `'auto'` compiles a
+      // production build down to the message id alone, which renders as a bare hash unless a
+      // compiled catalog for the active locale is loaded and still matches. English is the source
+      // language and lives inline here, so keeping the message beside the id makes the source text
+      // its own fallback -- a missed `lingui extract` can then never blank out the UI.
+      react({
+        babel: {
+          plugins: [
+            ['@lingui/babel-plugin-lingui-macro', { descriptorFields: 'message', linguiConfig }],
+          ],
+        },
+      }),
+      // Compiles `.po` catalogs on import.
+      lingui({ cwd: linguiConfigCwd }),
       tailwindcss(),
       tsconfigPaths(),
     ],

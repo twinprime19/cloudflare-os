@@ -1,0 +1,30 @@
+{
+  "name": "@gadgets/i18n",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.tsx",
+      "import": "./src/index.tsx"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "extract": "lingui extract --clean"
+  },
+  "dependencies": {
+    "@lingui/core": "6.6.0",
+    "@lingui/react": "6.6.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@lingui/cli": "6.6.0",
+    "@lingui/format-po": "6.6.0",
+    "@types/react": "^19.2.18",
+    "react": "^19.2.8",
+    "typescript": "catalog:"
+  }
+}

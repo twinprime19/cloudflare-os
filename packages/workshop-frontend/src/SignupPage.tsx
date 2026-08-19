@@ -4,6 +4,8 @@ import { RpcStub } from "capnweb";
 import { PublicApi } from "@gadgets/workshop-shared/api";
 import { Hexagon } from "@phosphor-icons/react";
 import { Input, Button, Banner, Loader } from "@cloudflare/kumo";
+import { t } from "@lingui/core/macro";
+import { Trans } from "@lingui/react/macro";
 import { hashPassword } from "./passwordHash";
 import { useServerConfig, useServerConfigError, useSiteName } from "./ServerConfigContext";
 import { useDocumentTitle } from "./useDocumentTitle";
@@ -20,7 +22,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
   const serverConfigError = useServerConfigError();
   const siteName = useSiteName();
   const connectionLost = useConnectionLost();
-  useDocumentTitle("Create account");
+  useDocumentTitle(t`Create account`);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -85,9 +87,9 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
           className="min-h-screen flex flex-col items-center justify-center gap-4 bg-kumo-base px-4"
         >
           <p className="text-sm text-kumo-danger text-center">
-            Couldn&apos;t load deployment settings.
+            <Trans>Couldn&apos;t load deployment settings.</Trans>
           </p>
-          <Button variant="secondary" onClick={() => window.location.reload()}>Reload</Button>
+          <Button variant="secondary" onClick={() => window.location.reload()}><Trans>Reload</Trans></Button>
         </div>
       );
     }
@@ -95,7 +97,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-kumo-base px-4">
         <Loader size="lg" />
         <p className="text-sm text-kumo-subtle text-center">
-          {connectionLost ? "Can't reach the server. Retrying…" : "Loading…"}
+          {connectionLost ? t`Can't reach the server. Retrying…` : t`Loading…`}
         </p>
       </div>
     );
@@ -133,16 +135,16 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
           <h1 className="text-xl font-semibold text-kumo-default">
             {siteName}
           </h1>
-          <p className="text-sm text-kumo-subtle mt-1">Create your account</p>
+          <p className="text-sm text-kumo-subtle mt-1"><Trans>Create your account</Trans></p>
         </div>
 
         {!signupsEnabled && (
           <Banner
             variant="default"
-            title="Signups are closed"
+            title={t`Signups are closed`}
             className="mb-4"
           >
-            New account registration is currently disabled on this deployment.
+            <Trans>New account registration is currently disabled on this deployment.</Trans>
           </Banner>
         )}
 
@@ -151,7 +153,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
-                label="Username"
+                label={t`Username`}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoFocus
@@ -163,7 +165,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
 
               <Input
                 type="password"
-                label="Password"
+                label={t`Password`}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
@@ -174,7 +176,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
 
               <Input
                 type="password"
-                label="Confirm Password"
+                label={t`Confirm Password`}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
@@ -192,7 +194,7 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
                 loading={loading}
                 className="w-full justify-center"
               >
-                Create account
+                <Trans>Create account</Trans>
               </Button>
             </form>
           </>
@@ -214,10 +216,12 @@ export default function SignupPage({ rpcStub }: SignupPageProps) {
 
         {passwordAuthEnabled && (
           <p className="text-center text-sm text-kumo-subtle mt-6">
-            Already have an account?{" "}
-            <Link to="/" className="text-kumo-brand hover:underline font-medium">
-              Sign in
-            </Link>
+            <Trans>
+              Already have an account?{" "}
+              <Link to="/" className="text-kumo-brand hover:underline font-medium">
+                Sign in
+              </Link>
+            </Trans>
           </p>
         )}
       </div>

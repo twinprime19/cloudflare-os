@@ -2,7 +2,8 @@
 /* eslint-disable react/react-in-jsx-scope */
 
 import { act, useRef } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { type Root } from "react-dom/client";
+import { createI18nRoot } from "../../testI18nRoot";
 import type { RpcStub } from "capnweb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -112,7 +113,7 @@ describe("SlashCommandPicker", () => {
     Object.defineProperty(window, "innerHeight", {value: 600, configurable: true});
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
+    root = createI18nRoot(container);
     let overseer = pickerOverseer(choices);
     let getOverseer = () => overseer;
 
@@ -152,7 +153,7 @@ describe("SlashCommandPicker", () => {
   it("reopens for another token after dismissing without changing the message", async () => {
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
+    root = createI18nRoot(container);
     let overseer = pickerOverseer(choices);
     const inputValue = "try /dep or /deb";
 
@@ -186,7 +187,7 @@ describe("SlashCommandPicker", () => {
   it("selects a unique exact command when trailing message text starts", async () => {
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
+    root = createI18nRoot(container);
     let onSelect = vi.fn<(
       choice: SlashCommandChoice, tokenStart: number, tokenEnd: number,
     ) => void>();
@@ -207,7 +208,7 @@ describe("SlashCommandPicker", () => {
   it("does not default an ambiguous exact command", async () => {
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
+    root = createI18nRoot(container);
     let duplicates = [{...choices[0]}, {...choices[1], name: "deploy"}];
     let getOverseer = () => pickerOverseer(duplicates);
 
@@ -228,7 +229,7 @@ describe("SlashCommandPicker", () => {
   it("offers a built-in command only once the chat exists", async () => {
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
+    root = createI18nRoot(container);
     let getOverseer = () => pickerOverseer([compact, ...choices]);
 
     await act(async () => root.render(
@@ -248,7 +249,7 @@ describe("SlashCommandPicker", () => {
   it("does not resolve a built-in command typed in full without a chat", async () => {
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
+    root = createI18nRoot(container);
     let onSelect = vi.fn<(choice: SlashCommandChoice, tailStart: number) => void>();
 
     await act(async () => root.render(

@@ -1,0 +1,2545 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-08-18 15:55+0700\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+msgid "(Draft)"
+msgstr "(Draft)"
+
+#. placeholder {0}: downstreamDependents.length
+#. placeholder {1}: profile.name
+msgid "{0, plural, one {# other person loses} other {# other people lose}} access through {1}. Keep anyone?"
+msgstr "{0, plural, one {# other person loses} other {# other people lose}} access through {1}. Keep anyone?"
+
+#. placeholder {0}: revokeTarget.dependents.length
+msgid "{0, plural, one {# person loses access through this link. Keep anyone?} other {# people lose access through this link. Keep anyone?}}"
+msgstr "{0, plural, one {# person loses access through this link. Keep anyone?} other {# people lose access through this link. Keep anyone?}}"
+
+#. placeholder {0}: vendor.resources.length
+msgid "{0, plural, one {# resource hidden while disabled.} other {# resources hidden while disabled.}}"
+msgstr "{0, plural, one {# resource hidden while disabled.} other {# resources hidden while disabled.}}"
+
+#. placeholder {0}: pendingPatterns.length
+msgid "{0, plural, one {# resource to add} other {# resources to add}}"
+msgstr "{0, plural, one {# resource to add} other {# resources to add}}"
+
+#. placeholder {0}: formatOf(gadget.output).noun
+msgid "{0} · Click to open"
+msgstr "{0} · Click to open"
+
+#. placeholder {0}: format.blueprintTitle
+#. placeholder {1}: format.output!.plural
+msgid "{0} · shown under {1} on Outputs"
+msgstr "{0} · shown under {1} on Outputs"
+
+#. placeholder {0}: msg.author.name
+msgid "{0} accepted changes"
+msgstr "{0} accepted changes"
+
+#. placeholder {0}: entry.requestedBy.name
+msgid "{0} compacted the context"
+msgstr "{0} compacted the context"
+
+#. placeholder {0}: entry.message.author.name
+#. placeholder {1}: createdGadgets.length
+msgid "{0} created {1, plural, one {gadget} other {gadgets}} {createdTitles}"
+msgstr "{0} created {1, plural, one {gadget} other {gadgets}} {createdTitles}"
+
+#. placeholder {0}: msg.author.name
+msgid "{0} discarded changes"
+msgstr "{0} discarded changes"
+
+#. placeholder {0}: latestAuthor?.name ?? t`The agent`
+msgid "{0} is editing changes for this gadget."
+msgstr "{0} is editing changes for this gadget."
+
+#. placeholder {0}: usage.remaining
+#. placeholder {1}: usage.dailyLimit
+msgid "{0} of {1, plural, one {# request} other {# requests}} remaining today"
+msgstr "{0} of {1, plural, one {# request} other {# requests}} remaining today"
+
+#. placeholder {0}: entry.message.author.name
+msgid "{0} saved edits"
+msgstr "{0} saved edits"
+
+msgid "{badgeCount} pending"
+msgstr "{badgeCount} pending"
+
+msgid "{DEFAULT_ACCENT_COLOR} (default)"
+msgstr "{DEFAULT_ACCENT_COLOR} (default)"
+
+#. placeholder {0}: formatFullTimestamp(lastDraftEntry.timestamp)
+msgid "{description} Last edited {0}"
+msgstr "{description} Last edited {0}"
+
+msgid "{filename} is being edited"
+msgstr "{filename} is being edited"
+
+msgid "{hidden, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
+msgstr "{hidden, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
+
+msgid "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
+msgstr "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
+
+msgid "{label}. Switch to {nextMode}."
+msgstr "{label}. Switch to {nextMode}."
+
+#. placeholder {0}: bindingEntries.length
+msgid "{readyCount} of {0} ready. Suggestions are used automatically when they match one of your connected accounts."
+msgstr "{readyCount} of {0} ready. Suggestions are used automatically when they match one of your connected accounts."
+
+msgid "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
+msgstr "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
+
+#. placeholder {0}: models.find((m) => m.id === quickModel)?.name ?? quickModel
+msgid "<0>Quick model:</0> {0}."
+msgstr "<0>Quick model:</0> {0}."
+
+msgid "<0>Quick model:</0> none set."
+msgstr "<0>Quick model:</0> none set."
+
+msgid "A dismissible bar across the very top of the app (logged in or not). Markdown is supported, so you can include links. Leave empty to hide it. Applies on each user’s next connection."
+msgstr "A dismissible bar across the very top of the app (logged in or not). Markdown is supported, so you can include links. Leave empty to hide it. Applies on each user’s next connection."
+
+msgid "A preview of how you'll author knowledge collections and skills for your agents to draw on."
+msgstr "A preview of how you'll author knowledge collections and skills for your agents to draw on."
+
+msgid "A promoted blueprint is offered by name (“New Doc”, “New Slides”) wherever people start something, and the agent is told to prefer it over building the same thing from scratch."
+msgstr "A promoted blueprint is offered by name (“New Doc”, “New Slides”) wherever people start something, and the agent is told to prefer it over building the same thing from scratch."
+
+msgid "Accent color used for buttons, links, and highlights. Changes preview live here; click Save to apply for everyone (on their next connection). Backgrounds keep the default warm theme."
+msgstr "Accent color used for buttons, links, and highlights. Changes preview live here; click Save to apply for everyone (on their next connection). Backgrounds keep the default warm theme."
+
+msgid "Accept changes"
+msgstr "Accept changes"
+
+#. placeholder {0}: formatFullTimestamp(ts)
+msgid "Accepted draft changes through {0}."
+msgstr "Accepted draft changes through {0}."
+
+msgid "Accepted draft changes."
+msgstr "Accepted draft changes."
+
+msgid "Access granted by link"
+msgstr "Access granted by link"
+
+msgid "Access to grant"
+msgstr "Access to grant"
+
+msgid "Account"
+msgstr "Account"
+
+#. placeholder {0}: usage.balance.toFixed(2)
+msgid "Account balance: <0>${0}</0>"
+msgstr "Account balance: <0>${0}</0>"
+
+msgid "Account balance: <0>unknown</0>"
+msgstr "Account balance: <0>unknown</0>"
+
+msgid "Action types appear here once a connected resource offers one its author marked safe to apply without review."
+msgstr "Action types appear here once a connected resource offers one its author marked safe to apply without review."
+
+msgid "Actions agents may take without asking. Everything else waits for your review."
+msgstr "Actions agents may take without asking. Everything else waits for your review."
+
+#. placeholder {0}: chat.title
+msgid "Actions for {0}"
+msgstr "Actions for {0}"
+
+msgid "Actions for {filename}"
+msgstr "Actions for {filename}"
+
+msgid "Activity"
+msgstr "Activity"
+
+#. placeholder {0}: pending.length
+msgid "Activity — {0, plural, one {# request needs} other {# requests need}} review"
+msgstr "Activity — {0, plural, one {# request needs} other {# requests need}} review"
+
+#. placeholder {0}: vendorDescription.displayName
+msgid "Add {0}"
+msgstr "Add {0}"
+
+msgid "Add a model to get started"
+msgstr "Add a model to get started"
+
+msgid "Add a provider to start building workspaces with AI."
+msgstr "Add a provider to start building workspaces with AI."
+
+msgid "Add AI Model"
+msgstr "Add AI Model"
+
+msgid "Add blueprint to library"
+msgstr "Add blueprint to library"
+
+msgid "Add credits"
+msgstr "Add credits"
+
+msgid "Add credits in Cloudflare"
+msgstr "Add credits in Cloudflare"
+
+msgid "Add credits to continue."
+msgstr "Add credits to continue."
+
+#. placeholder {0}: usage.dailyLimit
+msgid "Add credits to your AI Gateway to keep building now or wait — your free {0, plural, one {request resets} other {requests reset}} at 00:00 UTC, in <0/>."
+msgstr "Add credits to your AI Gateway to keep building now or wait — your free {0, plural, one {request resets} other {requests reset}} at 00:00 UTC, in <0/>."
+
+msgid "Add credits to your AI Gateway to keep building now."
+msgstr "Add credits to your AI Gateway to keep building now."
+
+msgid "Add Model"
+msgstr "Add Model"
+
+msgid "Add new model..."
+msgstr "Add new model..."
+
+msgid "Add photo"
+msgstr "Add photo"
+
+msgid "Add provider"
+msgstr "Add provider"
+
+msgid "Add resource"
+msgstr "Add resource"
+
+msgid "Add the apps and accounts your workspaces can use. Connect once, then wire them into anything you build."
+msgstr "Add the apps and accounts your workspaces can use. Connect once, then wire them into anything you build."
+
+msgid "Add to library"
+msgstr "Add to library"
+
+msgid "Add your first provider"
+msgstr "Add your first provider"
+
+msgid "Added"
+msgstr "Added"
+
+msgid "Added {invitedName}"
+msgstr "Added {invitedName}"
+
+msgid "Added in this chat; kept when you accept the chat's changes"
+msgstr "Added in this chat; kept when you accept the chat's changes"
+
+msgid "Adding..."
+msgstr "Adding..."
+
+msgid "Additional permission needed"
+msgstr "Additional permission needed"
+
+msgid "Admin"
+msgstr "Admin"
+
+msgid "Advanced Settings"
+msgstr "Advanced Settings"
+
+#. placeholder {0}: chat.spawnerName
+msgid "Agent · {0}"
+msgstr "Agent · {0}"
+
+msgid "Agent bindings"
+msgstr "Agent bindings"
+
+msgid "Agent display name"
+msgstr "Agent display name"
+
+msgid "Agent instructions"
+msgstr "Agent instructions"
+
+msgid "Agent is editing this file"
+msgstr "Agent is editing this file"
+
+msgid "Agent model"
+msgstr "Agent model"
+
+msgid "AI providers"
+msgstr "AI providers"
+
+msgid "All connection types"
+msgstr "All connection types"
+
+msgid "Allow new sign-ups"
+msgstr "Allow new sign-ups"
+
+msgid "Already have an account? <0>Sign in</0>"
+msgstr "Already have an account? <0>Sign in</0>"
+
+msgid "Always approve"
+msgstr "Always approve"
+
+msgid "Always approve “{actionLabel}”?"
+msgstr "Always approve “{actionLabel}”?"
+
+msgid "Always approve this type of action on this connection, without future prompts."
+msgstr "Always approve this type of action on this connection, without future prompts."
+
+msgid "An API token with Workers AI Read + Edit permissions (in the dashboard: Workers AI > Use REST API > Create a Workers AI API Token)"
+msgstr "An API token with Workers AI Read + Edit permissions (in the dashboard: Workers AI > Use REST API > Create a Workers AI API Token)"
+
+msgid "Anything your workspaces build will show up here."
+msgstr "Anything your workspaces build will show up here."
+
+msgid "API Token"
+msgstr "API Token"
+
+msgid "API URL"
+msgstr "API URL"
+
+msgid "App"
+msgstr "App"
+
+msgid "Applied without asking"
+msgstr "Applied without asking"
+
+msgid "Approve"
+msgstr "Approve"
+
+msgid "Apps"
+msgstr "Apps"
+
+msgid "Ask a follow-up…"
+msgstr "Ask a follow-up…"
+
+msgid "Ask a question, create an output, or create an app that works with your tools and data."
+msgstr "Ask a question, create an output, or create an app that works with your tools and data."
+
+msgid "Ask the agent in chat to build something, and it will appear here."
+msgstr "Ask the agent in chat to build something, and it will appear here."
+
+msgid "attached file"
+msgstr "attached file"
+
+msgid "Attached file"
+msgstr "Attached file"
+
+msgid "Attached image"
+msgstr "Attached image"
+
+msgid "Authenticating..."
+msgstr "Authenticating..."
+
+msgid "Authentication error: {error}"
+msgstr "Authentication error: {error}"
+
+msgid "Author"
+msgstr "Author"
+
+#. placeholder {0}: resolvedBy.name
+msgid "Auto-approved ({0}'s rule)"
+msgstr "Auto-approved ({0}'s rule)"
+
+msgid "Available"
+msgstr "Available"
+
+msgid "Avatar"
+msgstr "Avatar"
+
+msgid "Avatar preview"
+msgstr "Avatar preview"
+
+msgid "Back"
+msgstr "Back"
+
+msgid "Back to conversations"
+msgstr "Back to conversations"
+
+msgid "Back to Explore"
+msgstr "Back to Explore"
+
+msgid "Banner"
+msgstr "Banner"
+
+msgid "Before opening this workspace, confirm that your own accounts can access the connected data it uses."
+msgstr "Before opening this workspace, confirm that your own accounts can access the connected data it uses."
+
+msgid "Binding name"
+msgstr "Binding name"
+
+#. placeholder {0}: row.targetTitle
+msgid "Binding name for {0}"
+msgstr "Binding name for {0}"
+
+msgid "Blueprint deleted. Remove this entry."
+msgstr "Blueprint deleted. Remove this entry."
+
+msgid "Blueprint description"
+msgstr "Blueprint description"
+
+msgid "Blueprint not found"
+msgstr "Blueprint not found"
+
+#. placeholder {0}: formatSuggestedResource(binding.resourceUrl)
+msgid "Blueprint recommends: <0>{0}</0>"
+msgstr "Blueprint recommends: <0>{0}</0>"
+
+msgid "Blueprint screenshot preview"
+msgstr "Blueprint screenshot preview"
+
+msgid "Blueprint settings"
+msgstr "Blueprint settings"
+
+msgid "Blueprint title"
+msgstr "Blueprint title"
+
+msgid "Blueprints"
+msgstr "Blueprints"
+
+msgid "Browse all blueprints"
+msgstr "Browse all blueprints"
+
+msgid "Bundled"
+msgstr "Bundled"
+
+#. placeholder {0}: resolvedBy.name
+msgid "By {0}"
+msgstr "By {0}"
+
+msgid "Callbacks that let connected resources wake up this gadget when events happen."
+msgstr "Callbacks that let connected resources wake up this gadget when events happen."
+
+msgid "Can't reach the server. Retrying…"
+msgstr "Can't reach the server. Retrying…"
+
+msgid "Cancel"
+msgstr "Cancel"
+
+msgid "Cancel creating link"
+msgstr "Cancel creating link"
+
+msgid "Cancel rename"
+msgstr "Cancel rename"
+
+msgid "Cancel title edit"
+msgstr "Cancel title edit"
+
+msgid "Change"
+msgstr "Change"
+
+msgid "Change logo"
+msgstr "Change logo"
+
+msgid "Change password"
+msgstr "Change password"
+
+msgid "Changing…"
+msgstr "Changing…"
+
+msgid "Chat"
+msgstr "Chat"
+
+msgid "Check your connection and try refreshing the page."
+msgstr "Check your connection and try refreshing the page."
+
+msgid "Choose \"None\" to create conversations without an agent."
+msgstr "Choose \"None\" to create conversations without an agent."
+
+msgid "Choose a Cloudflare account"
+msgstr "Choose a Cloudflare account"
+
+msgid "Choose a model for the agent spawner"
+msgstr "Choose a model for the agent spawner"
+
+msgid "Choose an account before selecting a resource."
+msgstr "Choose an account before selecting a resource."
+
+msgid "Choose an AI model"
+msgstr "Choose an AI model"
+
+msgid "Choose an image file."
+msgstr "Choose an image file."
+
+msgid "Choose icon"
+msgstr "Choose icon"
+
+msgid "Choose the model spawned agents will use."
+msgstr "Choose the model spawned agents will use."
+
+msgid "Choose the model this connection can use."
+msgstr "Choose the model this connection can use."
+
+msgid "Choose the resource or model this new Gadget should use."
+msgstr "Choose the resource or model this new Gadget should use."
+
+msgid "Choose what this gadget should be able to use."
+msgstr "Choose what this gadget should be able to use."
+
+msgid "Choose which Cloudflare account to bill"
+msgstr "Choose which Cloudflare account to bill"
+
+msgid "Choose your model"
+msgstr "Choose your model"
+
+msgid "Clear"
+msgstr "Clear"
+
+msgid "Clear quick model"
+msgstr "Clear quick model"
+
+msgid "Click the avatar to upload a new photo"
+msgstr "Click the avatar to upload a new photo"
+
+msgid "Click to re-authenticate this account"
+msgstr "Click to re-authenticate this account"
+
+msgid "Click to set as quick model"
+msgstr "Click to set as quick model"
+
+msgid "Close"
+msgstr "Close"
+
+msgid "Close activity"
+msgstr "Close activity"
+
+msgid "Close gadget pane"
+msgstr "Close gadget pane"
+
+msgid "Close menu"
+msgstr "Close menu"
+
+msgid "Close preview"
+msgstr "Close preview"
+
+msgid "Close screenshot"
+msgstr "Close screenshot"
+
+msgid "Cloudflare account"
+msgstr "Cloudflare account"
+
+msgid "Cloudflare Account ID"
+msgstr "Cloudflare Account ID"
+
+msgid "Code"
+msgstr "Code"
+
+msgid "Collapse outputs"
+msgstr "Collapse outputs"
+
+msgid "Collapse sidebar"
+msgstr "Collapse sidebar"
+
+msgid "Command palette"
+msgstr "Command palette"
+
+msgid "Commands"
+msgstr "Commands"
+
+msgid "Compacting…"
+msgstr "Compacting…"
+
+#. placeholder {0}: activeBinding.title || activeBindingName
+msgid "Configure {0}"
+msgstr "Configure {0}"
+
+msgid "Configure the AI models available to your workspaces."
+msgstr "Configure the AI models available to your workspaces."
+
+msgid "Confirm new password"
+msgstr "Confirm new password"
+
+msgid "Confirm Password"
+msgstr "Confirm Password"
+
+msgid "Connect"
+msgstr "Connect"
+
+#. placeholder {0}: msg.vendorName
+msgid "Connect {0}"
+msgstr "Connect {0}"
+
+msgid "Connect {vendorName}"
+msgstr "Connect {vendorName}"
+
+msgid "Connect a different account"
+msgstr "Connect a different account"
+
+msgid "Connect Account"
+msgstr "Connect Account"
+
+msgid "Connect Cloudflare"
+msgstr "Connect Cloudflare"
+
+msgid "Connect Google Docs, GitHub, Google Sheets, and other services so this gadget can safely use external data."
+msgstr "Connect Google Docs, GitHub, Google Sheets, and other services so this gadget can safely use external data."
+
+msgid "Connect new account"
+msgstr "Connect new account"
+
+msgid "Connect resource"
+msgstr "Connect resource"
+
+#. placeholder {0}: usage.dailyLimit
+msgid "Connect your Cloudflare account to keep building now — usage beyond the free tier is billed to your own Cloudflare AI Gateway credits — or wait: your free {0, plural, one {request resets} other {requests reset}} at 00:00 UTC, in <0/>."
+msgstr "Connect your Cloudflare account to keep building now — usage beyond the free tier is billed to your own Cloudflare AI Gateway credits — or wait: your free {0, plural, one {request resets} other {requests reset}} at 00:00 UTC, in <0/>."
+
+msgid "Connect your Cloudflare account to keep building now — usage beyond the free tier is billed to your own Cloudflare AI Gateway credits."
+msgstr "Connect your Cloudflare account to keep building now — usage beyond the free tier is billed to your own Cloudflare AI Gateway credits."
+
+msgid "Connect your Cloudflare account to keep building once your free allowance runs out. Usage beyond the free tier is billed to your own Cloudflare AI Gateway credits."
+msgstr "Connect your Cloudflare account to keep building once your free allowance runs out. Usage beyond the free tier is billed to your own Cloudflare AI Gateway credits."
+
+msgid "Connect your services"
+msgstr "Connect your services"
+
+msgid "Connected"
+msgstr "Connected"
+
+msgid "Connected {vendorName} account"
+msgstr "Connected {vendorName} account"
+
+msgid "Connected account"
+msgstr "Connected account"
+
+msgid "Connecting..."
+msgstr "Connecting..."
+
+msgid "connection"
+msgstr "connection"
+
+msgid "Connection hiccup — your message may not have been sent. Check the thread, then try again; if it keeps failing, reload the page."
+msgstr "Connection hiccup — your message may not have been sent. Check the thread, then try again; if it keeps failing, reload the page."
+
+msgid "Connection hiccup — your message may not have been sent. Try again; if it keeps failing, reload the page."
+msgstr "Connection hiccup — your message may not have been sent. Try again; if it keeps failing, reload the page."
+
+msgid "Connection issue - changes will be saved when connection is restored"
+msgstr "Connection issue - changes will be saved when connection is restored"
+
+msgid "Connection name"
+msgstr "Connection name"
+
+msgid "Connections"
+msgstr "Connections"
+
+msgid "Context & Skills"
+msgstr "Context & Skills"
+
+msgid "Context & Skills are coming soon to {siteName}"
+msgstr "Context & Skills are coming soon to {siteName}"
+
+msgid "Context compacted"
+msgstr "Context compacted"
+
+msgid "Continue"
+msgstr "Continue"
+
+#. placeholder {0}: vendorDescription.displayName
+msgid "Continue to {0}"
+msgstr "Continue to {0}"
+
+#. placeholder {0}: vendor.displayName
+msgid "Continue with {0}"
+msgstr "Continue with {0}"
+
+msgid "Copied"
+msgstr "Copied"
+
+msgid "Copy"
+msgstr "Copy"
+
+#. placeholder {0}: sk.note || t`share link`
+msgid "Copy {0}"
+msgstr "Copy {0}"
+
+msgid "Copy failed"
+msgstr "Copy failed"
+
+msgid "Copy link"
+msgstr "Copy link"
+
+msgid "Copy message"
+msgstr "Copy message"
+
+msgid "Copy user ID"
+msgstr "Copy user ID"
+
+msgid "Could not load auto-approval"
+msgstr "Could not load auto-approval"
+
+msgid "Couldn’t check which connections recipients will be asked to verify."
+msgstr "Couldn’t check which connections recipients will be asked to verify."
+
+#. placeholder {0}: format.output.noun
+msgid "Couldn't create a new {0}"
+msgstr "Couldn't create a new {0}"
+
+msgid "Couldn’t load blueprint"
+msgstr "Couldn’t load blueprint"
+
+msgid "Couldn’t load commands. {error}"
+msgstr "Couldn’t load commands. {error}"
+
+msgid "Couldn't load deployment settings."
+msgstr "Couldn't load deployment settings."
+
+msgid "Create"
+msgstr "Create"
+
+msgid "Create a new file in this gadget."
+msgstr "Create a new file in this gadget."
+
+msgid "Create a share link"
+msgstr "Create a share link"
+
+msgid "Create account"
+msgstr "Create account"
+
+msgid "Create blueprint"
+msgstr "Create blueprint"
+
+msgid "Create file"
+msgstr "Create file"
+
+msgid "Create link"
+msgstr "Create link"
+
+msgid "Create New Connection"
+msgstr "Create New Connection"
+
+msgid "Create workspace"
+msgstr "Create workspace"
+
+msgid "Create your account"
+msgstr "Create your account"
+
+msgid "Create your profile"
+msgstr "Create your profile"
+
+msgid "Created"
+msgstr "Created"
+
+#. placeholder {0}: sk.createdBy.name
+#. placeholder {1}: formatRelativeTime(sk.created)
+msgid "Created by {0} · {1}"
+msgstr "Created by {0} · {1}"
+
+msgid "Created by you"
+msgstr "Created by you"
+
+msgid "Creating..."
+msgstr "Creating..."
+
+msgid "Creating…"
+msgstr "Creating…"
+
+msgid "Credentials expired"
+msgstr "Credentials expired"
+
+msgid "Credentials expired; reconnect from the Gatekeepers page"
+msgstr "Credentials expired; reconnect from the Gatekeepers page"
+
+msgid "Curated collections of knowledge your agents read, plus reusable skills they can apply."
+msgstr "Curated collections of knowledge your agents read, plus reusable skills they can apply."
+
+msgid "Current password"
+msgstr "Current password"
+
+msgid "Currently hidden from the menus above and from the agent’s catalog."
+msgstr "Currently hidden from the menus above and from the agent’s catalog."
+
+msgid "Custom"
+msgstr "Custom"
+
+msgid "Delete"
+msgstr "Delete"
+
+#. placeholder {0}: blueprint?.metadata.title
+#. placeholder {0}: bp.title
+msgid "Delete \"{0}\"?"
+msgstr "Delete \"{0}\"?"
+
+#. placeholder {0}: deleteTarget?.title || t`Untitled Workspace`
+#. placeholder {0}: deleteTarget?.title || t`Untitled workspace`
+msgid "Delete \"{0}\"? This cannot be undone."
+msgstr "Delete \"{0}\"? This cannot be undone."
+
+#. placeholder {0}: gk.resourceTitle
+msgid "Delete {0}?"
+msgstr "Delete {0}?"
+
+msgid "Delete blueprint"
+msgstr "Delete blueprint"
+
+msgid "Delete chat"
+msgstr "Delete chat"
+
+msgid "Delete connection"
+msgstr "Delete connection"
+
+msgid "Delete conversation?"
+msgstr "Delete conversation?"
+
+msgid "Delete file?"
+msgstr "Delete file?"
+
+msgid "Delete hook"
+msgstr "Delete hook"
+
+#. placeholder {0}: hook.description.title
+msgid "Delete hook \"{0}\"?"
+msgstr "Delete hook \"{0}\"?"
+
+msgid "Delete provider"
+msgstr "Delete provider"
+
+msgid "Delete workspace"
+msgstr "Delete workspace"
+
+msgid "Delete workspace?"
+msgstr "Delete workspace?"
+
+msgid "Deleted"
+msgstr "Deleted"
+
+msgid "Deleting..."
+msgstr "Deleting..."
+
+msgid "Denied"
+msgstr "Denied"
+
+msgid "Deny"
+msgstr "Deny"
+
+msgid "Deployment-wide settings. Changes apply to all users on their next connection."
+msgstr "Deployment-wide settings. Changes apply to all users on their next connection."
+
+msgid "Describe what people get when they start from this blueprint."
+msgstr "Describe what people get when they start from this blueprint."
+
+msgid "Description (optional)"
+msgstr "Description (optional)"
+
+msgid "Direct invite verification"
+msgstr "Direct invite verification"
+
+#. placeholder {0}: entry.actionKind.label
+msgid "Disable auto-approval for {0}"
+msgstr "Disable auto-approval for {0}"
+
+msgid "Disable hook"
+msgstr "Disable hook"
+
+msgid "Disable this hook."
+msgstr "Disable this hook."
+
+msgid "Disabled"
+msgstr "Disabled"
+
+msgid "Discard"
+msgstr "Discard"
+
+msgid "Discard all pending changes?"
+msgstr "Discard all pending changes?"
+
+msgid "Discard captured logs"
+msgstr "Discard captured logs"
+
+msgid "Discard changes"
+msgstr "Discard changes"
+
+msgid "Discard…"
+msgstr "Discard…"
+
+msgid "Discarding..."
+msgstr "Discarding..."
+
+msgid "Disconnect"
+msgstr "Disconnect"
+
+#. placeholder {0}: vendorDescription.displayName
+msgid "Disconnect {0}? Gadgets using this will lose access."
+msgstr "Disconnect {0}? Gadgets using this will lose access."
+
+msgid "Disconnecting..."
+msgstr "Disconnecting..."
+
+msgid "Discover featured blueprints to use as starting points. Open one to create a workspace from it, or save it to reuse later."
+msgstr "Discover featured blueprints to use as starting points. Open one to create a workspace from it, or save it to reuse later."
+
+msgid "Dismiss"
+msgstr "Dismiss"
+
+msgid "Dismiss added collaborator"
+msgstr "Dismiss added collaborator"
+
+msgid "Dismiss banner"
+msgstr "Dismiss banner"
+
+msgid "Dismiss created link"
+msgstr "Dismiss created link"
+
+msgid "Display name"
+msgstr "Display name"
+
+msgid "Display Name"
+msgstr "Display Name"
+
+msgid "Don't have an account? <0>Create one</0>"
+msgstr "Don't have an account? <0>Create one</0>"
+
+msgid "Download"
+msgstr "Download"
+
+msgid "Download {activeFile}"
+msgstr "Download {activeFile}"
+
+msgid "Download archive"
+msgstr "Download archive"
+
+msgid "Download file"
+msgstr "Download file"
+
+msgid "Downloading..."
+msgstr "Downloading..."
+
+msgid "Draft"
+msgstr "Draft"
+
+msgid "Draft changes in progress"
+msgstr "Draft changes in progress"
+
+msgid "Draft changes pending"
+msgstr "Draft changes pending"
+
+msgid "Drop files to attach"
+msgstr "Drop files to attach"
+
+msgid "e.g. 🎉 New: blueprints now support imports — [learn more](https://example.com)."
+msgstr "e.g. 🎉 New: blueprints now support imports — [learn more](https://example.com)."
+
+msgid "e.g. ACME Corp is a logistics company that helps small businesses ship\n"
+"internationally. Our team builds internal tools and dashboards to track shipments."
+msgstr "e.g. ACME Corp is a logistics company that helps small businesses ship\n"
+"internationally. Our team builds internal tools and dashboards to track shipments."
+
+msgid "e.g. Email Responder"
+msgstr "e.g. Email Responder"
+
+msgid "e.g. Heads up: scheduled maintenance Saturday — see [status](https://status.example.com)."
+msgstr "e.g. Heads up: scheduled maintenance Saturday — see [status](https://status.example.com)."
+
+msgid "e.g. prefer for customer-facing decks"
+msgstr "e.g. prefer for customer-facing decks"
+
+#. placeholder {0}: example!.modelId
+#. placeholder {0}: example!.name
+msgid "e.g., {0}"
+msgstr "e.g., {0}"
+
+msgid "e.g., 0123456789abcdef0123456789abcdef"
+msgstr "e.g., 0123456789abcdef0123456789abcdef"
+
+msgid "Each Gadget only sees the resources you connect. If the workspace is shared, Gatekeeper verifies other users have the required permissions before they can access those resources."
+msgstr "Each Gadget only sees the resources you connect. If the workspace is shared, Gatekeeper verifies other users have the required permissions before they can access those resources."
+
+msgid "Each workspace is an isolated environment with its own conversations, gatekeepers, and outputs."
+msgstr "Each workspace is an isolated environment with its own conversations, gatekeepers, and outputs."
+
+msgid "Edit blueprint"
+msgstr "Edit blueprint"
+
+msgid "Edit blueprint settings"
+msgstr "Edit blueprint settings"
+
+msgid "Edit display name"
+msgstr "Edit display name"
+
+msgid "Edit name used in code"
+msgstr "Edit name used in code"
+
+#. placeholder {0}: resource.title
+msgid "Enable {0}"
+msgstr "Enable {0}"
+
+#. placeholder {0}: entry.actionKind.label
+msgid "Enable auto-approval for {0}"
+msgstr "Enable auto-approval for {0}"
+
+msgid "Enable Email mailboxes"
+msgstr "Enable Email mailboxes"
+
+msgid "Enable hook"
+msgstr "Enable hook"
+
+msgid "Enable the Email receiver account, then choose the mailbox name below."
+msgstr "Enable the Email receiver account, then choose the mailbox name below."
+
+msgid "Enable this hook."
+msgstr "Enable this hook."
+
+msgid "Enabled"
+msgstr "Enabled"
+
+msgid "Enabling..."
+msgstr "Enabling..."
+
+msgid "Enter current password"
+msgstr "Enter current password"
+
+msgid "Enter display name"
+msgstr "Enter display name"
+
+msgid "Enter full screen"
+msgstr "Enter full screen"
+
+msgid "Enter new password"
+msgstr "Enter new password"
+
+msgid "Error"
+msgstr "Error"
+
+msgid "Event"
+msgstr "Event"
+
+msgid "Every resource an agent reads or changes is recorded here."
+msgstr "Every resource an agent reads or changes is recorded here."
+
+msgid "Everything is ready. You can change any connection before creating the Gadget."
+msgstr "Everything is ready. You can change any connection before creating the Gadget."
+
+msgid "Everything your workspaces have produced, in one place."
+msgstr "Everything your workspaces have produced, in one place."
+
+msgid "Example tasks"
+msgstr "Example tasks"
+
+msgid "Existing blueprints"
+msgstr "Existing blueprints"
+
+msgid "Expand outputs"
+msgstr "Expand outputs"
+
+msgid "Expand sidebar"
+msgstr "Expand sidebar"
+
+msgid "Expired — click to re-authenticate"
+msgstr "Expired — click to re-authenticate"
+
+msgid "Expired credentials"
+msgstr "Expired credentials"
+
+msgid "Explore"
+msgstr "Explore"
+
+msgid "Explore blueprints"
+msgstr "Explore blueprints"
+
+msgid "Export to PDF"
+msgstr "Export to PDF"
+
+msgid "Exporting to PDF"
+msgstr "Exporting to PDF"
+
+msgid "External resources this gadget can use."
+msgstr "External resources this gadget can use."
+
+msgid "Extra instructions added to every agent’s system prompt on this deployment. Use this for instance-specific context, conventions, or guardrails."
+msgstr "Extra instructions added to every agent’s system prompt on this deployment. Use this for instance-specific context, conventions, or guardrails."
+
+msgid "Failed"
+msgstr "Failed"
+
+msgid "Failed to approve action"
+msgstr "Failed to approve action"
+
+msgid "Failed to deny action"
+msgstr "Failed to deny action"
+
+msgid "Failed to disable auto-approval"
+msgstr "Failed to disable auto-approval"
+
+msgid "Failed to enable auto-approval"
+msgstr "Failed to enable auto-approval"
+
+msgid "Failed to encode the logo as PNG."
+msgstr "Failed to encode the logo as PNG."
+
+msgid "Failed to load blueprint."
+msgstr "Failed to load blueprint."
+
+msgid "Failed to prepare the logo image."
+msgstr "Failed to prepare the logo image."
+
+msgid "Failed to read the selected image."
+msgstr "Failed to read the selected image."
+
+msgid "Favorite"
+msgstr "Favorite"
+
+msgid "Favorite a workspace to keep it here."
+msgstr "Favorite a workspace to keep it here."
+
+msgid "Favorites"
+msgstr "Favorites"
+
+msgid "Feature blueprint"
+msgstr "Feature blueprint"
+
+msgid "Featured"
+msgstr "Featured"
+
+msgid "Featured blueprints will appear here when they’re published. You can still create blueprints from your own workspaces."
+msgstr "Featured blueprints will appear here when they’re published. You can still create blueprints from your own workspaces."
+
+msgid "Filename"
+msgstr "Filename"
+
+msgid "Files"
+msgstr "Files"
+
+msgid "Filter conversations"
+msgstr "Filter conversations"
+
+msgid "Free daily allowance"
+msgstr "Free daily allowance"
+
+msgid "Full screen"
+msgstr "Full screen"
+
+#. placeholder {0}: formatOf(selectedGadgetSummary?.output).noun
+msgid "Full screen is available in {0} view"
+msgstr "Full screen is available in {0} view"
+
+msgid "Future <0>{actionLabel}</0> actions on <1>{resourceTitle}</1> will be applied automatically, without asking for approval. This action will be applied now too."
+msgstr "Future <0>{actionLabel}</0> actions on <1>{resourceTitle}</1> will be applied automatically, without asking for approval. This action will be applied now too."
+
+msgid "Gadget full screen"
+msgstr "Gadget full screen"
+
+msgid "Gadget UI"
+msgstr "Gadget UI"
+
+msgid "Gatekeeper"
+msgstr "Gatekeeper"
+
+msgid "Gatekeeper app"
+msgstr "Gatekeeper app"
+
+msgid "Gatekeeper keeps Gadget access limited to connected resources"
+msgstr "Gatekeeper keeps Gadget access limited to connected resources"
+
+#. placeholder {0}: vendorDescription.displayName
+msgid "Gatekeeper sits between {0} and your Gadgets."
+msgstr "Gatekeeper sits between {0} and your Gadgets."
+
+msgid "Gatekeepers"
+msgstr "Gatekeepers"
+
+msgid "Gatekeepers will appear here as they become available in your workspace."
+msgstr "Gatekeepers will appear here as they become available in your workspace."
+
+msgid "Get started"
+msgstr "Get started"
+
+#. placeholder {0}: row.targetTitle
+msgid "Give spawned agents access to {0}"
+msgstr "Give spawned agents access to {0}"
+
+msgid "Go to workspace"
+msgstr "Go to workspace"
+
+msgid "Go to workspaces"
+msgstr "Go to workspaces"
+
+#. placeholder {0}: resource.title
+msgid "Grant {0}"
+msgstr "Grant {0}"
+
+msgid "Grant access"
+msgstr "Grant access"
+
+msgid "Grant the access needed to verify this resource"
+msgstr "Grant the access needed to verify this resource"
+
+msgid "Help text for {displayTitle}"
+msgstr "Help text for {displayTitle}"
+
+msgid "Here's a taste of what you can do with {siteName}"
+msgstr "Here's a taste of what you can do with {siteName}"
+
+msgid "Hide password"
+msgstr "Hide password"
+
+msgid "Hide thinking"
+msgstr "Hide thinking"
+
+msgid "Hint"
+msgstr "Hint"
+
+msgid "Home"
+msgstr "Home"
+
+msgid "Hooks"
+msgstr "Hooks"
+
+msgid "Hooks enabled"
+msgstr "Hooks enabled"
+
+msgid "How it’s presented"
+msgstr "How it’s presented"
+
+msgid "How should we call you?"
+msgstr "How should we call you?"
+
+msgid "How the agent picks it"
+msgstr "How the agent picks it"
+
+msgid "How this connection appears in blueprints."
+msgstr "How this connection appears in blueprints."
+
+msgid "Human-readable name shown in the UI"
+msgstr "Human-readable name shown in the UI"
+
+msgid "Icon"
+msgstr "Icon"
+
+#. placeholder {0}: owner.name
+msgid "In a workspace shared by {0}"
+msgstr "In a workspace shared by {0}"
+
+msgid "In a workspace you created"
+msgstr "In a workspace you created"
+
+msgid "In the composer’s + menu, the command palette, and on an empty Outputs page, in this order."
+msgstr "In the composer’s + menu, the command palette, and on an empty Outputs page, in this order."
+
+msgid "Information"
+msgstr "Information"
+
+msgid "Invalid image dimensions."
+msgstr "Invalid image dimensions."
+
+msgid "Invite"
+msgstr "Invite"
+
+msgid "Invite people or share a link."
+msgstr "Invite people or share a link."
+
+msgid "Inviting…"
+msgstr "Inviting…"
+
+msgid "It has observed sensitive data that can only be accessed by you, the owner."
+msgstr "It has observed sensitive data that can only be accessed by you, the owner."
+
+msgid "It ships with the deployment, so it stays in this list either way."
+msgstr "It ships with the deployment, so it stays in this list either way."
+
+msgid "Just a few things before you start building"
+msgstr "Just a few things before you start building"
+
+msgid "Keep building with the agent in chat and files will appear here as it works, or create one yourself."
+msgstr "Keep building with the agent in chat and files will appear here as it works, or create one yourself."
+
+msgid "Keep this draft and make it the gadget's current version."
+msgstr "Keep this draft and make it the gadget's current version."
+
+msgid "Keeps each workspace limited to the resources you connect and ensures every user has the required permissions before accessing them."
+msgstr "Keeps each workspace limited to the resources you connect and ensures every user has the required permissions before accessing them."
+
+msgid "Kept in full from here"
+msgstr "Kept in full from here"
+
+msgid "Last active"
+msgstr "Last active"
+
+msgid "Last publish failed"
+msgstr "Last publish failed"
+
+msgid "Learn more about <0>AI Gateway unified billing</0>."
+msgstr "Learn more about <0>AI Gateway unified billing</0>."
+
+msgid "Leave a field empty to use the name the blueprint declares. A bundled blueprint can change its declared names when this deployment updates; a value you type here stays as you set it. Applies to outputs made from now on — existing ones keep the name they were made with."
+msgstr "Leave a field empty to use the name the blueprint declares. A bundled blueprint can change its declared names when this deployment updates; a value you type here stays as you set it. Applies to outputs made from now on — existing ones keep the name they were made with."
+
+msgid "Leave a field empty to use the name the blueprint declares. Applies to outputs made from now on — existing ones keep the name they were made with."
+msgstr "Leave a field empty to use the name the blueprint declares. Applies to outputs made from now on — existing ones keep the name they were made with."
+
+msgid "Let's build"
+msgstr "Let's build"
+
+msgid "Let's set you up"
+msgstr "Let's set you up"
+
+msgid "Link copied"
+msgstr "Link copied"
+
+msgid "Link copied to your clipboard"
+msgstr "Link copied to your clipboard"
+
+msgid "Link ready"
+msgstr "Link ready"
+
+msgid "Link your accounts so your gadgets can access them. You can always add more later."
+msgstr "Link your accounts so your gadgets can access them. You can always add more later."
+
+msgid "Loading accounts…"
+msgstr "Loading accounts…"
+
+msgid "Loading activity…"
+msgstr "Loading activity…"
+
+msgid "Loading admin settings..."
+msgstr "Loading admin settings..."
+
+msgid "Loading auto-approval…"
+msgstr "Loading auto-approval…"
+
+msgid "Loading blueprint..."
+msgstr "Loading blueprint..."
+
+msgid "Loading blueprints..."
+msgstr "Loading blueprints..."
+
+msgid "Loading code files..."
+msgstr "Loading code files..."
+
+msgid "Loading commands…"
+msgstr "Loading commands…"
+
+msgid "Loading configurator..."
+msgstr "Loading configurator..."
+
+msgid "Loading connections..."
+msgstr "Loading connections..."
+
+msgid "Loading connections…"
+msgstr "Loading connections…"
+
+msgid "Loading conversation…"
+msgstr "Loading conversation…"
+
+msgid "Loading diff..."
+msgstr "Loading diff..."
+
+msgid "Loading earlier messages…"
+msgstr "Loading earlier messages…"
+
+msgid "Loading gatekeepers..."
+msgstr "Loading gatekeepers..."
+
+msgid "Loading image…"
+msgstr "Loading image…"
+
+msgid "Loading profile…"
+msgstr "Loading profile…"
+
+msgid "Loading usage…"
+msgstr "Loading usage…"
+
+msgid "Loading workspace…"
+msgstr "Loading workspace…"
+
+msgid "Loading..."
+msgstr "Loading..."
+
+msgid "Loading…"
+msgstr "Loading…"
+
+msgid "Log in to add blueprint to library"
+msgstr "Log in to add blueprint to library"
+
+msgid "Log in to add to library"
+msgstr "Log in to add to library"
+
+msgid "Logo"
+msgstr "Logo"
+
+msgid "Logo is too complex to fit within the upload limit."
+msgstr "Logo is too complex to fit within the upload limit."
+
+#. placeholder {0}: response.status
+msgid "Logo request failed with status {0}"
+msgstr "Logo request failed with status {0}"
+
+msgid "Logo source dimensions are too large."
+msgstr "Logo source dimensions are too large."
+
+msgid "Logo source image is too large (max 5 MB)."
+msgstr "Logo source image is too large (max 5 MB)."
+
+msgid "Manage your account details, avatar, and security."
+msgstr "Manage your account details, avatar, and security."
+
+msgid "Maybe later"
+msgstr "Maybe later"
+
+msgid "Messages are limited to 5 attachments"
+msgstr "Messages are limited to 5 attachments"
+
+msgid "Model"
+msgstr "Model"
+
+msgid "Model ID"
+msgstr "Model ID"
+
+msgid "Modified"
+msgstr "Modified"
+
+msgid "More blueprint actions"
+msgstr "More blueprint actions"
+
+msgid "Move down"
+msgstr "Move down"
+
+msgid "Move up"
+msgstr "Move up"
+
+msgid "Must be at least 8 characters"
+msgstr "Must be at least 8 characters"
+
+msgid "Name"
+msgstr "Name"
+
+msgid "Name each connection and add guidance for people using this blueprint."
+msgstr "Name each connection and add guidance for people using this blueprint."
+
+msgid "Name for {bindingName}"
+msgstr "Name for {bindingName}"
+
+msgid "Name this agent capability for this connection."
+msgstr "Name this agent capability for this connection."
+
+msgid "Name this link (optional)…"
+msgstr "Name this link (optional)…"
+
+msgid "Name this link…"
+msgstr "Name this link…"
+
+msgid "Needs a name"
+msgstr "Needs a name"
+
+msgid "Needs review"
+msgstr "Needs review"
+
+#. placeholder {0}: format.output.noun
+msgid "New {0}"
+msgstr "New {0}"
+
+#. placeholder {0}: formatOf(gadget.output).noun.toLowerCase()
+msgid "New {0} · Click to preview"
+msgstr "New {0} · Click to preview"
+
+msgid "New account registration is currently disabled on this deployment."
+msgstr "New account registration is currently disabled on this deployment."
+
+msgid "New file"
+msgstr "New file"
+
+msgid "New password"
+msgstr "New password"
+
+msgid "Next"
+msgstr "Next"
+
+msgid "No accounts available on this connection."
+msgstr "No accounts available on this connection."
+
+msgid "No activity yet"
+msgstr "No activity yet"
+
+msgid "No agent"
+msgstr "No agent"
+
+msgid "No AI models are available yet. Add a model from AI Providers first."
+msgstr "No AI models are available yet. Add a model from AI Providers first."
+
+msgid "No AI providers yet"
+msgstr "No AI providers yet"
+
+msgid "No blueprints found"
+msgstr "No blueprints found"
+
+msgid "No blueprints match"
+msgstr "No blueprints match"
+
+msgid "No blueprints yet"
+msgstr "No blueprints yet"
+
+msgid "No blueprints yet."
+msgstr "No blueprints yet."
+
+msgid "No commands are available."
+msgstr "No commands are available."
+
+msgid "No commands match your search."
+msgstr "No commands match your search."
+
+msgid "No configurable gatekeepers are installed on this deployment."
+msgstr "No configurable gatekeepers are installed on this deployment."
+
+msgid "No connected resources"
+msgstr "No connected resources"
+
+msgid "No connection types available."
+msgstr "No connection types available."
+
+msgid "No connections required"
+msgstr "No connections required"
+
+msgid "No conversations started by agents yet"
+msgstr "No conversations started by agents yet"
+
+msgid "No conversations started by people yet"
+msgstr "No conversations started by people yet"
+
+msgid "No conversations yet"
+msgstr "No conversations yet"
+
+msgid "No declared format. You’ll name it."
+msgstr "No declared format. You’ll name it."
+
+msgid "No description"
+msgstr "No description"
+
+msgid "No featured blueprints yet"
+msgstr "No featured blueprints yet"
+
+msgid "No files yet"
+msgstr "No files yet"
+
+msgid "No gadget UI yet"
+msgstr "No gadget UI yet"
+
+msgid "No gadgets yet"
+msgstr "No gadgets yet"
+
+msgid "No gatekeepers match"
+msgstr "No gatekeepers match"
+
+msgid "No gatekeepers yet"
+msgstr "No gatekeepers yet"
+
+msgid "No matches."
+msgstr "No matches."
+
+msgid "No matching connection types."
+msgstr "No matching connection types."
+
+msgid "No matching events"
+msgstr "No matching events"
+
+msgid "No matching resources."
+msgstr "No matching resources."
+
+msgid "No models configured yet"
+msgstr "No models configured yet"
+
+msgid "No outputs match"
+msgstr "No outputs match"
+
+msgid "No outputs yet"
+msgstr "No outputs yet"
+
+msgid "No providers found"
+msgstr "No providers found"
+
+msgid "No results."
+msgstr "No results."
+
+msgid "No services available"
+msgstr "No services available"
+
+msgid "No services available to connect."
+msgstr "No services available to connect."
+
+msgid "No standard formats yet"
+msgstr "No standard formats yet"
+
+msgid "No workspaces found"
+msgstr "No workspaces found"
+
+msgid "No workspaces yet."
+msgstr "No workspaces yet."
+
+msgid "No workspaces yet. Create your first one above!"
+msgstr "No workspaces yet. Create your first one above!"
+
+msgid "Not connected"
+msgstr "Not connected"
+
+msgid "Nothing after it was kept."
+msgstr "Nothing after it was kept."
+
+msgid "Nothing can run automatically"
+msgstr "Nothing can run automatically"
+
+msgid "Nothing is available to offer spawned agents here. Create the agent from a gadget's Connections tab to give it access to that gadget and its resources."
+msgstr "Nothing is available to offer spawned agents here. Create the agent from a gadget's Connections tab to give it access to that gadget and its resources."
+
+msgid "Nothing is waiting on you."
+msgstr "Nothing is waiting on you."
+
+msgid "Nothing to review"
+msgstr "Nothing to review"
+
+msgid "Nothing yet. People will only see “New workspace”."
+msgstr "Nothing yet. People will only see “New workspace”."
+
+msgid "Off"
+msgstr "Off"
+
+msgid "Off for everyone"
+msgstr "Off for everyone"
+
+msgid "Offer as a standard format"
+msgstr "Offer as a standard format"
+
+msgid "Oldest first"
+msgstr "Oldest first"
+
+msgid "On for everyone automatically"
+msgstr "On for everyone automatically"
+
+msgid "On Outputs"
+msgstr "On Outputs"
+
+msgid "Open"
+msgstr "Open"
+
+#. placeholder {0}: blueprint.metadata.title
+#. placeholder {0}: metadata.title
+msgid "Open blueprint {0}"
+msgstr "Open blueprint {0}"
+
+msgid "Open chat options"
+msgstr "Open chat options"
+
+#. placeholder {0}: blueprint.metadata.title
+msgid "Open featured blueprint {0}"
+msgstr "Open featured blueprint {0}"
+
+msgid "Open larger screenshot of {title}"
+msgstr "Open larger screenshot of {title}"
+
+msgid "Open menu"
+msgstr "Open menu"
+
+msgid "Open profile menu"
+msgstr "Open profile menu"
+
+msgid "Open resource"
+msgstr "Open resource"
+
+msgid "Open workspace"
+msgstr "Open workspace"
+
+msgid "Opening..."
+msgstr "Opening..."
+
+msgid "Opening…"
+msgstr "Opening…"
+
+msgid "Optional"
+msgstr "Optional"
+
+msgid "Optional · you can manage connections any time"
+msgstr "Optional · you can manage connections any time"
+
+msgid "Optional for local Ollama access"
+msgstr "Optional for local Ollama access"
+
+msgid "Optional image shown on Explore and the blueprint detail page."
+msgstr "Optional image shown on Explore and the blueprint detail page."
+
+msgid "Output"
+msgstr "Output"
+
+msgid "Output actions"
+msgstr "Output actions"
+
+msgid "Outputs"
+msgstr "Outputs"
+
+msgid "Override the default API endpoint (useful for proxies like Cloudflare AI Gateway)"
+msgstr "Override the default API endpoint (useful for proxies like Cloudflare AI Gateway)"
+
+msgid "Owner"
+msgstr "Owner"
+
+msgid "Password"
+msgstr "Password"
+
+msgid "Pending changes"
+msgstr "Pending changes"
+
+msgid "People who started a gadget from this blueprint won't be affected, but the link will stop working."
+msgstr "People who started a gadget from this blueprint won't be affected, but the link will stop working."
+
+#. placeholder {0}: roleLabel(role)
+msgid "People with <0>{0}</0> access must prove their own account can reach:"
+msgstr "People with <0>{0}</0> access must prove their own account can reach:"
+
+msgid "People with access"
+msgstr "People with access"
+
+msgid "Pick the AI model you'd like to use by default"
+msgstr "Pick the AI model you'd like to use by default"
+
+#. placeholder {0}: resourceTitle ?? t`connection`
+msgid "Pick which {vendorName} identity this {0} should use."
+msgstr "Pick which {vendorName} identity this {0} should use."
+
+msgid "Plural"
+msgstr "Plural"
+
+msgid "Press <0>Esc</0> to exit full screen"
+msgstr "Press <0>Esc</0> to exit full screen"
+
+#. placeholder {0}: attachment.name ?? t`attached file`
+msgid "Preview {0}"
+msgstr "Preview {0}"
+
+msgid "Preview {title}"
+msgstr "Preview {title}"
+
+msgid "Primary"
+msgstr "Primary"
+
+msgid "Processing..."
+msgstr "Processing..."
+
+#. placeholder {0}: candidate.declared.plural
+msgid "Produces {0}"
+msgstr "Produces {0}"
+
+msgid "Profile"
+msgstr "Profile"
+
+msgid "Promote a blueprint"
+msgstr "Promote a blueprint"
+
+msgid "Promote a blueprint to offer it by name wherever people start something, and to have the agent prefer it over building the same thing from scratch."
+msgstr "Promote a blueprint to offer it by name wherever people start something, and to have the agent prefer it over building the same thing from scratch."
+
+msgid "Provider actions"
+msgstr "Provider actions"
+
+msgid "Providers"
+msgstr "Providers"
+
+msgid "Publish a workspace as a blueprint, or add one from Explore."
+msgstr "Publish a workspace as a blueprint, or add one from Explore."
+
+msgid "Publish this gadget as a reusable template."
+msgstr "Publish this gadget as a reusable template."
+
+msgid "Quick model. Click to clear"
+msgstr "Quick model. Click to clear"
+
+msgid "Re-authenticating…"
+msgstr "Re-authenticating…"
+
+msgid "Ready"
+msgstr "Ready"
+
+msgid "Recent workspaces"
+msgstr "Recent workspaces"
+
+msgid "Recipient verification"
+msgstr "Recipient verification"
+
+msgid "Recipients must prove their own account can reach:"
+msgstr "Recipients must prove their own account can reach:"
+
+msgid "Reconnect"
+msgstr "Reconnect"
+
+msgid "Reconnecting…"
+msgstr "Reconnecting…"
+
+#. placeholder {0}: gk.name
+msgid "Referenced in code as: <0>{0}</0>"
+msgstr "Referenced in code as: <0>{0}</0>"
+
+msgid "Referenced in code as: <0>{bindingName}</0>"
+msgstr "Referenced in code as: <0>{bindingName}</0>"
+
+msgid "Reload"
+msgstr "Reload"
+
+msgid "Reload the Workshop to start again."
+msgstr "Reload the Workshop to start again."
+
+msgid "Remove"
+msgstr "Remove"
+
+#. placeholder {0}: deleteTarget?.title || t`Untitled Workspace`
+#. placeholder {0}: deleteTarget?.title || t`Untitled workspace`
+msgid "Remove \"{0}\" from your list? You can still access it via its link."
+msgstr "Remove \"{0}\" from your list? You can still access it via its link."
+
+#. placeholder {0}: removeOutput?.title || t`Untitled`
+msgid "Remove “{0}”?"
+msgstr "Remove “{0}”?"
+
+#. placeholder {0}: profile.name
+msgid "Remove {0}"
+msgstr "Remove {0}"
+
+msgid "Remove attachment"
+msgstr "Remove attachment"
+
+msgid "Remove from library"
+msgstr "Remove from library"
+
+msgid "Remove workspace"
+msgstr "Remove workspace"
+
+msgid "Removing..."
+msgstr "Removing..."
+
+msgid "Removing…"
+msgstr "Removing…"
+
+msgid "Rename"
+msgstr "Rename"
+
+#. placeholder {0}: chat.title
+#. placeholder {0}: gadget.title
+#. placeholder {0}: sk.note || t`share link`
+msgid "Rename {0}"
+msgstr "Rename {0}"
+
+msgid "Rename {filename}"
+msgstr "Rename {filename}"
+
+msgid "Rename chat"
+msgstr "Rename chat"
+
+msgid "Rename gadget"
+msgstr "Rename gadget"
+
+msgid "Rename output"
+msgstr "Rename output"
+
+msgid "Rename workspace"
+msgstr "Rename workspace"
+
+#. placeholder {0}: output?.workspaceTitle
+msgid "Renames the output for everyone with access to “{0}”."
+msgstr "Renames the output for everyone with access to “{0}”."
+
+msgid "Replace all placeholders in the URL before selecting an account"
+msgstr "Replace all placeholders in the URL before selecting an account"
+
+msgid "Requests that need your approval show up here and in the workspace header."
+msgstr "Requests that need your approval show up here and in the workspace header."
+
+msgid "Required connections"
+msgstr "Required connections"
+
+msgid "Reset"
+msgstr "Reset"
+
+msgid "Resets at 00:00 UTC, in <0/>."
+msgstr "Resets at 00:00 UTC, in <0/>."
+
+msgid "Resource configurator"
+msgstr "Resource configurator"
+
+msgid "Resources"
+msgstr "Resources"
+
+msgid "Resources to enable"
+msgstr "Resources to enable"
+
+msgid "Restore default"
+msgstr "Restore default"
+
+msgid "Retry"
+msgstr "Retry"
+
+msgid "Retry publish"
+msgstr "Retry publish"
+
+msgid "Retry the last action."
+msgstr "Retry the last action."
+
+msgid "Return to the last accepted version. Any gadgets created by these changes will be permanently deleted. Pending changes can't be restored."
+msgstr "Return to the last accepted version. Any gadgets created by these changes will be permanently deleted. Pending changes can't be restored."
+
+#. placeholder {0}: ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+msgid "Returned to the gadget state before the prompt sent at {0}."
+msgstr "Returned to the gadget state before the prompt sent at {0}."
+
+msgid "Returned to the gadget state before the prompt sent earlier."
+msgstr "Returned to the gadget state before the prompt sent earlier."
+
+msgid "Reusable starting points you've published or saved. Spin up a workspace from any of them."
+msgstr "Reusable starting points you've published or saved. Spin up a workspace from any of them."
+
+msgid "Revoke"
+msgstr "Revoke"
+
+#. placeholder {0}: sk.note || t`share link`
+msgid "Revoke {0}"
+msgstr "Revoke {0}"
+
+msgid "Save"
+msgstr "Save"
+
+msgid "Save chat title"
+msgstr "Save chat title"
+
+msgid "Save connection"
+msgstr "Save connection"
+
+msgid "Save display name"
+msgstr "Save display name"
+
+msgid "Save draft"
+msgstr "Save draft"
+
+msgid "Save gadget name"
+msgstr "Save gadget name"
+
+msgid "Save these edits as a draft version. They won't affect the gadget until you accept changes."
+msgstr "Save these edits as a draft version. They won't affect the gadget until you accept changes."
+
+msgid "Save workspace title"
+msgstr "Save workspace title"
+
+msgid "Saving..."
+msgstr "Saving..."
+
+msgid "Saving…"
+msgstr "Saving…"
+
+msgid "Screenshot"
+msgstr "Screenshot"
+
+msgid "Screenshot of {title}"
+msgstr "Screenshot of {title}"
+
+msgid "Screenshot will be removed when you save."
+msgstr "Screenshot will be removed when you save."
+
+msgid "Search"
+msgstr "Search"
+
+msgid "Search (⌘K)"
+msgstr "Search (⌘K)"
+
+msgid "Search blueprints…"
+msgstr "Search blueprints…"
+
+msgid "Search gatekeepers…"
+msgstr "Search gatekeepers…"
+
+msgid "Search outputs…"
+msgstr "Search outputs…"
+
+msgid "Search providers…"
+msgstr "Search providers…"
+
+msgid "Search services, apps, data sources..."
+msgstr "Search services, apps, data sources..."
+
+msgid "Search workspaces and actions…"
+msgstr "Search workspaces and actions…"
+
+msgid "Search workspaces…"
+msgstr "Search workspaces…"
+
+msgid "Security"
+msgstr "Security"
+
+msgid "Select a file to start editing"
+msgstr "Select a file to start editing"
+
+msgid "Select a file to view changes"
+msgstr "Select a file to view changes"
+
+msgid "Select a model"
+msgstr "Select a model"
+
+msgid "Select an AI model"
+msgstr "Select an AI model"
+
+msgid "Select at least one resource to continue."
+msgstr "Select at least one resource to continue."
+
+msgid "Select model"
+msgstr "Select model"
+
+msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {error} other {errors}} to chat"
+msgstr "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {error} other {errors}} to chat"
+
+msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {log} other {logs}} to chat"
+msgstr "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {log} other {logs}} to chat"
+
+msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {warning} other {warnings}} to chat"
+msgstr "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {warning} other {warnings}} to chat"
+
+msgid "Send message"
+msgstr "Send message"
+
+msgid "Send them this link to open it"
+msgstr "Send them this link to open it"
+
+msgid "Set as quick model"
+msgstr "Set as quick model"
+
+msgid "Set up"
+msgstr "Set up"
+
+msgid "Setting up..."
+msgstr "Setting up..."
+
+msgid "Share"
+msgstr "Share"
+
+#. placeholder {0}: metadata.title
+msgid "Share “{0}”"
+msgstr "Share “{0}”"
+
+msgid "share link"
+msgstr "share link"
+
+msgid "Share link name"
+msgstr "Share link name"
+
+msgid "Share link name (optional)"
+msgstr "Share link name (optional)"
+
+msgid "Share links"
+msgstr "Share links"
+
+msgid "Share workspace"
+msgstr "Share workspace"
+
+msgid "Share-link verification"
+msgstr "Share-link verification"
+
+#. placeholder {0}: gadget.owner.name
+#. placeholder {0}: output.owner.name
+#. placeholder {0}: owner.name
+msgid "Shared by {0}"
+msgstr "Shared by {0}"
+
+msgid "Show all"
+msgstr "Show all"
+
+#. placeholder {0}: recent.length
+msgid "Show all ({0})"
+msgstr "Show all ({0})"
+
+msgid "Show all activity"
+msgstr "Show all activity"
+
+msgid "Show password"
+msgstr "Show password"
+
+msgid "Show thinking"
+msgstr "Show thinking"
+
+msgid "Shown centered in the top navigation bar. Markdown is supported, so you can include links. Keep it short — it renders on a single line. Leave empty to show nothing. Applies on each user’s next connection."
+msgstr "Shown centered in the top navigation bar. Markdown is supported, so you can include links. Keep it short — it renders on a single line. Leave empty to show nothing. Applies on each user’s next connection."
+
+msgid "Shown in the app chrome, sign-in screens, and browser tab. Images are scaled without cropping and converted to a static PNG. Square images work best. Applies on each user’s next connection."
+msgstr "Shown in the app chrome, sign-in screens, and browser tab. Images are scaled without cropping and converted to a static PNG. Square images work best. Applies on each user’s next connection."
+
+msgid "Shown next to the logo in the top bar. Leave empty to use the default (“{DEFAULT_SITE_NAME}”). Applies on each user’s next connection."
+msgstr "Shown next to the logo in the top bar. Leave empty to use the default (“{DEFAULT_SITE_NAME}”). Applies on each user’s next connection."
+
+msgid "Sign in"
+msgstr "Sign in"
+
+msgid "Sign in to your account"
+msgstr "Sign in to your account"
+
+msgid "Sign out"
+msgstr "Sign out"
+
+msgid "Signups are closed"
+msgstr "Signups are closed"
+
+msgid "Site name"
+msgstr "Site name"
+
+#. placeholder {0}: selectedSlashCommand.choice.name
+#. placeholder {1}: selectedSlashCommand.choice.providerLabel
+msgid "Slash command /{0} from {1} is ready to send"
+msgstr "Slash command /{0} from {1} is ready to send"
+
+msgid "Slash commands"
+msgstr "Slash commands"
+
+msgid "Some auto-approval options could not be loaded."
+msgstr "Some auto-approval options could not be loaded."
+
+msgid "Something went wrong"
+msgstr "Something went wrong"
+
+msgid "Something went wrong loading admin settings."
+msgstr "Something went wrong loading admin settings."
+
+msgid "Something went wrong loading your blueprints."
+msgstr "Something went wrong loading your blueprints."
+
+msgid "Something went wrong loading your gatekeepers."
+msgstr "Something went wrong loading your gatekeepers."
+
+msgid "Something went wrong loading your outputs."
+msgstr "Something went wrong loading your outputs."
+
+msgid "Something went wrong loading your providers."
+msgstr "Something went wrong loading your providers."
+
+msgid "Something went wrong loading your workspaces."
+msgstr "Something went wrong loading your workspaces."
+
+msgid "Split diff"
+msgstr "Split diff"
+
+msgid "Split diff needs more space"
+msgstr "Split diff needs more space"
+
+msgid "Stacked diff"
+msgstr "Stacked diff"
+
+msgid "Standard formats"
+msgstr "Standard formats"
+
+msgid "Standard formats are listed first in the agent’s catalog, as the entry below — the blueprint’s own description does most of the work. Add a hint only if the agent needs to know when to prefer this format over another one."
+msgstr "Standard formats are listed first in the agent’s catalog, as the entry below — the blueprint’s own description does most of the work. Add a hint only if the agent needs to know when to prefer this format over another one."
+
+msgid "Start a new conversation…"
+msgstr "Start a new conversation…"
+
+msgid "Start from a featured blueprint."
+msgstr "Start from a featured blueprint."
+
+msgid "Start with"
+msgstr "Start with"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Stop agent"
+msgstr "Stop agent"
+
+msgid "Stop offering"
+msgstr "Stop offering"
+
+msgid "Suggested: {suggestion}"
+msgstr "Suggested: {suggestion}"
+
+msgid "SVG logos cannot contain embedded images or external resources."
+msgstr "SVG logos cannot contain embedded images or external resources."
+
+msgid "Switch to this tab to load the Gadget UI"
+msgstr "Switch to this tab to load the Gadget UI"
+
+#. placeholder {0}: entry.author.name
+msgid "Switched to {0}"
+msgstr "Switched to {0}"
+
+#. placeholder {0}: binding.gatekeeperName
+msgid "The \"{0}\" gatekeeper is not available on this workshop, so this connection can't be configured."
+msgstr "The \"{0}\" gatekeeper is not available on this workshop, so this connection can't be configured."
+
+msgid "The agent"
+msgstr "The agent"
+
+msgid "The agent reads this in place of everything earlier in the chat."
+msgstr "The agent reads this in place of everything earlier in the chat."
+
+#. placeholder {0}: gk.name
+msgid "The binding <0>{0}</0> will be removed from this gadget."
+msgstr "The binding <0>{0}</0> will be removed from this gadget."
+
+msgid "The blueprint behind this format was deleted, so nobody is offered it. Remove the entry."
+msgstr "The blueprint behind this format was deleted, so nobody is offered it. Remove the entry."
+
+msgid "The Cloudflare account to bill for Workers AI usage"
+msgstr "The Cloudflare account to bill for Workers AI usage"
+
+msgid "The current rules may be incomplete. Try loading them again."
+msgstr "The current rules may be incomplete. Try loading them again."
+
+msgid "The current screenshot will stay unless you upload a new one."
+msgstr "The current screenshot will stay unless you upload a new one."
+
+#. placeholder {0}: example!.modelId
+msgid "The model identifier as specified by the provider (e.g., '{0}')"
+msgstr "The model identifier as specified by the provider (e.g., '{0}')"
+
+#. placeholder {0}: vendor.description.displayName
+msgid "The required resource type for this binding isn't offered by {0}."
+msgstr "The required resource type for this binding isn't offered by {0}."
+
+msgid "The selected file could not be decoded as an image."
+msgstr "The selected file could not be decoded as an image."
+
+msgid "The selected file is not a supported image."
+msgstr "The selected file is not a supported image."
+
+msgid "Theme"
+msgstr "Theme"
+
+msgid "Thinking"
+msgstr "Thinking"
+
+msgid "This account can be used by Gadgets you connect it to. Shared users must have the required permissions before they can access those connected resources."
+msgstr "This account can be used by Gadgets you connect it to. Shared users must have the required permissions before they can access those connected resources."
+
+msgid "This account has expired — click to re-authenticate"
+msgstr "This account has expired — click to re-authenticate"
+
+msgid "This blueprint can create a Gadget without configuring external resources."
+msgstr "This blueprint can create a Gadget without configuring external resources."
+
+msgid "This blueprint doesn’t declare what it produces. Give it a name to offer it."
+msgstr "This blueprint doesn’t declare what it produces. Give it a name to offer it."
+
+msgid "This blueprint link will stop working, but gadgets already created from it won’t be affected."
+msgstr "This blueprint link will stop working, but gadgets already created from it won’t be affected."
+
+msgid "This blueprint may have been removed or the link may be incorrect."
+msgstr "This blueprint may have been removed or the link may be incorrect."
+
+msgid "This blueprint no longer exists"
+msgstr "This blueprint no longer exists"
+
+msgid "This blueprint was uploaded manually and cannot be recovered."
+msgstr "This blueprint was uploaded manually and cannot be recovered."
+
+msgid "This connection no longer offers this action; the rule still applies."
+msgstr "This connection no longer offers this action; the rule still applies."
+
+msgid "This conversation has pending changes"
+msgstr "This conversation has pending changes"
+
+msgid "This file can’t be previewed here."
+msgstr "This file can’t be previewed here."
+
+msgid "This is how you'll appear in conversations"
+msgstr "This is how you'll appear in conversations"
+
+msgid "This permanently removes the hook. Future events will stop being delivered."
+msgstr "This permanently removes the hook. Future events will stop being delivered."
+
+#. placeholder {0}: removeOutput?.workspaceTitle
+msgid "This permanently removes the output from “{0}”, for everyone with access to that workspace. Other outputs in that workspace stay available. This can’t be undone."
+msgstr "This permanently removes the output from “{0}”, for everyone with access to that workspace. Other outputs in that workspace stay available. This can’t be undone."
+
+#. placeholder {0}: removeOutput?.workspaceTitle
+msgid "This permanently removes the output from “{0}”. Other outputs in that workspace stay available. This can’t be undone."
+msgstr "This permanently removes the output from “{0}”. Other outputs in that workspace stay available. This can’t be undone."
+
+#. placeholder {0}: deleteTarget?.title
+#. placeholder {0}: metadata.title
+msgid "This removes <0>{0}</0>. You can't undo this."
+msgstr "This removes <0>{0}</0>. You can't undo this."
+
+msgid "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
+msgstr "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
+
+msgid "This workspace can’t be shared"
+msgstr "This workspace can’t be shared"
+
+msgid "This workspace has no gadgets yet."
+msgstr "This workspace has no gadgets yet."
+
+msgid "Throw away these draft edits."
+msgstr "Throw away these draft edits."
+
+msgid "Time"
+msgstr "Time"
+
+msgid "Title"
+msgstr "Title"
+
+msgid "To open this workspace, you must choose connected accounts for the services it uses."
+msgstr "To open this workspace, you must choose connected accounts for the services it uses."
+
+msgid "To share something similar, create a blueprint from a gadget in this workspace, then use it to create a new workspace."
+msgstr "To share something similar, create a blueprint from a gadget in this workspace, then use it to create a new workspace."
+
+msgid "Top-bar notice"
+msgstr "Top-bar notice"
+
+msgid "Total cost"
+msgstr "Total cost"
+
+msgid "Try a different filter or search term."
+msgstr "Try a different filter or search term."
+
+msgid "Try a different search term."
+msgstr "Try a different search term."
+
+msgid "Try again"
+msgstr "Try again"
+
+msgid "Turn connectors and resource types on or off for each service. Auto-provisioned gatekeepers (like the Context Library) have three modes — disabled, optional, or enabled for everyone. Changes are soft: they don’t revoke access a gadget already holds."
+msgstr "Turn connectors and resource types on or off for each service. Auto-provisioned gatekeepers (like the Context Library) have three modes — disabled, optional, or enabled for everyone. Changes are soft: they don’t revoke access a gadget already holds."
+
+msgid "Turn this gadget into a reusable starting point."
+msgstr "Turn this gadget into a reusable starting point."
+
+msgid "Turning this off removes it from the menus above and from the agent’s catalog. Outputs already made from it keep working."
+msgstr "Turning this off removes it from the menus above and from the agent’s catalog. Outputs already made from it keep working."
+
+msgid "Type"
+msgstr "Type"
+
+msgid "Unable to load your workspaces. Check your connection and try refreshing."
+msgstr "Unable to load your workspaces. Check your connection and try refreshing."
+
+msgid "Unchanged"
+msgstr "Unchanged"
+
+msgid "Unfavorite"
+msgstr "Unfavorite"
+
+msgid "Unfeature blueprint"
+msgstr "Unfeature blueprint"
+
+msgid "Unknown file type"
+msgstr "Unknown file type"
+
+msgid "Untitled"
+msgstr "Untitled"
+
+msgid "Untitled blueprint"
+msgstr "Untitled blueprint"
+
+msgid "Untitled link"
+msgstr "Untitled link"
+
+msgid "Untitled workspace"
+msgstr "Untitled workspace"
+
+msgid "Untitled Workspace"
+msgstr "Untitled Workspace"
+
+msgid "Update code"
+msgstr "Update code"
+
+msgid "Update the details, screenshot, and connection guidance for this blueprint."
+msgstr "Update the details, screenshot, and connection guidance for this blueprint."
+
+#. placeholder {0}: new Date(meta.lastUpdated).toLocaleDateString()
+msgid "Updated {0}"
+msgstr "Updated {0}"
+
+msgid "Updating..."
+msgstr "Updating..."
+
+msgid "Upload"
+msgstr "Upload"
+
+msgid "Upload .gadget"
+msgstr "Upload .gadget"
+
+msgid "Upload a .gadget archive"
+msgstr "Upload a .gadget archive"
+
+msgid "Upload file"
+msgstr "Upload file"
+
+msgid "Upload logo"
+msgstr "Upload logo"
+
+msgid "Uploading"
+msgstr "Uploading"
+
+msgid "Uploading…"
+msgstr "Uploading…"
+
+msgid "URL of your Ollama server"
+msgstr "URL of your Ollama server"
+
+msgid "Usage & billing"
+msgstr "Usage & billing"
+
+msgid "Use another {vendorName} account"
+msgstr "Use another {vendorName} account"
+
+msgid "Use split diff layout"
+msgstr "Use split diff layout"
+
+msgid "Use stacked diff layout"
+msgstr "Use stacked diff layout"
+
+msgid "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
+msgstr "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
+
+msgid "Used for fast tasks like generating chat titles. Click a model to set it."
+msgstr "Used for fast tasks like generating chat titles. Click a model to set it."
+
+msgid "Used the gadget"
+msgstr "Used the gadget"
+
+#. placeholder {0}: formatFullTimestamp(msg.timestamp)
+msgid "Used the gadget at {0}"
+msgstr "Used the gadget at {0}"
+
+msgid "User ID"
+msgstr "User ID"
+
+msgid "Username"
+msgstr "Username"
+
+msgid "Username or email"
+msgstr "Username or email"
+
+msgid "Users can add it themselves"
+msgstr "Users can add it themselves"
+
+msgid "Using your account"
+msgstr "Using your account"
+
+msgid "Verify again"
+msgstr "Verify again"
+
+msgid "Verify and open"
+msgstr "Verify and open"
+
+msgid "Verify your access"
+msgstr "Verify your access"
+
+msgid "Verify your access again"
+msgstr "Verify your access again"
+
+msgid "View activity"
+msgstr "View activity"
+
+msgid "View all"
+msgstr "View all"
+
+#. placeholder {0}: pending.length
+msgid "View all {0} requests"
+msgstr "View all {0} requests"
+
+msgid "View all activity"
+msgstr "View all activity"
+
+msgid "View history"
+msgstr "View history"
+
+msgid "Wait for pending changes to finish discarding."
+msgstr "Wait for pending changes to finish discarding."
+
+msgid "Wait for the agent to finish before accepting changes."
+msgstr "Wait for the agent to finish before accepting changes."
+
+msgid "Waiting for access…"
+msgstr "Waiting for access…"
+
+msgid "Waiting for agent…"
+msgstr "Waiting for agent…"
+
+msgid "Waiting for connection…"
+msgstr "Waiting for connection…"
+
+msgid "Waiting for server…"
+msgstr "Waiting for server…"
+
+msgid "Waits for your approval"
+msgstr "Waits for your approval"
+
+msgid "We couldn’t confirm your access to everything this workspace has read. Re-authenticate the account below, or choose a different one, then try again."
+msgstr "We couldn’t confirm your access to everything this workspace has read. Re-authenticate the account below, or choose a different one, then try again."
+
+msgid "We couldn't find anything matching your search."
+msgstr "We couldn't find anything matching your search."
+
+msgid "What are we working on?"
+msgstr "What are we working on?"
+
+msgid "What people will see"
+msgstr "What people will see"
+
+msgid "What should people connect here?"
+msgstr "What should people connect here?"
+
+msgid "What spawned agents may use, and the names they see it under."
+msgstr "What spawned agents may use, and the names they see it under."
+
+msgid "What this gatekeeper can do"
+msgstr "What this gatekeeper can do"
+
+msgid "When off, existing users can still log in but no new accounts can be created."
+msgstr "When off, existing users can still log in but no new accounts can be created."
+
+msgid "When the gadget builds one, it will appear here."
+msgstr "When the gadget builds one, it will appear here."
+
+msgid "Working"
+msgstr "Working"
+
+msgid "Workspace actions"
+msgstr "Workspace actions"
+
+#. placeholder {0}: formatRelativeTime(output.lastActive)
+msgid "Workspace active {0}"
+msgstr "Workspace active {0}"
+
+msgid "Workspaces"
+msgstr "Workspaces"
+
+msgid "Yes, disconnect"
+msgstr "Yes, disconnect"
+
+msgid "You can copy it again anytime from Share links"
+msgstr "You can copy it again anytime from Share links"
+
+#. placeholder {0}: createdGadgets.length
+msgid "You created {0, plural, one {gadget} other {gadgets}} {createdTitles}"
+msgstr "You created {0, plural, one {gadget} other {gadgets}} {createdTitles}"
+
+msgid "You don't have access to this page."
+msgstr "You don't have access to this page."
+
+msgid "You haven't created any workspaces yet"
+msgstr "You haven't created any workspaces yet"
+
+msgid "You saved edits"
+msgstr "You saved edits"
+
+msgid "You're all set"
+msgstr "You're all set"
+
+msgid "You've reached your free usage limit"
+msgstr "You've reached your free usage limit"
+
+#. placeholder {0}: usage.dailyLimit
+msgid "You've used all {0, plural, one {# of your free request} other {# of your free requests}} for today."
+msgstr "You've used all {0, plural, one {# of your free request} other {# of your free requests}} for today."
+
+#. placeholder {0}: PROVIDER_LABELS[selection.provider]
+msgid "Your {0} API token for billing"
+msgstr "Your {0} API token for billing"
+
+#. placeholder {0}: usage.balance.toFixed(2)
+msgid "Your Cloudflare account is connected with a balance of <0>${0}</0>, but it's below the minimum needed to continue."
+msgstr "Your Cloudflare account is connected with a balance of <0>${0}</0>, but it's below the minimum needed to continue."
+
+msgid "Your Cloudflare account is connected, but it's below the minimum needed to continue."
+msgstr "Your Cloudflare account is connected, but it's below the minimum needed to continue."
+
+msgid "Your Cloudflare connection has access to multiple accounts. Choose which one's AI Gateway credits should be billed for usage beyond the free tier."
+msgstr "Your Cloudflare connection has access to multiple accounts. Choose which one's AI Gateway credits should be billed for usage beyond the free tier."
+
+msgid "Your Cloudflare connection has access to multiple accounts. Select the one whose credits should be billed for usage beyond the free tier."
+msgstr "Your Cloudflare connection has access to multiple accounts. Select the one whose credits should be billed for usage beyond the free tier."
+
+msgid "Your connection has access to multiple Cloudflare accounts. Select the one whose AI Gateway credits should be used."
+msgstr "Your connection has access to multiple Cloudflare accounts. Select the one whose AI Gateway credits should be used."
+
+msgid "Your edits are still a live draft."
+msgstr "Your edits are still a live draft."
+
+msgid "Your workspaces"
+msgstr "Your workspaces"

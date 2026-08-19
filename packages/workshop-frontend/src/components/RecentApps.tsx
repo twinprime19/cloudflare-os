@@ -3,6 +3,8 @@ import { Clock, ArrowRight } from '@phosphor-icons/react'
 import { useAuthenticatedApi } from '../AuthContext'
 import { useState, useEffect } from 'react'
 import { GadgetMetadataWithTimestamps } from '@gadgets/workshop-shared/api'
+import { Trans } from '@lingui/react/macro'
+import { t } from '@lingui/core/macro'
 
 // A simple deterministic gradient based on the gadget ID
 function getGradient(id: string): string {
@@ -49,11 +51,11 @@ function AppRow({ gadget }: { gadget: GadgetMetadataWithTimestamps }) {
       {/* Info */}
       <div className="flex-1 min-w-0">
         <h3 className="text-sm font-medium text-kumo-default truncate">
-          {gadget.title || 'Untitled Workspace'}
+          {gadget.title || t`Untitled Workspace`}
         </h3>
         {gadget.owner && (
           <p className="text-xs text-kumo-subtle truncate mt-0.5">
-            Shared by {gadget.owner.name}
+            <Trans>Shared by {gadget.owner.name}</Trans>
           </p>
         )}
       </div>
@@ -94,7 +96,7 @@ export default function RecentApps() {
     return (
       <section className="w-full max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-kumo-default">Recent workspaces</h2>
+          <h2 className="text-sm font-medium text-kumo-default"><Trans>Recent workspaces</Trans></h2>
         </div>
         <div className="flex flex-col gap-2">
           {[1, 2].map((i) => (
@@ -109,7 +111,7 @@ export default function RecentApps() {
     return (
       <section className="w-full max-w-2xl mx-auto">
         <div className="text-center py-8 text-sm text-kumo-danger">
-          Unable to load your workspaces. Check your connection and try refreshing.
+          <Trans>Unable to load your workspaces. Check your connection and try refreshing.</Trans>
         </div>
       </section>
     )
@@ -119,7 +121,7 @@ export default function RecentApps() {
     return (
       <section className="w-full max-w-2xl mx-auto">
         <div className="text-center py-8 text-kumo-inactive text-sm">
-          No workspaces yet. Create your first one above!
+          <Trans>No workspaces yet. Create your first one above!</Trans>
         </div>
       </section>
     )
@@ -129,13 +131,13 @@ export default function RecentApps() {
     <section className="w-full max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-medium text-kumo-default">
-          Recent workspaces
+          <Trans>Recent workspaces</Trans>
         </h2>
         <Link
           to="/"
           className="flex items-center gap-1 text-xs text-kumo-subtle hover:text-kumo-brand transition-colors"
         >
-          View all
+          <Trans>View all</Trans>
           <ArrowRight size={12} />
         </Link>
       </div>

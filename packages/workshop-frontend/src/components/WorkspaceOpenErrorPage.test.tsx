@@ -2,7 +2,8 @@
 /* eslint-disable react/react-in-jsx-scope */
 
 import { act, type ReactNode } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { type Root } from 'react-dom/client'
+import { createI18nRoot } from '../testI18nRoot'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { createOpenGadgetError, OPEN_GADGET_ERROR_CODES } from '@gadgets/workshop-shared/api'
 import WorkspaceOpenErrorPage, { classifyWorkspaceOpenFailure } from './WorkspaceOpenErrorPage'
@@ -37,7 +38,7 @@ describe('WorkspaceOpenErrorPage', () => {
     const onGoToWorkspaces = vi.fn<() => void>()
     container = document.createElement('div')
     document.body.append(container)
-    root = createRoot(container)
+    root = createI18nRoot(container)
     await act(async () => root!.render(
       <WorkspaceOpenErrorPage
         kind={kind}

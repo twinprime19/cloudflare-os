@@ -17,6 +17,8 @@ import {
   ListChecks,
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react'
+import { msg } from '@lingui/core/macro'
+import { i18n } from '@gadgets/i18n'
 import type { BlueprintOutput, OutputIcon } from '@gadgets/workshop-shared/api'
 
 /** The glyph for each key in the shared `OUTPUT_ICONS` vocabulary. */
@@ -52,14 +54,28 @@ const WIREFRAME_FOR_ICON: Record<OutputIcon, FormatWireframe> = {
   listChecks: 'list',
 }
 
+// Message descriptors, not resolved strings: `GENERIC_OUTPUT` below is a module-scope constant
+// evaluated once at import time, before the active locale is guaranteed to be set. `msg` only
+// captures the source text and message id at compile time, so building the descriptor here has no
+// dependency on locale. `GENERIC_OUTPUT.noun`/`.plural` resolve it through a getter instead of
+// storing it as a plain string, so every read re-resolves against whichever locale is active at
+// that moment, the same way `BlueprintOutput.noun`/`.plural` do for every other (server-declared)
+// output -- while still satisfying `BlueprintOutput`'s plain `string` fields for every consumer.
+const GENERIC_OUTPUT_NOUN = msg`App`
+const GENERIC_OUTPUT_PLURAL = msg`Apps`
+
 /**
  * How a gadget with no declared format is shown. Also the fallback for an icon this build doesn't
  * know, which is normal: a deployment can serve a format newer than the browser's cached bundle.
  */
 export const GENERIC_OUTPUT: BlueprintOutput = {
   id: 'app',
-  noun: 'App',
-  plural: 'Apps',
+  get noun() {
+    return i18n._(GENERIC_OUTPUT_NOUN)
+  },
+  get plural() {
+    return i18n._(GENERIC_OUTPUT_PLURAL)
+  },
   icon: 'appWindow',
 }
 

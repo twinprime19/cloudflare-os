@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CloudflareUsageInfo, CloudflareAccountOption } from '@gadgets/workshop-shared/api'
 import { Dialog, Button, Loader, useKumoToastManager } from '@cloudflare/kumo'
 import { CloudWarning, Lightning } from '@phosphor-icons/react'
+import { Plural, Trans } from '@lingui/react/macro'
 import { useOptionalAuthenticatedApi } from '../../AuthContext'
 import { buildAddCreditsUrl } from './creditsUrl'
 import ResetCountdown from './ResetCountdown'
@@ -92,7 +93,7 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
       <Dialog className="p-6 sm:w-[560px]" size="base">
         <Dialog.Title className="text-lg font-semibold mb-2 flex items-center gap-2">
           <CloudWarning size={22} weight="bold" className="text-kumo-warning" />
-          You've reached your free usage limit
+          <Trans>You've reached your free usage limit</Trans>
         </Dialog.Title>
 
         {usage === null ? (
@@ -101,44 +102,66 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
           <div className="space-y-4">
             {!connected ? (
               <p className="text-sm text-kumo-subtle">
-                You've used all {usage.dailyLimit} of your free {usage.dailyLimit === 1 ? 'request' : 'requests'} for
-                today. Connect your Cloudflare account to keep building now — usage beyond the free
-                tier is billed to your own Cloudflare AI Gateway credits
+                <Trans>
+                  You've used all{' '}
+                  <Plural
+                    value={usage.dailyLimit}
+                    one="# of your free request"
+                    other="# of your free requests"
+                  />{' '}
+                  for today.
+                </Trans>{' '}
                 {usage.resetAt ? (
-                  <>
-                    {' '}— or wait: your free {usage.dailyLimit === 1 ? 'request resets' : 'requests reset'} at
+                  <Trans>
+                    Connect your Cloudflare account to keep building now — usage beyond the free tier
+                    is billed to your own Cloudflare AI Gateway credits — or wait: your free{' '}
+                    <Plural value={usage.dailyLimit} one="request resets" other="requests reset" /> at
                     00:00 UTC, in <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
-                  </>
-                ) : '.'}
+                  </Trans>
+                ) : (
+                  <Trans>
+                    Connect your Cloudflare account to keep building now — usage beyond the free tier
+                    is billed to your own Cloudflare AI Gateway credits.
+                  </Trans>
+                )}
               </p>
             ) : needsSelection ? (
               <p className="text-sm text-kumo-subtle">
-                Your Cloudflare connection has access to multiple accounts. Choose which one's AI
-                Gateway credits should be billed for usage beyond the free tier.
+                <Trans>Your Cloudflare connection has access to multiple accounts. Choose which one's AI
+                Gateway credits should be billed for usage beyond the free tier.</Trans>
               </p>
             ) : (
               <p className="text-sm text-kumo-subtle">
-                Your Cloudflare account is connected
-                {usage.balance !== null && (
-                  <> with a balance of <strong>${usage.balance.toFixed(2)}</strong></>
-                )}
-                , but it's below the minimum needed to continue. Add credits to your AI Gateway to
-                keep building now
+                {usage.balance !== null ? (
+                  <Trans>
+                    Your Cloudflare account is connected with a balance of{' '}
+                    <strong>${usage.balance.toFixed(2)}</strong>, but it's below the minimum needed to
+                    continue.
+                  </Trans>
+                ) : (
+                  <Trans>
+                    Your Cloudflare account is connected, but it's below the minimum needed to
+                    continue.
+                  </Trans>
+                )}{' '}
                 {usage.resetAt ? (
-                  <>
-                    {' '}or wait — your free {usage.dailyLimit === 1 ? 'request resets' : 'requests reset'} at
+                  <Trans>
+                    Add credits to your AI Gateway to keep building now or wait — your free{' '}
+                    <Plural value={usage.dailyLimit} one="request resets" other="requests reset" /> at
                     00:00 UTC, in <ResetCountdown resetAt={usage.resetAt} onElapsed={refresh} />.
-                  </>
-                ) : '.'}
+                  </Trans>
+                ) : (
+                  <Trans>Add credits to your AI Gateway to keep building now.</Trans>
+                )}
               </p>
             )}
 
             {needsSelection && (
               <div className="flex flex-col gap-2">
                 {accounts === null ? (
-                  <p className="text-sm text-kumo-subtle">Loading accounts…</p>
+                  <p className="text-sm text-kumo-subtle"><Trans>Loading accounts…</Trans></p>
                 ) : accounts.length === 0 ? (
-                  <p className="text-sm text-kumo-subtle">No accounts available on this connection.</p>
+                  <p className="text-sm text-kumo-subtle"><Trans>No accounts available on this connection.</Trans></p>
                 ) : (
                   accounts.map((a) => (
                     <Button
@@ -157,37 +180,39 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
             )}
 
             <p className="text-sm text-kumo-subtle">
-              Learn more about{' '}
-              <a
-                href="https://developers.cloudflare.com/ai-gateway/features/unified-billing/"
-                target="_blank"
-                rel="noreferrer"
-                className="underline"
-              >
-                AI Gateway unified billing
-              </a>
-              .
+              <Trans>
+                Learn more about{' '}
+                <a
+                  href="https://developers.cloudflare.com/ai-gateway/features/unified-billing/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  AI Gateway unified billing
+                </a>
+                .
+              </Trans>
             </p>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               {!connected ? (
                 <>
-                  <Button variant="secondary" onClick={onClose}>Maybe later</Button>
+                  <Button variant="secondary" onClick={onClose}><Trans>Maybe later</Trans></Button>
                   <Button variant="primary" onClick={connect} loading={connecting}>
                     <Lightning size={16} weight="bold" />
-                    Connect Cloudflare
+                    <Trans>Connect Cloudflare</Trans>
                   </Button>
                 </>
               ) : needsSelection ? (
-                <Button variant="secondary" onClick={onClose}>Close</Button>
+                <Button variant="secondary" onClick={onClose}><Trans>Close</Trans></Button>
               ) : (
                 <>
-                  <Button variant="secondary" onClick={onClose}>Close</Button>
+                  <Button variant="secondary" onClick={onClose}><Trans>Close</Trans></Button>
                   <Button
                     variant="primary"
                     onClick={() => window.open(buildAddCreditsUrl(usage.accountId), '_blank')}
                   >
-                    Add credits in Cloudflare
+                    <Trans>Add credits in Cloudflare</Trans>
                   </Button>
                 </>
               )}

@@ -5,6 +5,8 @@ import { Plus, CaretRight, Warning } from '@phosphor-icons/react'
 import { RpcStub } from 'capnweb'
 import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
 import { AccountDescription, SupportedResource, VendorDescription } from '@gadgets/workshop-shared/gatekeeper'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { extractHostname, extractBaseUrl, matchesResource, matchesResourceText, classifyMatch, getPlaceholderRanges } from './resourceMatching'
 import { GatekeeperIcon } from './components/GatekeeperIcon'
 import {
@@ -274,7 +276,7 @@ export default function ResourcePicker({
       ? httpAccounts.some(([_, { description }]) => {
           const corpus = [description.displayName, description.uniqueName]
             .filter(Boolean).join(' ').toLowerCase()
-          return lowerSearch.split(/\s+/).every(t => corpus.includes(t))
+          return lowerSearch.split(/\s+/).every(term => corpus.includes(term))
         })
       : httpAccounts.length > 0
 
@@ -308,7 +310,7 @@ export default function ResourcePicker({
         vendorAccounts = vendorAccounts.filter(account => {
           const corpus = [account.description.displayName, account.description.uniqueName]
             .filter(Boolean).join(' ').toLowerCase()
-          return lowerSearch.split(/\s+/).every(t => corpus.includes(t))
+          return lowerSearch.split(/\s+/).every(term => corpus.includes(term))
         })
       }
       if (accountsOnly && vendorAccounts.length === 0) continue
@@ -455,9 +457,9 @@ export default function ResourcePicker({
     <div style={style}>
       <div className="overflow-y-auto" style={{ maxHeight }}>
         {!ready ? (
-          <p className={PICKER_EMPTY}>Loading connections…</p>
+          <p className={PICKER_EMPTY}><Trans>Loading connections…</Trans></p>
         ) : matchedResources.length === 0 ? (
-          <p className={PICKER_EMPTY}>No matching resources.</p>
+          <p className={PICKER_EMPTY}><Trans>No matching resources.</Trans></p>
         ) : (() => {
           let itemIdx = 0
           return matchedResources.map(({ resource, vendor, classification, suffix, replaceSearch, accountsOnly }, i) => {
@@ -511,7 +513,7 @@ export default function ResourcePicker({
               vendorAccounts = vendorAccounts.filter(account => {
                 const corpus = [account.description.displayName, account.description.uniqueName]
                   .filter(Boolean).join(' ').toLowerCase()
-                return lowerSearch.split(/\s+/).every(t => corpus.includes(t))
+                return lowerSearch.split(/\s+/).every(term => corpus.includes(term))
               })
             }
 
@@ -578,12 +580,12 @@ export default function ResourcePicker({
                       ) : isExpired ? (
                         <span className="flex flex-shrink-0 items-center gap-1">
                           <Warning size={12} className="text-kumo-warning" />
-                          <span className="text-[11.5px] leading-4 text-kumo-warning">Expired — click to re-authenticate</span>
+                          <span className="text-[11.5px] leading-4 text-kumo-warning"><Trans>Expired — click to re-authenticate</Trans></span>
                         </span>
                       ) : needsAccess ? (
                         <span className="flex flex-shrink-0 items-center gap-1">
                           <Warning size={12} className="text-kumo-warning" />
-                          <span className="text-[11.5px] leading-4 text-kumo-warning">Grant access</span>
+                          <span className="text-[11.5px] leading-4 text-kumo-warning"><Trans>Grant access</Trans></span>
                         </span>
                       ) : isActive && !searchHasPlaceholders ? (
                         <TabHint />
@@ -595,7 +597,7 @@ export default function ResourcePicker({
 
                   if (searchHasPlaceholders) {
                     return (
-                      <Tooltip key={account.id} content="Replace all placeholders in the URL before selecting an account" asChild>
+                      <Tooltip key={account.id} content={t`Replace all placeholders in the URL before selecting an account`} asChild>
                         {accountRow}
                       </Tooltip>
                     )
@@ -624,7 +626,7 @@ export default function ResourcePicker({
                       )}
                     </span>
                     <span className="flex-1 text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
-                      {connectingVendor === vendor.id ? 'Opening…' : 'Connect new account'}
+                      {connectingVendor === vendor.id ? t`Opening…` : t`Connect new account`}
                     </span>
                     {isActive && <TabHint />}
                   </div>

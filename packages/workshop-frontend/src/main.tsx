@@ -2,6 +2,7 @@ import { StrictMode, useState, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from '@tanstack/react-router'
 import { RpcStub, newWebSocketRpcSession } from 'capnweb'
+import { AppI18nProvider } from '@gadgets/i18n'
 import { PublicApi, ServerConfig } from '@gadgets/workshop-shared/api'
 import { RpcContext } from './RpcContext'
 import { ServerConfigContext, ServerConfigErrorContext } from './ServerConfigContext'
@@ -188,10 +189,14 @@ const root = createRoot(document.getElementById('root')!, {
 // banner or login page) instead of hanging on a blank screen.
 devAutoLogin(currentStub).catch(() => {})
 
+// The i18n provider sits above the error boundary so the boundary's own fallback copy is inside a
+// localized tree, rather than being the one screen that can never be translated.
 root.render(
   <StrictMode>
-    <FrontendErrorBoundary>
-      <AppWithConnection />
-    </FrontendErrorBoundary>
+    <AppI18nProvider>
+      <FrontendErrorBoundary>
+        <AppWithConnection />
+      </FrontendErrorBoundary>
+    </AppI18nProvider>
   </StrictMode>
 )

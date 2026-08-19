@@ -1,4 +1,5 @@
 import { ResourceConfiguratorFrame } from '@gadgets/workshop-shared/gatekeeper'
+import { Trans } from '@lingui/react/macro'
 import SandboxedResourceConfigurator from './SandboxedResourceConfigurator'
 
 /** Renders the resource configurator slot inside the gatekeeper modal. */
@@ -25,8 +26,8 @@ export default function ResourceConfiguratorHost({
   initialResourceUrl?: string
   resourceUrlPattern?: string
 }) {
-  if (disabled) return <Placeholder>Choose an account before selecting a resource.</Placeholder>
-  if (loading) return <Placeholder>Loading configurator...</Placeholder>
+  if (disabled) return <Placeholder><Trans>Choose an account before selecting a resource.</Trans></Placeholder>
+  if (loading) return <Placeholder><Trans>Loading configurator...</Trans></Placeholder>
   if (error) return <Placeholder>{error}</Placeholder>
   if (!frame) return null
 

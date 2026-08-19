@@ -4,6 +4,7 @@ import {
   getOpenGadgetErrorCode,
   OPEN_GADGET_ERROR_CODES,
 } from '@gadgets/workshop-shared/api'
+import { Trans } from '@lingui/react/macro'
 import { WorkshopButton } from './WorkshopControls'
 
 export type WorkspaceOpenFailureKind = 'access-denied' | 'not-found' | 'unexpected'
@@ -88,11 +89,11 @@ export default function WorkspaceOpenErrorPage({ kind, onRetry, onGoToWorkspaces
             className="!h-9"
             onClick={onGoToWorkspaces}
           >
-            Go to workspaces
+            <Trans>Go to workspaces</Trans>
           </WorkshopButton>
           {retryable && (
             <WorkshopButton tone="primary" onClick={onRetry}>
-              Try again
+              <Trans>Try again</Trans>
             </WorkshopButton>
           )}
         </div>

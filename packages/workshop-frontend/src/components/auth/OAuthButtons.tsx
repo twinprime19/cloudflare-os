@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { RpcStub } from 'capnweb'
 import { PublicApi, AuthVendorInfo } from '@gadgets/workshop-shared/api'
 import { Button, Banner } from '@cloudflare/kumo'
+import { Trans } from '@lingui/react/macro'
 
 interface OAuthButtonsProps {
   rpcStub: RpcStub<PublicApi>
@@ -113,7 +114,7 @@ export default function OAuthButtons({ rpcStub, vendors, onSuccess }: OAuthButto
               style={{ height: 18, width: 'auto' }}
             />
           )}
-          Continue with {vendor.displayName}
+          <Trans>Continue with {vendor.displayName}</Trans>
         </Button>
       ))}
     </div>

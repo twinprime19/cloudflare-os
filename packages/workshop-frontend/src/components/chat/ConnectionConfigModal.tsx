@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Dialog, Button, Input } from '@cloudflare/kumo'
 import { X } from '@phosphor-icons/react'
+import { Trans } from '@lingui/react/macro'
 import type { Connection, ConnectionResource } from '../../data/sample'
 import { logoComponents } from '../ConnectionLogos'
 
@@ -102,7 +103,7 @@ export default function ConnectionConfigModal({
         <div className="max-h-56 overflow-y-auto px-5 pb-4">
           {resources.length === 0 ? (
             <p className="text-sm text-kumo-inactive text-center py-4">
-              No resources added yet
+              <Trans>No resources added yet</Trans>
             </p>
           ) : (
             <div className="space-y-1">
@@ -131,7 +132,7 @@ export default function ConnectionConfigModal({
           <Dialog.Close
             render={(props) => (
               <Button {...props} variant="outline" size="sm">
-                Cancel
+                <Trans>Cancel</Trans>
               </Button>
             )}
           />
@@ -143,7 +144,7 @@ export default function ConnectionConfigModal({
               onOpenChange(false)
             }}
           >
-            Save
+            <Trans>Save</Trans>
           </Button>
         </div>
       </Dialog>
