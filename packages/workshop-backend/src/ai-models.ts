@@ -476,6 +476,10 @@ function getModelViaGateway(
   // @cf models). The cf-aig-gateway-id header keeps logging/billing attribution on the
   // configured gateway.
   if (config.provider === "cloudflare" && !config.model.startsWith("@cf/")) {
+    if (!gwConfig.apiToken) {
+      throw new Error("Unified-catalog models are served over the AI REST endpoint, which the " +
+          "Workers AI binding cannot carry: set CF_AI_GATEWAY_API_TOKEN.");
+    }
     const unifiedGateway = gwConfig.gateway;
     const catalog = catalogModel(config.provider, config.model);
     const model: Model<Api> = {
