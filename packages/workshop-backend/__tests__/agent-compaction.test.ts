@@ -90,9 +90,9 @@ function buildState(messages: AiChatMessage[], compactedTo: number) {
 }
 
 describe("compaction trigger", () => {
-  it("triggers at 85 percent of the input budget", () => {
-    expect(shouldCompactChat(84_999, 100_000)).toBe(false);
-    expect(shouldCompactChat(85_000, 100_000)).toBe(true);
+  it("triggers at 65 percent of the input budget", () => {
+    expect(shouldCompactChat(64_999, 100_000)).toBe(false);
+    expect(shouldCompactChat(65_000, 100_000)).toBe(true);
   });
 
   it("reserves output capacity only where the model counts it against its own window", () => {

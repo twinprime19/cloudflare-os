@@ -75,15 +75,16 @@ export function isToMarkdownSupportedMimeType(mimeType: string): boolean {
   return TO_MARKDOWN_MIME_TYPES.has(mimeType);
 }
 
-// `toMarkdown()` uses the Workers AI binding, so only apply the same-account Workers AI gateway
-// resolved by AiGatewayConfig. A cross-account platform gateway cannot be used by this binding.
+// `toMarkdown()` uses the Workers AI binding, and binding calls only reach gateways in the
+// Worker's own account -- so apply the platform gateway only when AiGatewayConfig resolves it
+// as same-account (CF_AI_GATEWAY_USE_BINDING=false marks it cross-account).
 function buildGatewayOptions(
   gateway: AiGatewayConfig | null,
   metadata: GatewayOptions["metadata"],
 ): GatewayOptions | undefined {
   if (!gateway) return undefined;
-  if (!gateway.workersAiGateway) return undefined;
-  return { id: gateway.workersAiGateway, metadata };
+  if (!gateway.sameAccountGateway) return undefined;
+  return { id: gateway.sameAccountGateway, metadata };
 }
 
 // `ConversionOptions` has exactly four keys -- `html`, `docx`, `image`, `pdf` -- and image

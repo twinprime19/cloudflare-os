@@ -1033,11 +1033,15 @@ msgstr "Explore"
 msgid "Explore blueprints"
 msgstr "Explore blueprints"
 
-msgid "Export to PDF"
-msgstr "Export to PDF"
+msgid "Export formats could not be loaded."
+msgstr "Export formats could not be loaded."
 
-msgid "Exporting to PDF"
-msgstr "Exporting to PDF"
+msgid "Export Gadget"
+msgstr "Export Gadget"
+
+#. placeholder {0}: exportingFormat.label
+msgid "Exporting to {0}"
+msgstr "Exporting to {0}"
 
 msgid "External resources this gadget can use."
 msgstr "External resources this gadget can use."
@@ -1322,6 +1326,9 @@ msgstr "Loading diff..."
 
 msgid "Loading earlier messages…"
 msgstr "Loading earlier messages…"
+
+msgid "Loading export formats"
+msgstr "Loading export formats"
 
 msgid "Loading gatekeepers..."
 msgstr "Loading gatekeepers..."
@@ -2222,6 +2229,9 @@ msgstr "This conversation has pending changes"
 
 msgid "This file can’t be previewed here."
 msgstr "This file can’t be previewed here."
+
+msgid "This Gadget does not support exports."
+msgstr "This Gadget does not support exports."
 
 msgid "This is how you'll appear in conversations"
 msgstr "This is how you'll appear in conversations"
