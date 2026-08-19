@@ -81,23 +81,28 @@ browser, and `SUPPORTED_LOCALES` in `packages/i18n/src/index.tsx` documents the 
 
 ## Handoff (2026-08-19)
 
-This plan's five phases are complete and every gate is green, but **the work has not been committed
-and the branch exists only on one machine**. Ownership is being transferred. Read this section first.
+This plan's five phases are complete and every gate is green. Ownership is being transferred; read
+this section first.
 
 ### Where the work lives
 
 | | |
 |---|---|
-| Worktree | `~/repos/cloudflare-os-i18n-core` |
-| Branch | `feat/i18n-core` (off `dev`, **local only, never pushed**) |
-| Tracked changes | 109 files, +2122 / −1178, **uncommitted** |
-| New untracked dirs | `packages/i18n/`, `scripts/i18n-codemod/`, plus `scripts/check-i18n.ts`, `scripts/check-unlocalized-strings.ts`, and 4 frontend test/helper files |
-| Restore points | git tags `i18n-pre-codemod`, `i18n-pre-phase3c`, `i18n-pre-template-attrs` |
+| Branch | `feat/i18n-core`, based on `dev`, pushed to `origin` |
+| Pull request | [#5](https://github.com/example-org/cloudflare-os/pull/5) (draft) |
+| Commits | 2 — code + tooling, then docs + plan |
+| Change set | 138 files |
+| New dirs | `packages/i18n/`, `scripts/i18n-codemod/` |
+| Local-only restore points | git tags `i18n-pre-codemod`, `i18n-pre-phase3c`, `i18n-pre-template-attrs` — not pushed; the commits supersede them and they can be deleted once the PR merges |
+| Originating worktree | `~/repos/cloudflare-os-i18n-core` (no longer required — the branch is on `origin`) |
 
-**Nothing in `plans/` or `docs/` for this workstream is committed either.** A successor cloning the
-repo sees none of it. Step 1 of any handoff is committing and pushing the branch, including
-`packages/i18n/` — the catalog is otherwise lost, and the untracked-catalog note printed by
-`pnpm i18n:check` will keep firing until it is tracked.
+`packages/i18n/` is tracked as of this branch, so the untracked-catalog note that `pnpm i18n:check`
+used to print is gone and the catalog can no longer be lost.
+
+**Not committed:** the 16 working reports under `plans/reports/*i18n*` — the spike, core build,
+codemod dry-run and apply, both gap triages, every extraction shard, and two independent code
+reviews. They were deliberately kept out of a public repo pending a decision on whether they belong
+there. They remain the audit trail behind every number in this plan.
 
 ### Verified state at handoff
 
@@ -116,16 +121,15 @@ Measured directly by the orchestrator, not taken from agent reports:
 
 ### Open items, in order
 
-1. **Commit and push `feat/i18n-core`** (user decision; blocks everything else). Must include
-   `packages/i18n/`, `scripts/i18n-codemod/`, `scripts/check-i18n.ts`,
-   `scripts/check-unlocalized-strings.ts`, `docs/i18n.md`, and this plan directory.
-2. **Human visual smoke** — the one acceptance criterion no machine can close.
-   `cd <worktree> && pnpm dev-client` (use an explicit `--port` if another dev server is running).
-   Confirm the app renders, and that copy reads as English rather than as hash ids.
-3. **Reword acceptance criterion 7** — "zero source changes" is met for components but takes three
+1. **Human visual smoke** — the only thing holding PR #5 in draft, and the one acceptance criterion
+   no machine can close. Check the branch out and run `pnpm dev-client` (use an explicit `--port` if
+   another dev server is running). Confirm the app renders, and that copy reads as English rather
+   than as hash ids.
+2. **Reword acceptance criterion 7** — "zero source changes" is met for components but takes three
    registration lines inside `packages/i18n`. Decide the wording; do not silently re-scope it.
-4. **`"AI Providers"` vs `"AI providers"`** — a real copy inconsistency found in `routes/providers.tsx`
+3. **`"AI Providers"` vs `"AI providers"`** — a real copy inconsistency found in `routes/providers.tsx`
    during the casualties pass. Deliberately not normalized, because fixing it changes rendered English.
+4. **Decide whether `plans/reports/*i18n*` belongs in-repo** — 16 working reports, currently local only.
 
 ### Deferred work — scoped, not vague
 
