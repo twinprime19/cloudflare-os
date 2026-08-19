@@ -70,6 +70,13 @@ export type VendorDescription = {
   providesAuth?: boolean;
 
   /**
+   * True if this vendor can supply display-name/photo hints at sign-in via
+   * GatekeeperUser.getAuthenticatedProfile(). The Workshop uses them to seed the new user's display
+   * name and avatar; they are never an identity signal. Defaults to false.
+   */
+  providesAuthProfile?: boolean;
+
+  /**
    * If set, this vendor can mint a connected account with no OAuth flow (see
    * GatekeeperVendor.createAccount) and recommends the Workshop auto-provision one account per user.
    * The account — not the vendor — declares whether it provides an agent singleton and/or a
@@ -626,6 +633,21 @@ export interface GatekeeperUser extends WorkerEntrypoint {
    * Returns null when the account has no verified email or the vendor does not support auth.
    */
   getAuthenticatedEmail(): Promise<string | null>;
+
+  /**
+   * For vendors that advertise `providesAuthProfile`, returns profile hints for a user signing in
+   * through this gatekeeper, used to seed the Workshop's display name and avatar on first login.
+   * Never authoritative and never a security boundary — the sign-in identity is
+   * getAuthenticatedEmail() alone. Returns `{}` when the provider has nothing to offer; like
+   * getAuthenticatedEmail(), it must never throw.
+   *
+   * `photo` must be a real photo of the user, never a vendor logo or generated placeholder, and
+   * must be JPEG or PNG (the Workshop rejects other formats).
+   */
+  getAuthenticatedProfile?(): Promise<{
+    name?: string;
+    photo?: {data: Uint8Array; mimeType: "image/jpeg" | "image/png"};
+  }>;
 
   /** Get a `GatekeeperUserVerifier` representing this user. */
   getVerifier(): Promise<Fetcher<GatekeeperUserVerifier>>;

@@ -15,6 +15,13 @@ const MAX_PROVIDER_ERROR_CHARS = 500;
 /** Ceiling on a profile photo we are willing to inline as a data URI. */
 const MAX_AVATAR_BYTES = 256 * 1024;
 
+/**
+ * Ceiling on a photo handed to the Workshop as a sign-in profile hint, matching the size the
+ * Workshop accepts for a stored avatar. A Worker cannot re-encode an image, so a photo over the
+ * limit is answered by asking Graph for a smaller rendition, never by transcoding this one.
+ */
+const MAX_PROFILE_PHOTO_BYTES = 100 * 1024;
+
 /** Longest address we accept as a sign-in identity (RFC 5321 practical maximum). */
 const MAX_EMAIL_CHARS = 320;
 
@@ -422,11 +429,67 @@ const ALLOWED_AVATAR_TYPES = new Set([
   "image/jpeg", "image/png", "image/gif", "image/webp",
 ]);
 
-function allowedAvatarType(header: string | null): string | null {
+type AvatarMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+function isAllowedAvatarType(mediaType: string): mediaType is AvatarMediaType {
+  return ALLOWED_AVATAR_TYPES.has(mediaType);
+}
+
+/**
+ * Media types a sign-in profile photo may carry — narrower than the avatar allowlist because the
+ * Workshop stores these bytes as the user's avatar and accepts only JPEG and PNG. A GIF or WebP
+ * photo is therefore dropped here rather than failing validation inside the sign-in callback.
+ */
+type ProfilePhotoType = "image/jpeg" | "image/png";
+
+function isProfilePhotoType(mediaType: string): mediaType is ProfilePhotoType {
+  return mediaType === "image/jpeg" || mediaType === "image/png";
+}
+
+/** Reduce a Content-Type header to its bare media type, or null when there is none. */
+function mediaTypeOf(header: string | null): string | null {
   if (!header) return null;
   // Strip any parameters (`image/jpeg; charset=…`) before matching.
-  const mediaType = header.split(";")[0].trim().toLowerCase();
-  return ALLOWED_AVATAR_TYPES.has(mediaType) ? mediaType : null;
+  return header.split(";")[0].trim().toLowerCase() || null;
+}
+
+/**
+ * Fetch an image endpoint, or null for anything that is not a usable image: a non-2xx response
+ * (404 — "this account has no photo" — is the common case), a media type the caller does not
+ * accept, an empty body, or a body over `maxBytes`. Never throws.
+ */
+async function fetchGraphImage<T extends string>(
+    path: string,
+    accessToken: string,
+    accepts: (mediaType: string) => mediaType is T,
+    maxBytes: number,
+    signal?: AbortSignal): Promise<{ data: Uint8Array; mediaType: T } | null> {
+  try {
+    const response = await graphGet(path, accessToken, signal);
+    if (!response.ok) {
+      await response.body?.cancel();
+      return null;
+    }
+    const mediaType = mediaTypeOf(response.headers.get("Content-Type"));
+    if (!mediaType || !accepts(mediaType)) {
+      await response.body?.cancel();
+      return null;
+    }
+    // The original photo is served at whatever size it was uploaded — megabytes, potentially — and
+    // this runs inside a sign-in. A declared length over the limit is refused before the body is
+    // read, so an unusable photo costs headers instead of a download. A response that declares no
+    // length is still read and measured below.
+    const declaredLength = response.headers.get("Content-Length");
+    if (declaredLength !== null && Number(declaredLength) > maxBytes) {
+      await response.body?.cancel();
+      return null;
+    }
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength === 0 || buffer.byteLength > maxBytes) return null;
+    return { data: new Uint8Array(buffer), mediaType };
+  } catch {
+    return null;
+  }
 }
 
 function toBase64(bytes: Uint8Array): string {
@@ -447,23 +510,48 @@ function toBase64(bytes: Uint8Array): string {
  */
 export async function fetchAvatarDataUrl(
     accessToken: string, signal?: AbortSignal): Promise<string | null> {
-  try {
-    const response = await graphGet("/me/photos/48x48/$value", accessToken, signal);
-    if (!response.ok) {
-      await response.body?.cancel();
-      return null;
-    }
-    const contentType = allowedAvatarType(response.headers.get("Content-Type"));
-    if (!contentType) {
-      await response.body?.cancel();
-      return null;
-    }
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength === 0 || buffer.byteLength > MAX_AVATAR_BYTES) return null;
-    return `data:${contentType};base64,${toBase64(new Uint8Array(buffer))}`;
-  } catch {
-    return null;
+  const image = await fetchGraphImage(
+      "/me/photos/48x48/$value", accessToken, isAllowedAvatarType, MAX_AVATAR_BYTES, signal);
+  return image && `data:${image.mediaType};base64,${toBase64(image.data)}`;
+}
+
+export type ProfilePhoto = {
+  data: Uint8Array;
+  mimeType: ProfilePhotoType;
+};
+
+/**
+ * Photo endpoints tried, in order, for a sign-in profile hint.
+ *
+ * The 240px rendition comes first because the Workshop renders an avatar at 256px, so a 48px
+ * connector-chip thumbnail would be visibly soft. The original is tried next: sized renditions are
+ * not served for every mailbox topology, and an account with a photo may answer 404 for every size
+ * while `/me/photo/$value` works. The small rendition is the last rung, reached when the original is
+ * bigger than the Workshop accepts — a rendition Graph produces is also a chance at JPEG or PNG when
+ * the uploaded original is in a format we cannot pass on.
+ */
+const PROFILE_PHOTO_PATHS = [
+  "/me/photos/240x240/$value",
+  "/me/photo/$value",
+  "/me/photos/96x96/$value",
+];
+
+/**
+ * Fetch a photo of the signed-in user for the Workshop to seed their avatar with, or null when this
+ * account has none we can use.
+ *
+ * Like `fetchAvatarDataUrl`, this never throws: it feeds a sign-in that must complete whether or not
+ * the provider has a photo to offer. Each rung is tried in turn and anything unusable — no photo at
+ * that size, a type the Workshop rejects, or a body over the size limit — falls through to the next.
+ */
+export async function fetchProfilePhoto(
+    accessToken: string, signal?: AbortSignal): Promise<ProfilePhoto | null> {
+  for (const path of PROFILE_PHOTO_PATHS) {
+    const image = await fetchGraphImage(
+        path, accessToken, isProfilePhotoType, MAX_PROFILE_PHOTO_BYTES, signal);
+    if (image) return { data: image.data, mimeType: image.mediaType };
   }
+  return null;
 }
 
 // =======================================================================================
