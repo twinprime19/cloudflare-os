@@ -14,6 +14,15 @@
 // gatekeeper unmodified and mock the vendor's external surfaces through a NetworkInterceptor handler
 // module. This file deliberately does not try to be that.
 //
+// IT ALSO STANDS IN FOR AN AUTHENTICATION PROVIDER. The Workshop's sign-in path -- allowlist, connect
+// flow in "auth" scope, verified email, then seeding the new user's display name and photo from the
+// gatekeeper's hints -- is otherwise reachable only behind a real OAuth dance against a live vendor.
+// Here connectAccount() hands back a URL the way a real gatekeeper does, and fetching that URL with
+// `?email=` completes the flow: the query parameter is this fixture's stand-in for the provider's own
+// login page, i.e. the step where the human says who they are. Everything downstream of that -- the
+// callback, the verified email, the profile hints, the bytes of the photo crossing the Worker
+// boundary -- is the real thing.
+//
 // Note what the fixture does NOT model: a settled denial ("you may not read this") and an operational
 // failure ("the credential expired") reach the overseer identically, as a thrown error, and the
 // overseer cannot tell them apart -- by design, since it treats every failure as repairable. So there
@@ -23,13 +32,16 @@
 import { DurableObject, WorkerEntrypoint, type RpcStub } from "cloudflare:workers";
 import type {
   AccountDescription, ActionKind, ApprovalQueue, Gatekeeper, GatekeeperConnectCallback,
-  GatekeeperUser, GatekeeperUserVerifier, ResourceDescription, ResourceConfiguratorFrame,
-  SupportedResource, VendorDescription,
+  GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, ResourceDescription,
+  ResourceConfiguratorFrame, SupportedResource, VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
 
 // Nothing but classes and the default handler may be exported from a Worker entry module: workerd
 // treats every named export as an entrypoint and rejects anything that isn't one.
 const VENDOR_HOST = "gadgets-test.example";
+
+/** Path prefix of the sign-in URL connectAccount() returns; see the fetch handler that serves it. */
+const SIGN_IN_PREFIX = "/sign-in/";
 
 const SUPPORTED_RESOURCES: SupportedResource[] = [{
   urlPattern: `https://${VENDOR_HOST}/things/*`,
@@ -46,6 +58,17 @@ interface TestThing {}
 const AVATAR = {
   url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
 };
+
+// Sign-in profile hints. Fixed rather than derived from the account label so a test can assert the
+// seeded display name without first learning which account it got, and a 1x1 PNG (the Workshop
+// accepts JPEG and PNG only) so the photo path is exercised without a network asset. Both are
+// readable over /control/profile-hints, so a test compares what the Workshop stored against what this
+// gatekeeper actually handed it rather than against a second copy of the literal.
+const PROFILE_NAME = "Test Gatekeeper User";
+const PROFILE_PHOTO_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+const PROFILE_PHOTO =
+  Uint8Array.from(atob(PROFILE_PHOTO_BASE64), character => character.charCodeAt(0));
 
 // ---------------------------------------------------------------------------
 // Control state.
@@ -85,7 +108,10 @@ function control(exports: Cloudflare.Exports): DurableObjectStub<TestControl> {
 // ---------------------------------------------------------------------------
 // Vendor
 
-type AccountProps = { label: string };
+// `authenticated` marks an account minted by the sign-in flow, whose label is the email the user
+// signed in as. Accounts from createAccount() are connected accounts, not sign-in identities, and
+// report no authenticated email.
+type AccountProps = { label: string; authenticated?: true };
 type BindingProps = AccountProps & { resourceUrl: string; ambient?: true };
 
 export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
@@ -98,6 +124,13 @@ export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
       // Accounts are minted on request with no auth flow, which is what keeps these tests about the
       // overseer rather than about somebody's OAuth dance.
       autoProvisionsAccount: true,
+      // Sign-in: connectAccount() in "auth" scope yields an account whose getAuthenticatedEmail() is
+      // the email the flow was completed with. A deployment still has to allowlist this vendor in
+      // AUTH_GATEKEEPERS before the Workshop will offer it.
+      providesAuth: true,
+      // ...and that account also answers getAuthenticatedProfile(), so the display-name/photo seeding
+      // the Workshop does at sign-in runs against real hints instead of a live provider API.
+      providesAuthProfile: true,
     };
   }
 
@@ -119,11 +152,59 @@ export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
   }
 
   /**
-   * Required by the interface but unreachable: autoProvisionsAccount means the Workshop mints
-   * accounts through createAccount() and never offers a connect flow.
+   * Start a sign-in. Only "auth" scope is served: autoProvisionsAccount means the Workshop mints
+   * *connected* accounts through createAccount() and never offers this vendor's connect flow for
+   * capability access, so a full-scope request is a mistake worth reporting rather than honouring.
+   *
+   * The returned URL is what a browser would open. It carries the flow's id and a single-use nonce,
+   * like a real gatekeeper's; who is signing in is decided at the URL (see the fetch handler), since
+   * that is the step a provider's own login page performs.
    */
-  async connectAccount(_callback: Fetcher<GatekeeperConnectCallback>): Promise<{ url: string }> {
-    throw new Error("The test gatekeeper auto-provisions accounts; it has no connect flow.");
+  async connectAccount(callback: Fetcher<GatekeeperConnectCallback>,
+                       options?: GatekeeperConnectOptions): Promise<{ url: string }> {
+    if (options?.scopes !== "auth") {
+      throw new Error(
+        "The test gatekeeper auto-provisions connected accounts; only sign-in has a connect flow.");
+    }
+    const flowId = this.ctx.exports.PendingSignIn.newUniqueId();
+    const nonce = crypto.randomUUID();
+    await this.ctx.exports.PendingSignIn.get(flowId).arm(callback, nonce);
+    return { url: `https://${VENDOR_HOST}${SIGN_IN_PREFIX}${flowId}/${nonce}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sign-in flow
+//
+// One per started sign-in, holding the Workshop's callback until the URL is visited. Storing an RPC
+// stub in DO storage is what the compatibility flag `allow_irrevocable_stub_storage` is for, and it is
+// how the shipping OAuth gatekeepers carry a callback across the browser round trip.
+//
+// No abandonment alarm: an unvisited flow is simply never woken again, and this Worker's storage lives
+// only as long as the harness that booted it.
+
+export class PendingSignIn extends DurableObject<Cloudflare.Env> {
+  arm(callback: Fetcher<GatekeeperConnectCallback>, nonce: string): void {
+    this.ctx.storage.kv.put("callback", callback);
+    this.ctx.storage.kv.put("nonce", nonce);
+  }
+
+  /**
+   * Finish the flow as `email`, which becomes the account's authenticated email -- the identity the
+   * Workshop signs the user in as. Throws if the nonce doesn't match or the flow was already used.
+   */
+  async complete(nonce: string, email: string): Promise<void> {
+    const expected = this.ctx.storage.kv.get<string>("nonce");
+    const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
+    if (!expected || !callback || nonce !== expected) {
+      throw new Error("No such sign-in flow: the nonce is wrong, or the URL was already used.");
+    }
+    // Single-use, and cleared before the await so a replayed URL arriving mid-flight can't mint a
+    // second session.
+    this.ctx.storage.kv.delete("nonce");
+    this.ctx.storage.kv.delete("callback");
+    await callback.complete(
+      this.ctx.exports.TestAccount({ props: { label: email, authenticated: true } }));
   }
 }
 
@@ -181,8 +262,24 @@ export class TestAccount
     return {};
   }
 
+  /**
+   * The verified email this account signs in as, for accounts the sign-in flow minted. A connected
+   * account from createAccount() has no sign-in identity and reports none, which is also what a
+   * vendor that didn't advertise `providesAuth` would do.
+   */
   async getAuthenticatedEmail(): Promise<string | null> {
-    return null;
+    return this.ctx.props.authenticated ? this.ctx.props.label : null;
+  }
+
+  /** Display-name and photo hints for the sign-in seeding path. Never throws, per the interface. */
+  async getAuthenticatedProfile(): Promise<{
+    name?: string;
+    photo?: { data: Uint8Array; mimeType: "image/jpeg" | "image/png" };
+  }> {
+    return {
+      name: PROFILE_NAME,
+      photo: { data: PROFILE_PHOTO, mimeType: "image/png" },
+    };
   }
 
   async revoke(): Promise<void> {}
@@ -290,19 +387,19 @@ export class TestGatekeeper
 }
 
 // ---------------------------------------------------------------------------
-// Control surface
+// HTTP surface: the sign-in page a browser would visit, plus the control routes
 //
 // Plain HTTP on the worker's own fetch(), dispatched from tests with
 // harness.fetchWorker("gatekeeper-test", ...). No env gating: this worker is never deployed.
 //
-// The bodies are checked rather than trusted. Not for safety -- the only callers are helpers in this
+// Requests are checked rather than trusted. Not for safety -- the only callers are helpers in this
 // package -- but for the failure mode: an unchecked misspelled field registers an outcome for the
 // account named `undefined`, so the gatekeeper goes on admitting the account the test meant to fail
 // and the test dies several steps later with an assertion that says nothing about the real cause.
 
-/** A 400 whose body says which field was wrong, so a mistyped control call fails where it happens. */
+/** A 400 whose body says what was wrong, so a mistyped call fails where it happens. */
 function badRequest(problem: string): Response {
-  return new Response(`Bad control request: ${problem}`, { status: 400 });
+  return new Response(`Bad request: ${problem}`, { status: 400 });
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -323,6 +420,38 @@ export default {
       if (typeof body !== "object" || body === null) {
         return badRequest("the body is not a JSON object");
       }
+    }
+
+    // The sign-in URL connectAccount() handed the Workshop, as opened by the browser. `?email=` takes
+    // the place of the provider's own login page: it is where the person completing the flow says who
+    // they are, and it becomes the account's authenticated email.
+    // GET /sign-in/<flowId>/<nonce>?email=... -> the self-closing popup page a real one serves.
+    if (url.pathname.startsWith(SIGN_IN_PREFIX) && req.method === "GET") {
+      const [flowId, nonce, ...extra] = url.pathname.slice(SIGN_IN_PREFIX.length).split("/");
+      if (!isNonEmptyString(flowId) || !isNonEmptyString(nonce) || extra.length > 0) {
+        return badRequest(`the sign-in path must be ${SIGN_IN_PREFIX}<flowId>/<nonce>`);
+      }
+      const email = url.searchParams.get("email");
+      // Checked here because the Workshop keys users by this string: a missing or malformed one would
+      // sign somebody in under a nonsense identity and fail much later, somewhere less informative.
+      if (!email?.includes("@")) {
+        return badRequest("`email` must be a query parameter holding an email address");
+      }
+      try {
+        const flow = ctx.exports.PendingSignIn.get(ctx.exports.PendingSignIn.idFromString(flowId));
+        await flow.complete(nonce, email);
+      } catch (err) {
+        return badRequest(`the sign-in flow could not be completed: ${err}`);
+      }
+      return new Response("<!doctype html><title>Signed in</title><script>window.close()</script>",
+                          { headers: { "Content-Type": "text/html;charset=utf-8" } });
+    }
+
+    // What this gatekeeper offers as sign-in profile hints, so a test can check the name and avatar
+    // the Workshop seeded against the bytes it was actually given.
+    // GET /control/profile-hints -> {"name": "...", "photoBase64": "..."}
+    if (url.pathname === "/control/profile-hints" && req.method === "GET") {
+      return Response.json({ name: PROFILE_NAME, photoBase64: PROFILE_PHOTO_BASE64 });
     }
 
     // Set what addObserver() should do for one account.

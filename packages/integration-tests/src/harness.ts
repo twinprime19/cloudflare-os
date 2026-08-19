@@ -124,6 +124,15 @@ export type Harness = {
 export async function startHarness(opts: {
   gatekeepers: GatekeeperSpec[];
   patchWorkshop?: (config: WorkerConfig) => void;
+  /**
+   * Workshop vars a suite depends on, e.g. `{ AUTH_GATEKEEPERS: "test" }`.
+   *
+   * Set them here rather than through `patchWorkshop`: a `vars` entry in the config is overridden by
+   * whatever the developer happens to have in the repo's `.dev.vars`, so a suite that patched the
+   * config would pass on CI and fail (or worse, pass for the wrong reason) on a machine set up to run
+   * the dev server. A harness-level override wins over both.
+   */
+  workshopVars?: Record<string, string>;
   /** Defaults to this repo's root. Override when a gatekeeper lives outside it. */
   root?: string;
 }): Promise<Harness> {
@@ -139,7 +148,7 @@ export async function startHarness(opts: {
     root: opts.root ?? REPO_ROOT,
     // workshop-backend is primary, so unrouted requests (e.g. /api) go to it.
     workers: [
-      { config: workshopConfig(gatekeepers, opts.patchWorkshop) },
+      { config: workshopConfig(gatekeepers, opts.patchWorkshop), vars: opts.workshopVars },
       ...gatekeepers.map(({ config }) => ({ config })),
     ],
   });

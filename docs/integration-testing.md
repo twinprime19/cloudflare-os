@@ -79,6 +79,18 @@ One corollary that is easy to get wrong: the "nothing escaped to the internet" a
 running, so it would inspect and clear state they are still using — and could discard an escape a
 sibling was about to be blamed for.
 
+### The repo-root `.dev.vars` overrides inline Workshop config vars
+
+`createTestHarness()` boots from the repo root, so whatever `vars` a developer happens to have in the
+root `.dev.vars` for dev-server work (e.g. `AUTH_GATEKEEPERS=microsoft`) apply to the Workshop Worker
+underneath. A `vars` entry a suite sets via `patchWorkshop` loses to it silently: the suite passes on
+CI, which has no `.dev.vars`, and fails — or worse, passes for the wrong reason — on a machine set up
+to run the dev server.
+
+`startHarness({workshopVars})` is the escape hatch. It sets vars at the harness level, which wins over
+both the patched config and `.dev.vars`, so a suite that depends on a Workshop var should set it there
+and never through `patchWorkshop`.
+
 ### wrangler and workerd versions are coupled
 
 The public repo pins `workerd` through a root `overrides` entry, which collapses every transitive
