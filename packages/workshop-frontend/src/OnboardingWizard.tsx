@@ -26,7 +26,7 @@ import { persistSelectedModel } from './modelSelection'
 import { logoComponents } from './components/ConnectionLogos'
 import { getVendorIconBackground } from './components/vendorColors'
 import { compressAvatar, avatarBlobUrl } from './avatarUtils'
-import { invalidateAvatarCache } from './useAvatar'
+import { useAvatar, invalidateAvatarCache } from './useAvatar'
 import { useTheme } from './ThemeContext'
 import { useSiteName } from './ServerConfigContext'
 import SiteLogo from './components/SiteLogo'
@@ -81,6 +81,12 @@ export default function OnboardingWizard({
   const [avatarProcessing, setAvatarProcessing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Avatar already stored for this user (e.g. seeded at sign-in), shown until a file is picked.
+  // Its blob URL belongs to the shared avatar cache that the rest of the app renders from, so it is
+  // deliberately kept out of `avatarPreview`: only the locally created URL may be revoked here.
+  const seededAvatarUrl = useAvatar(authenticatedApi, currentUser?.id)
+  const shownAvatarUrl = avatarPreview ?? seededAvatarUrl
+
   // Model state
   const [models, setModels] = useState<AiChatAuthorInfo[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
@@ -99,7 +105,7 @@ export default function OnboardingWizard({
     requestAnimationFrame(() => setMounted(true))
   }, [])
 
-  // Revoke avatar blob URL on unmount to prevent memory leak
+  // Revoke the locally created avatar blob URL on unmount to prevent memory leak
   useEffect(() => {
     return () => {
       if (avatarPreview) URL.revokeObjectURL(avatarPreview)
@@ -405,17 +411,17 @@ export default function OnboardingWizard({
                     className={`
                       relative w-20 h-20 rounded-full border-2 border-dashed
                       transition-all duration-200 group cursor-pointer
-                      ${avatarPreview
+                      ${shownAvatarUrl
                         ? 'border-kumo-brand/50 hover:border-kumo-brand'
                         : 'border-kumo-line hover:border-kumo-subtle hover:bg-kumo-tint'
                       }
                       ${avatarProcessing ? 'opacity-50 pointer-events-none' : ''}
                     `}
                   >
-                    {avatarPreview ? (
+                    {shownAvatarUrl ? (
                       <>
                         <img
-                          src={avatarPreview}
+                          src={shownAvatarUrl}
                           alt="Avatar preview"
                           className="w-full h-full rounded-full object-cover"
                         />
@@ -448,7 +454,7 @@ export default function OnboardingWizard({
                     }}
                   />
                   <p className="text-xs text-kumo-inactive mt-1.5">
-                    {avatarPreview ? 'Change' : 'Add photo'}
+                    {shownAvatarUrl ? 'Change' : 'Add photo'}
                   </p>
                 </div>
 

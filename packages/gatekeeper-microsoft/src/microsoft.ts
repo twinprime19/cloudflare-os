@@ -6,9 +6,9 @@ import {
   ResourceConfiguratorFrame, SupportedResource, VendorDescription, stripTrailingSlashes,
 } from "@gadgets/workshop-shared/gatekeeper";
 import {
-  AccessTokenRequest, EntraAccessToken, EntraTokenGrant, IdTokenClaims, TokenFailure,
-  authorizeEndpoint, exchangeAuthCode, fetchAvatarDataUrl, fetchGraphProfile, fetchVerifiedDomains,
-  grantCoversScopes, refreshAccessToken, resolveVerifiedEmail,
+  AccessTokenRequest, EntraAccessToken, EntraTokenGrant, IdTokenClaims, ProfilePhoto, TokenFailure,
+  authorizeEndpoint, exchangeAuthCode, fetchAvatarDataUrl, fetchGraphProfile, fetchProfilePhoto,
+  fetchVerifiedDomains, grantCoversScopes, refreshAccessToken, resolveVerifiedEmail,
 } from "./microsoft-api";
 import type { OutlookMailGatekeeperImplProps } from "./outlook-mail";
 import type {
@@ -362,6 +362,7 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
           "organization's Entra ID directory. Sign-in uses the account you already have — no " +
           "separate password — and the connection is limited to reading your own profile.",
       providesAuth: true,
+      providesAuthProfile: true,
     };
   }
 
@@ -885,6 +886,37 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
       return resolveVerifiedEmail(profile, claims, verifiedDomains, this.env.TENANT_ID ?? "");
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Display name and photo for the Workshop to seed a new user's profile with. Hints only: the
+   * sign-in identity is getAuthenticatedEmail() and nothing here feeds it.
+   *
+   * Same never-throw contract as getAuthenticatedEmail(). The token fetch can throw once the
+   * transient sign-in grant has been cleaned up, and the profile read can throw on a non-2xx Graph
+   * response; either way the provider simply has nothing to offer and sign-in continues. Absent
+   * hints are omitted rather than set to undefined, so an RPC caller sees an empty object.
+   */
+  async getAuthenticatedProfile(): Promise<{
+    name?: string;
+    photo?: ProfilePhoto;
+  }> {
+    try {
+      let token = await this.#account().getAccessToken();
+      if (!token) return {};
+
+      // The photo lookup walks several endpoints, so it runs alongside the profile read rather than
+      // after it; it reports "no photo" instead of failing, which is why only one can reject here.
+      let [profile, photo] = await Promise.all([
+        fetchGraphProfile(token.token, AbortSignal.timeout(GRAPH_TIMEOUT_MS)),
+        fetchProfilePhoto(token.token, AbortSignal.timeout(GRAPH_TIMEOUT_MS)),
+      ]);
+
+      let name = typeof profile.displayName === "string" ? profile.displayName.trim() : "";
+      return { ...(name ? { name } : {}), ...(photo ? { photo } : {}) };
+    } catch {
+      return {};
     }
   }
 

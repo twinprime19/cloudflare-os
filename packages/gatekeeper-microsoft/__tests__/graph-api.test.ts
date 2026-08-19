@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GraphApiError, GraphMailApi, assertGraphUrl, graphUrl, validateSearchQuery } from "../src/graph-api";
+import { fetchProfilePhoto } from "../src/microsoft-api";
 
 type Call = { url: string; init: RequestInit };
 
@@ -102,6 +103,84 @@ describe("URL construction", () => {
     await expect(newApi().getFolder("..")).rejects.toThrow(/empty or relative/);
 
     expect(calls).toHaveLength(0);
+  });
+});
+
+const LADDER = [
+  "https://graph.microsoft.com/v1.0/me/photos/240x240/$value",
+  "https://graph.microsoft.com/v1.0/me/photo/$value",
+  "https://graph.microsoft.com/v1.0/me/photos/96x96/$value",
+];
+
+function photo(byteLength: number, contentType = "image/jpeg"): Response {
+  return new Response(new Uint8Array(byteLength).fill(1), {
+    headers: { "Content-Type": contentType },
+  });
+}
+
+describe("profile photo size ladder", () => {
+  it("asks for the avatar-sized rendition first and stops there", async () => {
+    const calls = stubFetch(() => photo(1024));
+
+    await expect(fetchProfilePhoto("access-token")).resolves.toMatchObject({
+      mimeType: "image/jpeg",
+    });
+
+    expect(calls.map(call => call.url)).toEqual([LADDER[0]]);
+    expect(new Headers(calls[0].init.headers).get("Authorization")).toBe("Bearer access-token");
+  });
+
+  it("walks the rungs in order when each one comes back unusable", async () => {
+    // Nothing at 240px, and an original too big to hand on. These responses declare no length, so
+    // the size is discovered by reading them.
+    const calls = stubFetch(call => call.url === LADDER[2]
+      ? photo(2048)
+      : call.url === LADDER[1] ? photo(200 * 1024) : new Response(null, { status: 404 }));
+
+    await expect(fetchProfilePhoto("access-token")).resolves.toMatchObject({
+      mimeType: "image/jpeg",
+    });
+
+    expect(calls.map(call => call.url)).toEqual(LADDER);
+  });
+
+  it("skips a rung that declares an oversize length without reading its body", async () => {
+    // The original is served at whatever size it was uploaded, so buffering it only to measure it
+    // would spend the sign-in's latency budget on bytes that are then discarded.
+    let bodyReads = 0;
+    let bodiesDropped = 0;
+    const declared = 200 * 1024;
+    // highWaterMark 0 so the stream buffers nothing on its own: a pull here means a real read.
+    const declaredOversize = () => new Response(
+      new ReadableStream({
+        pull(controller) {
+          bodyReads++;
+          controller.enqueue(new Uint8Array(declared));
+          controller.close();
+        },
+        cancel() { bodiesDropped++; },
+      }, { highWaterMark: 0 }),
+      {
+        headers: { "Content-Type": "image/jpeg", "Content-Length": String(declared) },
+      });
+
+    const calls = stubFetch(call => call.url === LADDER[2] ? photo(2048) : declaredOversize());
+
+    await expect(fetchProfilePhoto("access-token")).resolves.toMatchObject({
+      mimeType: "image/jpeg",
+    });
+
+    expect(calls.map(call => call.url)).toEqual(LADDER);
+    expect(bodyReads).toBe(0);
+    expect(bodiesDropped).toBe(2);
+  });
+
+  it("gives up after the last rung instead of throwing", async () => {
+    const calls = stubFetch(() => new Response(null, { status: 404 }));
+
+    await expect(fetchProfilePhoto("access-token")).resolves.toBeNull();
+
+    expect(calls.map(call => call.url)).toEqual(LADDER);
   });
 });
 
