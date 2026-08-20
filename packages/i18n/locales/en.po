@@ -643,6 +643,9 @@ msgstr "Continue with {0}"
 msgid "Copied"
 msgstr "Copied"
 
+msgid "Copied message"
+msgstr "Copied message"
+
 msgid "Copy"
 msgstr "Copy"
 
@@ -2302,6 +2305,9 @@ msgstr "Turning this off removes it from the menus above and from the agent’s 
 
 msgid "Type"
 msgstr "Type"
+
+msgid "Unable to copy message"
+msgstr "Unable to copy message"
 
 msgid "Unable to load your workspaces. Check your connection and try refreshing."
 msgstr "Unable to load your workspaces. Check your connection and try refreshing."

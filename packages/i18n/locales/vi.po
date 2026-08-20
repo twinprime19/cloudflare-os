@@ -643,6 +643,9 @@ msgstr "Tiếp tục với {0}"
 msgid "Copied"
 msgstr "Đã sao chép"
 
+msgid "Copied message"
+msgstr "Đã sao chép tin nhắn"
+
 msgid "Copy"
 msgstr "Sao chép"
 
@@ -2302,6 +2305,9 @@ msgstr "Tắt tùy chọn này sẽ loại bỏ nó khỏi các menu ở trên v
 
 msgid "Type"
 msgstr "Loại"
+
+msgid "Unable to copy message"
+msgstr "Không thể sao chép tin nhắn"
 
 msgid "Unable to load your workspaces. Check your connection and try refreshing."
 msgstr "Không thể tải không gian làm việc của bạn. Kiểm tra kết nối của bạn và thử làm mới."
