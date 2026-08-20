@@ -133,6 +133,9 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
     return this.#user.listModels();
   }
   addModel(profile: AiChatAuthorInfo, config: AiModelConfig): Promise<void> {
+    // Models are the deployment's to offer, not a user's to add. Admins reach the shared catalog
+    // through AdminApi; this legacy per-user path stays only for their own configured models.
+    if (!this.#isAdmin()) throw new Error("Adding models is restricted to administrators.");
     return this.#user.addModel(profile, config);
   }
   deleteModel(id: string): Promise<void> {

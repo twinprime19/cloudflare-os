@@ -382,13 +382,9 @@ export default function GatekeeperModal({
       if (cancelled) return
       setAvailableModels(models)
       if (models.length > 0) {
+        // listModels() returns the admin default first.
         setSelectedModelId(models[0].id)
-        const lastSelected = localStorage.getItem('lastSelectedModel')
-        if (lastSelected && models.some(m => m.id === lastSelected)) {
-          setSpawnerModelId(lastSelected)
-        } else {
-          setSpawnerModelId(models[0].id)
-        }
+        setSpawnerModelId(models[0].id)
       }
     }).catch(err => {
       if (cancelled) return

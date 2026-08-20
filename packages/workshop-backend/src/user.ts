@@ -564,6 +564,11 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     this.storage.profile.put(profile);
   }
 
+  /**
+   * The models this user can chat with: the AI Gateway built-ins, then the models an admin offers
+   * to everyone on this deployment. The deployment's default model is moved to the front, because
+   * callers take the first entry as the one a new chat starts on.
+   */
   async listModels(): Promise<AiChatAuthorInfo[]> {
     let result: AiChatAuthorInfo[] = [];
 
@@ -577,12 +582,31 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       }
     }
 
-    // Also include user-configured models, skipping any that duplicate a gateway model.
-    for (let model of this.storage.aiModels.list()) {
-      if (!gwModelIds.has(model.profile.id)) {
-        result.push(model.profile);
+    // Also include the shared models, skipping any that duplicate a gateway model: the gateway's is
+    // the one getChatContext resolves, so the shared entry would name a model nobody can reach.
+    // Listing a catalog must not depend on the settings object being up, so a failure here costs
+    // the shared entries and nothing more.
+    try {
+      for (let profile of await this.adminSettings.getByName("").listSharedModels()) {
+        if (!gwModelIds.has(profile.id)) {
+          result.push(profile);
+        }
+      }
+    } catch (err) {
+      logger.warn("failed to list shared models", {
+        event: "shared.models.list.failed", error: err,
+      });
+    }
+
+    // An unset default, or one naming a model that has since gone away, leaves the natural order.
+    let {defaultModelId} = await readAdminConfig(this.env);
+    if (defaultModelId) {
+      let index = result.findIndex(entry => entry.id === defaultModelId);
+      if (index > 0) {
+        result.unshift(result.splice(index, 1)[0]);
       }
     }
+
     return result;
   }
 
@@ -743,7 +767,9 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         result.aiModel = gwConfig.resolveModel(modelId);
       }
       if (!result.aiModel) {
-        result.aiModel = this.storage.aiModels.get(modelId);
+        // Otherwise it's one of the admin's shared models, whose configuration (API token included)
+        // is fetched per turn rather than cached: nothing else here is authoritative for it.
+        result.aiModel = await this.adminSettings.getByName("").getSharedModelRecord(modelId);
       }
       if (!result.aiModel) throw new Error(`No such model: ${modelId}`);
     }
@@ -766,9 +792,9 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
 
   async getExternalMessageChatContext(existingChatModelId: string | null): Promise<UserChatContext> {
     let models = await this.listModels();
-    // Prefer the existing chat's model, then the user's preferred model, then the first available model.
+    // Prefer the existing chat's model, then the first available one — which listModels() orders as
+    // the deployment default.
     let selectedModel = models.find(model => model.id === existingChatModelId)
-      ?? models.find(model => model.id === this.storage.preferredModel.get())
       ?? models[0];
 
     return this.getChatContext(selectedModel?.id ?? null);

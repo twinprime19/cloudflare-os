@@ -2,11 +2,11 @@
 // mirrored to one reserved BLUEPRINTS KV key, so the per-(re)connect getServerConfig() path and the
 // agent can resolve it with a single cheap KV get.
 //
-// This covers the "soft" deployment customizations only (branding, agent instructions, and which
-// gatekeeper connectors/resources are offered). Authentication/authorization config (sign-in
-// providers, password login) is deliberately NOT here — it stays env-var driven so it can't be
-// changed by a compromised admin session. Everything here is enabled by default; the admin UI opts
-// things *out*.
+// This covers the "soft" deployment customizations only (branding, agent instructions, which
+// gatekeeper connectors/resources are offered, and which AI model users start on).
+// Authentication/authorization config (sign-in providers, password login) is deliberately NOT here
+// — it stays env-var driven so it can't be changed by a compromised admin session. Everything here
+// is enabled by default; the admin UI opts things *out*.
 
 import { AmbientGatekeeperMode, BannerConfig, BlueprintBinding, BlueprintMetadata, BlueprintOutput, DEFAULT_BANNER_COLOR, OutputFormatOffer, isAmbientGatekeeperMode, isBannerColor, isOutputIcon } from "@gadgets/workshop-shared/api";
 import { SupportedResource } from "@gadgets/workshop-shared/gatekeeper";
@@ -54,6 +54,15 @@ export type AdminConfig = {
    * the deployment offers.
    */
   formats: FormatCuration[];
+
+  /**
+   * Model listed first in every user's catalog. The frontend forces every new chat to start on it.
+   * Null → natural order (gateway catalog order, then shared).
+   *
+   * Only the id lives here, because this object is mirrored to KV: the model's configuration, and
+   * with it the provider API token, stays in the AdminSettings durable object.
+   */
+  defaultModelId: string | null;
 };
 
 /**
@@ -91,6 +100,7 @@ export const DEFAULT_ADMIN_CONFIG: AdminConfig = {
   disabledGatekeepers: [],
   ambientGatekeeperModes: {},
   formats: [],
+  defaultModelId: null,
 };
 
 /**
@@ -313,6 +323,7 @@ export function parseAdminConfig(raw: string | null): AdminConfig {
       disabledGatekeepers: strings(p.disabledGatekeepers).map(v => v.toLowerCase()),
       ambientGatekeeperModes,
       formats: parseFormats(p.formats),
+      defaultModelId: typeof p.defaultModelId === "string" ? p.defaultModelId : null,
     };
   } catch {
     return { ...DEFAULT_ADMIN_CONFIG };

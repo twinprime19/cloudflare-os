@@ -117,3 +117,21 @@ describe("admin config site logo", () => {
     expect(parseAdminConfig(serializeAdminConfig(config))).toEqual(config);
   });
 });
+
+describe("admin config default model", () => {
+  it("defaults legacy and malformed values to no default model", () => {
+    expect(parseAdminConfig("{}").defaultModelId).toBeNull();
+    expect(parseAdminConfig('{"defaultModelId":42}').defaultModelId).toBeNull();
+  });
+
+  // The config is rebuilt field by field here, so a field this parser forgets is dropped on every
+  // read of the KV mirror while the durable object, which reads its own copy, still reports it. The
+  // two would disagree permanently: the admin panel shows a default that never orders any list.
+  it("round-trips the selected model through the KV mirror", () => {
+    let stored = serializeAdminConfig({...DEFAULT_ADMIN_CONFIG, defaultModelId: "acme/model-1"});
+    let config = parseAdminConfig(stored);
+
+    expect(config.defaultModelId).toBe("acme/model-1");
+    expect(parseAdminConfig(serializeAdminConfig(config))).toEqual(config);
+  });
+});

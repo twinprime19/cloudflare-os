@@ -17,10 +17,7 @@ import {
 } from "@gadgets/workshop-shared/api";
 import { t } from "@lingui/core/macro";
 import { Trans } from "@lingui/react/macro";
-import {
-  getStoredSelectedModel,
-  persistSelectedModel,
-} from "../modelSelection";
+import { getStoredSelectedModel } from "../modelSelection";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { homePromptFromSearch } from "../homePrompt";
 import { composerDraftStorageKey } from "../composerDraft";
@@ -80,9 +77,10 @@ export function HomePageContent({ prompt }: HomeSearch) {
     };
   }, [authenticatedApi]);
 
+  // The pick seeds the chat this composer opens and goes no further: the next new chat starts on
+  // the deployment's default model again.
   const handleModelChange = useCallback((value: string | null) => {
     setSelectedModel(value);
-    persistSelectedModel(value);
   }, []);
 
   // Pre-create a provisional gadget as soon as the user starts interacting, so that navigation

@@ -384,6 +384,10 @@ export interface AuthenticatedApi extends RpcTarget {
   /**
    * Adds a new model to the user's configured set. The ID must be unique among the user's
    * configured models.
+   *
+   * Legacy: this writes the caller's own per-user store. Models are managed for the whole
+   * deployment now, so it is restricted to administrators and superseded by
+   * `AdminApi.addSharedModel()`, which is what new code should call.
    */
   addModel(profile: AiChatAuthorInfo, config: AiModelConfig): Promise<void>;
 
@@ -869,6 +873,16 @@ export type AdminSettingsView = {
   resourceVendors: AdminResourceVendor[];
   /** The blueprints promoted as standard output formats, in menu order (including disabled ones). */
   formats: AdminFormat[];
+  /**
+   * The model listed first for every user, which is what a new chat starts on. Null means natural
+   * order (the gateway's built-ins, then the shared models).
+   */
+  defaultModelId: string | null;
+  /**
+   * The AI models this deployment offers to everyone. Profiles only: a model's configuration, and
+   * with it its API token, never leaves the server.
+   */
+  sharedModels: AiChatAuthorInfo[];
 };
 
 /**
@@ -1016,6 +1030,33 @@ export interface AdminApi {
 
   /** Reorder the menu. `blueprintIds` must be a permutation of the currently promoted ids. */
   setFormatOrder(blueprintIds: string[]): Promise<void>;
+
+  // --- Shared AI models ---
+  //
+  // The deployment's model catalog: what an admin adds here, every user can chat with. Model
+  // configurations are write-only — `config.apiToken` goes in and is never echoed back, so an admin
+  // editing a model supplies its token again.
+
+  /**
+   * Offer an AI model to every user of this deployment, replacing any shared model with the same
+   * id. Throws in AI Gateway mode if the provider isn't enabled for the gateway, or if the id
+   * belongs to one of its built-in models.
+   */
+  addSharedModel(profile: AiChatAuthorInfo, config: AiModelConfig): Promise<void>;
+
+  /**
+   * Stop offering a shared model, clearing `defaultModelId` when it named this one.
+   *
+   * The catalog entry is all that goes: a workspace that already bound the model holds its own copy
+   * of the configuration, so revoking access means rotating the key at the provider.
+   */
+  deleteSharedModel(id: string): Promise<void>;
+
+  /**
+   * Set the model listed first for every user, which is what a new chat starts on. Pass null for
+   * natural order. Throws unless the id names a shared model or a gateway built-in.
+   */
+  setDefaultModel(id: string | null): Promise<void>;
 }
 
 /** A partial edit to one promoted format. Absent fields are left alone. */

@@ -170,14 +170,16 @@ export default function Header() {
                 >
                   <Trans>Profile</Trans>
                 </Link>
-                <Link
-                  to="/providers"
-                  onClick={closeMobileMenu}
-                  className={navLinkClass}
-                  activeProps={{ className: navLinkActiveClass }}
-                >
-                  <Trans>Providers</Trans>
-                </Link>
+                {auth.isAdmin && (
+                  <Link
+                    to="/providers"
+                    onClick={closeMobileMenu}
+                    className={navLinkClass}
+                    activeProps={{ className: navLinkActiveClass }}
+                  >
+                    <Trans>Providers</Trans>
+                  </Link>
+                )}
                 {auth.isAdmin && (
                   <Link
                     to="/admin"

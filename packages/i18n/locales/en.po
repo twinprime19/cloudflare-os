@@ -101,13 +101,6 @@ msgstr "{readyCount} of {0} ready. Suggestions are used automatically when they 
 msgid "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
 msgstr "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
 
-#. placeholder {0}: models.find((m) => m.id === quickModel)?.name ?? quickModel
-msgid "<0>Quick model:</0> {0}."
-msgstr "<0>Quick model:</0> {0}."
-
-msgid "<0>Quick model:</0> none set."
-msgstr "<0>Quick model:</0> none set."
-
 msgid "A dismissible bar across the very top of the app (logged in or not). Markdown is supported, so you can include links. Leave empty to hide it. Applies on each user’s next connection."
 msgstr "A dismissible bar across the very top of the app (logged in or not). Markdown is supported, so you can include links. Leave empty to hide it. Applies on each user’s next connection."
 
@@ -262,6 +255,9 @@ msgstr "Agent is editing this file"
 msgid "Agent model"
 msgstr "Agent model"
 
+msgid "AI meets your tools"
+msgstr "AI meets your tools"
+
 msgid "AI providers"
 msgstr "AI providers"
 
@@ -397,6 +393,9 @@ msgstr "Blueprints"
 msgid "Browse all blueprints"
 msgstr "Browse all blueprints"
 
+msgid "Build gadgets or just chat"
+msgstr "Build gadgets or just chat"
+
 msgid "Bundled"
 msgstr "Bundled"
 
@@ -476,14 +475,11 @@ msgstr "Choose what this gadget should be able to use."
 msgid "Choose which Cloudflare account to bill"
 msgstr "Choose which Cloudflare account to bill"
 
-msgid "Choose your model"
-msgstr "Choose your model"
-
 msgid "Clear"
 msgstr "Clear"
 
-msgid "Clear quick model"
-msgstr "Clear quick model"
+msgid "Clear default model"
+msgstr "Clear default model"
 
 msgid "Click the avatar to upload a new photo"
 msgstr "Click the avatar to upload a new photo"
@@ -491,8 +487,8 @@ msgstr "Click the avatar to upload a new photo"
 msgid "Click to re-authenticate this account"
 msgstr "Click to re-authenticate this account"
 
-msgid "Click to set as quick model"
-msgstr "Click to set as quick model"
+msgid "Click to set as default model"
+msgstr "Click to set as default model"
 
 msgid "Close"
 msgstr "Close"
@@ -521,6 +517,9 @@ msgstr "Cloudflare Account ID"
 msgid "Code"
 msgstr "Code"
 
+msgid "Collaborate in real time"
+msgstr "Collaborate in real time"
+
 msgid "Collapse outputs"
 msgstr "Collapse outputs"
 
@@ -539,9 +538,6 @@ msgstr "Compacting…"
 #. placeholder {0}: activeBinding.title || activeBindingName
 msgid "Configure {0}"
 msgstr "Configure {0}"
-
-msgid "Configure the AI models available to your workspaces."
-msgstr "Configure the AI models available to your workspaces."
 
 msgid "Confirm new password"
 msgstr "Confirm new password"
@@ -699,6 +695,9 @@ msgstr "Create blueprint"
 msgid "Create file"
 msgstr "Create file"
 
+msgid "Create full web apps, or keep it simple with agent-only conversations. Your call."
+msgstr "Create full web apps, or keep it simple with agent-only conversations. Your call."
+
 msgid "Create link"
 msgstr "Create link"
 
@@ -748,6 +747,12 @@ msgstr "Currently hidden from the menus above and from the agent’s catalog."
 
 msgid "Custom"
 msgstr "Custom"
+
+msgid "Default"
+msgstr "Default"
+
+msgid "Default model. Click to clear"
+msgstr "Default model. Click to clear"
 
 msgid "Delete"
 msgstr "Delete"
@@ -1164,6 +1169,9 @@ msgstr "Grant access"
 msgid "Grant the access needed to verify this resource"
 msgstr "Grant the access needed to verify this resource"
 
+msgid "Have AI review a Google Doc, summarize Slack threads, triage Jira tickets, and more."
+msgstr "Have AI review a Google Doc, summarize Slack threads, triage Jira tickets, and more."
+
 msgid "Help text for {displayTitle}"
 msgstr "Help text for {displayTitle}"
 
@@ -1373,6 +1381,9 @@ msgstr "Logo source dimensions are too large."
 msgid "Logo source image is too large (max 5 MB)."
 msgstr "Logo source image is too large (max 5 MB)."
 
+msgid "Manage the AI models everyone on this deployment can use."
+msgstr "Manage the AI models everyone on this deployment can use."
+
 msgid "Manage your account details, avatar, and security."
 msgstr "Manage your account details, avatar, and security."
 
@@ -1387,6 +1398,9 @@ msgstr "Model"
 
 msgid "Model ID"
 msgstr "Model ID"
+
+msgid "Models ready to go"
+msgstr "Models ready to go"
 
 msgid "Modified"
 msgstr "Modified"
@@ -1536,6 +1550,9 @@ msgstr "No matching events"
 
 msgid "No matching resources."
 msgstr "No matching resources."
+
+msgid "No models are available yet. Ask your administrator."
+msgstr "No models are available yet. Ask your administrator."
 
 msgid "No models configured yet"
 msgstr "No models configured yet"
@@ -1688,9 +1705,6 @@ msgstr "People with <0>{0}</0> access must prove their own account can reach:"
 msgid "People with access"
 msgstr "People with access"
 
-msgid "Pick the AI model you'd like to use by default"
-msgstr "Pick the AI model you'd like to use by default"
-
 #. placeholder {0}: resourceTitle ?? t`connection`
 msgid "Pick which {vendorName} identity this {0} should use."
 msgstr "Pick which {vendorName} identity this {0} should use."
@@ -1738,9 +1752,6 @@ msgstr "Publish a workspace as a blueprint, or add one from Explore."
 
 msgid "Publish this gadget as a reusable template."
 msgstr "Publish this gadget as a reusable template."
-
-msgid "Quick model. Click to clear"
-msgstr "Quick model. Click to clear"
 
 msgid "Re-authenticating…"
 msgstr "Re-authenticating…"
@@ -1993,8 +2004,8 @@ msgstr "Send message"
 msgid "Send them this link to open it"
 msgstr "Send them this link to open it"
 
-msgid "Set as quick model"
-msgstr "Set as quick model"
+msgid "Set as default"
+msgstr "Set as default"
 
 msgid "Set up"
 msgstr "Set up"
@@ -2008,6 +2019,9 @@ msgstr "Share"
 #. placeholder {0}: metadata.title
 msgid "Share “{0}”"
 msgstr "Share “{0}”"
+
+msgid "Share a workspace with teammates and work on it together, live."
+msgstr "Share a workspace with teammates and work on it together, live."
 
 msgid "share link"
 msgstr "share link"
@@ -2385,9 +2399,6 @@ msgstr "Use stacked diff layout"
 msgid "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
 msgstr "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
 
-msgid "Used for fast tasks like generating chat titles. Click a model to set it."
-msgstr "Used for fast tasks like generating chat titles. Click a model to set it."
-
 msgid "Used the gadget"
 msgstr "Used the gadget"
 
@@ -2531,6 +2542,15 @@ msgstr "You've used all {0, plural, one {# of your free request} other {# of you
 #. placeholder {0}: PROVIDER_LABELS[selection.provider]
 msgid "Your {0} API token for billing"
 msgstr "Your {0} API token for billing"
+
+msgid "Your administrator curates the AI models, so you can pick one and start right away."
+msgstr "Your administrator curates the AI models, so you can pick one and start right away."
+
+msgid "Your administrator picks which models are available and which one new chats start on"
+msgstr "Your administrator picks which models are available and which one new chats start on"
+
+msgid "Your AI models"
+msgstr "Your AI models"
 
 #. placeholder {0}: usage.balance.toFixed(2)
 msgid "Your Cloudflare account is connected with a balance of <0>${0}</0>, but it's below the minimum needed to continue."
