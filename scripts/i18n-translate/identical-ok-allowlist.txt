@@ -1,0 +1,11 @@
+# Messages whose Vietnamese translation is legitimately identical to the English msgid.
+# One entry per line: the exact msgid, a tab, then the reason it stays English.
+# `merge.ts` flags any msgstr === msgid that is not listed here (english-leftover rule),
+# and `merge.ts --audit` re-checks the merged catalog against this list.
+#
+# Entries are added as real cases surface during translation waves and consolidation, each with
+# a reason.
+Banner	naturalized loanword in Vietnamese admin UIs; "biểu ngữ" carries a street-banner/political register (glossary keep-English verdict)
+Gatekeeper	product feature name (access broker); kept English everywhere per glossary, incl. embedded uses like "Gatekeeper app"
+Hooks	product feature name (lifecycle hooks); kept English, embedded uses render as "Đã bật Hooks" etc.
+Logo	naturalized loanword; standalone label matches embedded uses ("Logo hiện tại", …)
