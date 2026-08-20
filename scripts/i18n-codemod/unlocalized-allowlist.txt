@@ -1,0 +1,108 @@
+# Strings the unlocalized-string detector should stop reporting, and the files it should skip
+# entirely. Read by `scripts/i18n-codemod/detect.ts`; the same list suppresses the codemod, so an
+# entry here means "never wrap this", not "wrap it later".
+#
+# One entry per line. `#` starts a comment, blank lines are ignored. Paths are relative to the
+# repository root and use `/` on every platform.
+#
+#   packages/workshop-frontend/src/some/directory/   trailing slash: every file under it
+#   packages/workshop-frontend/src/SomeFile.tsx      one file
+#   packages/workshop-frontend/src/SomeFile.tsx|Exact text   one string in one file
+#   *|Exact text                                     one string, any file
+#
+# The text is matched after collapsing runs of whitespace, so wrap it on one line here however it
+# is wrapped in the source.
+#
+# Add an entry only for text a user genuinely never reads, or reads as a literal token that must
+# not change between languages -- a protocol name, a header, a code sample. Copy that is merely
+# awkward to wrap belongs in the residue list, not here.
+#
+# Everything below covers `.ts` files. A `.ts` file has no JSX, so the detector judges its string
+# and template literals directly, and the positions it can rule out from syntax alone -- log
+# arguments, module specifiers, type literals, `.includes()` needles, `className` assignments -- are
+# rules in `detect.ts` rather than entries here. What is left needs knowledge of the program that
+# a parser does not have, so it is written down, one line at a time, with the reason.
+
+# Prototype data for a UI that was never wired up. Every `.tsx` component that reads these two
+# modules is unreachable: none is imported by a route or by any live component (only by each other).
+# Not wrapped, because translating copy nothing renders wastes reviewer time; not deleted, because
+# removing dead code is a separate decision from this one.
+packages/workshop-frontend/src/data/sample.ts
+packages/workshop-frontend/src/data/chat.ts
+
+# The `components/chat/*` components that consume the prototype data above -- already wrapped with
+# `<Trans>`/`` t`...` `` (left in place: no code churn, and the components arrive already localized
+# if this UI is ever revived), so this only keeps `lingui extract` from putting their strings in the
+# real catalog (see the matching `exclude` entries in packages/i18n/lingui.config.ts). Each has no
+# importer anywhere in a route or a live component; `ToolCallCard.tsx`'s only importer,
+# `ChatMessage.tsx`, is itself unreachable the same way.
+packages/workshop-frontend/src/components/chat/AppPreview.tsx
+packages/workshop-frontend/src/components/chat/ConnectionConfigModal.tsx
+packages/workshop-frontend/src/components/chat/DataTab.tsx
+packages/workshop-frontend/src/components/chat/PermissionToast.tsx
+packages/workshop-frontend/src/components/chat/ToolCallCard.tsx
+
+# `ChatMessage.tsx` is the head of that same dead tree: it renders `data/chat.ts` and is the only
+# importer of `ToolCallCard.tsx`, and nothing imports it (verified across `workshop-frontend/src`).
+# Listed separately from the five above because it holds no Lingui macro at all, so `lingui extract`
+# already reads nothing from it and it needs no `exclude` entry in packages/i18n/lingui.config.ts.
+# Not wrapped, because translating copy nothing renders wastes reviewer time; not deleted, because
+# removing dead code is a separate decision from this one.
+packages/workshop-frontend/src/components/chat/ChatMessage.tsx
+
+# Backend failure text matched with `.includes()` to classify RPC errors. These strings are produced
+# by the Workers runtime, not by this app -- translating them would stop the comparisons matching.
+# The needles the detector can see inside a call are excluded by rule; these live in a `const` array
+# that is iterated later, which no syntactic rule can follow.
+packages/workshop-frontend/src/rpcErrors.ts
+
+# Tailwind class lists held as shared constants.
+packages/workshop-frontend/src/components/menuStyles.ts
+packages/workshop-frontend/src/diff/diffRenderer.ts|gadgets-deleted-num-row gadgets-replacement-num-row
+
+# A CSS font stack and a CSS media query, both passed to APIs that parse them as CSS.
+packages/workshop-frontend/src/components/monacoTheme.ts
+packages/workshop-frontend/src/theme.ts
+
+# Telemetry facts reported to the error backend: `family` and `platform` discriminants, never shown.
+# The browser and OS names are covered by PROPER_NOUNS; 'Other' is the fallback value.
+packages/workshop-frontend/src/errorReporting.ts
+
+# Thrown, but no caller surfaces the message: both call sites (`SettingsPage.tsx`,
+# `OnboardingWizard.tsx`) catch these and show a fixed toast title of their own.
+packages/workshop-frontend/src/avatarUtils.ts
+
+# The prefix of a developer log line, passed to this repo's `logRpcFailure` helper.
+packages/workshop-frontend/src/useVendorBranding.ts|Failed to load vendor branding:
+
+# A control-flow sentinel: rejected to unwind a superseded workspace-open, then compared, never read.
+packages/workshop-frontend/src/useWorkspaceOpen.ts|Cancelled
+
+# Input-validation errors thrown inside RpcTarget methods exposed to a sandboxed, untrusted
+# gatekeeper-app iframe over a capnweb RPC session (see SandboxedGatekeeperApp.tsx). A throw here
+# is caught by capnweb and re-surfaces as a rejected promise on the CALLING side of the RPC boundary
+# -- the third-party app's own JS running inside the sandbox -- never in Workshop's own UI chrome.
+# No Workshop code catches or renders these; they are a wire-format validation contract for the
+# gatekeeper app author, analogous to a backend 400 response, not end-user copy this catalog reaches.
+packages/workshop-frontend/src/gatekeeperAppNavigation.ts
+
+# Same shape as gatekeeperAppNavigation.ts above: errors rejected from a rate-limiting proxy wrapped
+# around a capability relayed to a sandboxed, untrusted iframe (SandboxedGatekeeperApp.tsx's `ui`,
+# SandboxedResourceConfigurator.tsx's `gatekeeper`). The rejection is read only by the sandboxed
+# app's own RPC call site, never by Workshop's UI.
+packages/workshop-frontend/src/rateLimitedCapability.ts
+
+# `DiffStatus` values: a type discriminant compared and switched on elsewhere (CodeDiffEditor.tsx),
+# assigned here as plain object-literal values so the detector cannot see they are a closed enum
+# rather than copy. Never translate these -- see the type's own doc comment and `diffStatusLabel`,
+# the translated label callers must render instead of the raw discriminant.
+packages/workshop-frontend/src/diff/diffModel.ts|Added
+packages/workshop-frontend/src/diff/diffModel.ts|Deleted
+packages/workshop-frontend/src/diff/diffModel.ts|Modified
+packages/workshop-frontend/src/diff/diffModel.ts|Unchanged
+
+# The literal prompt line an admin previews for a standard format, mirrored verbatim from the
+# (unlocalized) backend at packages/workshop-backend/src/overseer.ts:5853. Translating this copy
+# would show an admin a preview that misdescribes what the agent actually receives -- the backend
+# never localizes it, so the two would silently diverge with no way for a translator to notice.
+packages/workshop-frontend/src/components/format/AdminFormatsPanel.tsx|” — a standard format on this deployment

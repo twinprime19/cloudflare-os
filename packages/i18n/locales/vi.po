@@ -1,0 +1,2561 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-08-20 08:52+0700\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: vi\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+msgid "(Draft)"
+msgstr "(Nháp)"
+
+#. placeholder {0}: downstreamDependents.length
+#. placeholder {1}: profile.name
+msgid "{0, plural, one {# other person loses} other {# other people lose}} access through {1}. Keep anyone?"
+msgstr "{0, plural, other {# người khác sẽ mất quyền truy cập}} qua {1}. Vẫn giữ cho ai đó chứ?"
+
+#. placeholder {0}: revokeTarget.dependents.length
+msgid "{0, plural, one {# person loses access through this link. Keep anyone?} other {# people lose access through this link. Keep anyone?}}"
+msgstr "{0, plural, other {# người sẽ mất quyền truy cập qua liên kết này. Vẫn giữ cho ai đó chứ?}}"
+
+#. placeholder {0}: vendor.resources.length
+msgid "{0, plural, one {# resource hidden while disabled.} other {# resources hidden while disabled.}}"
+msgstr "{0, plural, other {# tài nguyên bị ẩn khi tắt.}}"
+
+#. placeholder {0}: pendingPatterns.length
+msgid "{0, plural, one {# resource to add} other {# resources to add}}"
+msgstr "{0, plural, other {# tài nguyên cần thêm}}"
+
+#. placeholder {0}: formatOf(gadget.output).noun
+msgid "{0} · Click to open"
+msgstr "{0} · Nhấn để mở"
+
+#. placeholder {0}: format.blueprintTitle
+#. placeholder {1}: format.output!.plural
+msgid "{0} · shown under {1} on Outputs"
+msgstr "{0} · hiển thị trong {1} tại Đầu ra"
+
+#. placeholder {0}: msg.author.name
+msgid "{0} accepted changes"
+msgstr "{0} đã chấp nhận thay đổi"
+
+#. placeholder {0}: entry.requestedBy.name
+msgid "{0} compacted the context"
+msgstr "{0} đã nén ngữ cảnh"
+
+#. placeholder {0}: entry.message.author.name
+#. placeholder {1}: createdGadgets.length
+msgid "{0} created {1, plural, one {gadget} other {gadgets}} {createdTitles}"
+msgstr "{0} đã tạo {1, plural, other {gadget}} {createdTitles}"
+
+#. placeholder {0}: msg.author.name
+msgid "{0} discarded changes"
+msgstr "{0} đã loại bỏ thay đổi"
+
+#. placeholder {0}: latestAuthor?.name ?? t`The agent`
+msgid "{0} is editing changes for this gadget."
+msgstr "{0} đang chỉnh sửa thay đổi cho gadget này."
+
+#. placeholder {0}: usage.remaining
+#. placeholder {1}: usage.dailyLimit
+msgid "{0} of {1, plural, one {# request} other {# requests}} remaining today"
+msgstr "Còn {0} trong {1, plural, other {# yêu cầu}} hôm nay"
+
+#. placeholder {0}: entry.message.author.name
+msgid "{0} saved edits"
+msgstr "{0} đã lưu chỉnh sửa"
+
+msgid "{badgeCount} pending"
+msgstr "{badgeCount} đang chờ"
+
+msgid "{DEFAULT_ACCENT_COLOR} (default)"
+msgstr "{DEFAULT_ACCENT_COLOR} (mặc định)"
+
+#. placeholder {0}: formatFullTimestamp(lastDraftEntry.timestamp)
+msgid "{description} Last edited {0}"
+msgstr "{description} Chỉnh sửa lần cuối {0}"
+
+msgid "{filename} is being edited"
+msgstr "{filename} đang được chỉnh sửa"
+
+msgid "{hidden, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
+msgstr "{hidden, plural, other {Hiện # dòng đã xóa bị ẩn}}"
+
+msgid "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
+msgstr "{kept, plural, other {# tin nhắn sau điểm cắt được giữ lại đầy đủ.}}"
+
+msgid "{label}. Switch to {nextMode}."
+msgstr "{label}. Chuyển sang {nextMode}."
+
+#. placeholder {0}: bindingEntries.length
+msgid "{readyCount} of {0} ready. Suggestions are used automatically when they match one of your connected accounts."
+msgstr "{readyCount} trong {0} đã sẵn sàng. Gợi ý được sử dụng tự động khi khớp với một trong các tài khoản đã kết nối của bạn."
+
+msgid "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
+msgstr "<0>Chế độ AI Gateway:</0> các mô hình tích hợp sẵn được quản lý bởi bản triển khai của bạn. Bạn vẫn có thể thêm mô hình tùy chỉnh bằng token API của riêng mình."
+
+#. placeholder {0}: models.find((m) => m.id === quickModel)?.name ?? quickModel
+msgid "<0>Quick model:</0> {0}."
+msgstr "<0>Mô hình nhanh:</0> {0}."
+
+msgid "<0>Quick model:</0> none set."
+msgstr "<0>Mô hình nhanh:</0> chưa thiết lập."
+
+msgid "A dismissible bar across the very top of the app (logged in or not). Markdown is supported, so you can include links. Leave empty to hide it. Applies on each user’s next connection."
+msgstr "Một thanh có thể đóng nằm ở trên cùng ứng dụng (dù đã đăng nhập hay chưa). Hỗ trợ Markdown, vì vậy bạn có thể thêm liên kết. Để trống để ẩn thanh này. Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
+
+msgid "A preview of how you'll author knowledge collections and skills for your agents to draw on."
+msgstr "Bản xem trước cách bạn sẽ soạn các bộ sưu tập kiến thức và kỹ năng để các tác nhân của bạn sử dụng."
+
+msgid "A promoted blueprint is offered by name (“New Doc”, “New Slides”) wherever people start something, and the agent is told to prefer it over building the same thing from scratch."
+msgstr "Một blueprint được quảng bá sẽ được cung cấp theo tên (“New Doc”, “New Slides”) ở bất cứ đâu người dùng bắt đầu một việc gì đó, và tác nhân được yêu cầu ưu tiên dùng blueprint này thay vì xây dựng lại từ đầu."
+
+msgid "Accent color used for buttons, links, and highlights. Changes preview live here; click Save to apply for everyone (on their next connection). Backgrounds keep the default warm theme."
+msgstr "Màu nhấn được dùng cho nút, liên kết và điểm nhấn. Thay đổi được xem trước trực tiếp tại đây; nhấn Lưu để áp dụng cho tất cả mọi người (vào lần kết nối tiếp theo của họ). Nền sẽ giữ nguyên chủ đề ấm mặc định."
+
+msgid "Accept changes"
+msgstr "Chấp nhận thay đổi"
+
+#. placeholder {0}: formatFullTimestamp(ts)
+msgid "Accepted draft changes through {0}."
+msgstr "Đã chấp nhận thay đổi nháp đến {0}."
+
+msgid "Accepted draft changes."
+msgstr "Đã chấp nhận thay đổi nháp."
+
+msgid "Access granted by link"
+msgstr "Quyền truy cập được cấp qua liên kết"
+
+msgid "Access to grant"
+msgstr "Quyền truy cập sẽ cấp"
+
+msgid "Account"
+msgstr "Tài khoản"
+
+#. placeholder {0}: usage.balance.toFixed(2)
+msgid "Account balance: <0>${0}</0>"
+msgstr "Số dư tài khoản: <0>${0}</0>"
+
+msgid "Account balance: <0>unknown</0>"
+msgstr "Số dư tài khoản: <0>không xác định</0>"
+
+msgid "Action types appear here once a connected resource offers one its author marked safe to apply without review."
+msgstr "Các loại hành động sẽ xuất hiện ở đây khi một tài nguyên đã kết nối cung cấp một loại hành động mà tác giả của tài nguyên đó đánh dấu là an toàn để áp dụng mà không cần xem xét."
+
+msgid "Actions agents may take without asking. Everything else waits for your review."
+msgstr "Các hành động mà tác nhân có thể thực hiện mà không cần hỏi. Mọi thứ khác sẽ chờ bạn xem xét."
+
+#. placeholder {0}: chat.title
+msgid "Actions for {0}"
+msgstr "Hành động cho {0}"
+
+msgid "Actions for {filename}"
+msgstr "Hành động cho {filename}"
+
+msgid "Activity"
+msgstr "Hoạt động"
+
+#. placeholder {0}: pending.length
+msgid "Activity — {0, plural, one {# request needs} other {# requests need}} review"
+msgstr "Hoạt động — {0, plural, other {# yêu cầu cần}} xem xét"
+
+#. placeholder {0}: vendorDescription.displayName
+msgid "Add {0}"
+msgstr "Thêm {0}"
+
+msgid "Add a model to get started"
+msgstr "Thêm mô hình để bắt đầu"
+
+msgid "Add a provider to start building workspaces with AI."
+msgstr "Thêm nhà cung cấp để bắt đầu xây dựng không gian làm việc bằng AI."
+
+msgid "Add AI Model"
+msgstr "Thêm mô hình AI"
+
+msgid "Add blueprint to library"
+msgstr "Thêm blueprint vào thư viện"
+
+msgid "Add credits"
+msgstr "Thêm credit"
+
+msgid "Add credits in Cloudflare"
+msgstr "Thêm credit trong Cloudflare"
+
+msgid "Add credits to continue."
+msgstr "Thêm credit để tiếp tục."
+
+#. placeholder {0}: usage.dailyLimit
+msgid "Add credits to your AI Gateway to keep building now or wait — your free {0, plural, one {request resets} other {requests reset}} at 00:00 UTC, in <0/>."
+msgstr "Thêm credit vào AI Gateway để tiếp tục xây dựng ngay hoặc chờ — {0, plural, other {lượt yêu cầu miễn phí của bạn sẽ được làm mới}} lúc 00:00 UTC, sau <0/>."
+
+msgid "Add credits to your AI Gateway to keep building now."
+msgstr "Thêm credit vào AI Gateway để tiếp tục xây dựng ngay."
+
+msgid "Add Model"
+msgstr "Thêm mô hình"
+
+msgid "Add new model..."
+msgstr "Thêm mô hình mới..."
+
+msgid "Add photo"
+msgstr "Thêm ảnh"
+
+msgid "Add provider"
+msgstr "Thêm nhà cung cấp"
+
+msgid "Add resource"
+msgstr "Thêm tài nguyên"
+
+msgid "Add the apps and accounts your workspaces can use. Connect once, then wire them into anything you build."
+msgstr "Thêm ứng dụng và tài khoản mà không gian làm việc của bạn có thể sử dụng. Kết nối một lần, sau đó tích hợp chúng vào bất kỳ thứ gì bạn xây dựng."
+
+msgid "Add to library"
+msgstr "Thêm vào thư viện"
+
+msgid "Add your first provider"
+msgstr "Thêm nhà cung cấp đầu tiên của bạn"
+
+msgid "Added"
+msgstr "Đã thêm"
+
+msgid "Added {invitedName}"
+msgstr "Đã thêm {invitedName}"
+
+msgid "Added in this chat; kept when you accept the chat's changes"
+msgstr "Đã thêm trong cuộc trò chuyện này; được giữ lại khi bạn chấp nhận thay đổi của cuộc trò chuyện"
+
+msgid "Adding..."
+msgstr "Đang thêm..."
+
+msgid "Additional permission needed"
+msgstr "Cần thêm quyền"
+
+msgid "Admin"
+msgstr "Quản trị viên"
+
+msgid "Advanced Settings"
+msgstr "Cài đặt nâng cao"
+
+#. placeholder {0}: chat.spawnerName
+msgid "Agent · {0}"
+msgstr "Tác nhân · {0}"
+
+msgid "Agent bindings"
+msgstr "Binding tác nhân"
+
+msgid "Agent display name"
+msgstr "Tên hiển thị tác nhân"
+
+msgid "Agent instructions"
+msgstr "Hướng dẫn tác nhân"
+
+msgid "Agent is editing this file"
+msgstr "Tác nhân đang chỉnh sửa tệp này"
+
+msgid "Agent model"
+msgstr "Mô hình tác nhân"
+
+msgid "AI providers"
+msgstr "Nhà cung cấp AI"
+
+msgid "All connection types"
+msgstr "Tất cả các loại kết nối"
+
+msgid "Allow new sign-ups"
+msgstr "Cho phép đăng ký mới"
+
+msgid "Already have an account? <0>Sign in</0>"
+msgstr "Đã có tài khoản? <0>Đăng nhập</0>"
+
+msgid "Always approve"
+msgstr "Luôn duyệt"
+
+msgid "Always approve “{actionLabel}”?"
+msgstr "Luôn duyệt “{actionLabel}”?"
+
+msgid "Always approve this type of action on this connection, without future prompts."
+msgstr "Luôn duyệt loại hành động này trên kết nối này mà không cần hỏi lại sau này."
+
+msgid "An API token with Workers AI Read + Edit permissions (in the dashboard: Workers AI > Use REST API > Create a Workers AI API Token)"
+msgstr "Token API có quyền Read + Edit cho Workers AI (trong dashboard: Workers AI > Use REST API > Create a Workers AI API Token)"
+
+msgid "Anything your workspaces build will show up here."
+msgstr "Mọi thứ không gian làm việc của bạn xây dựng sẽ xuất hiện ở đây."
+
+msgid "API Token"
+msgstr "Token API"
+
+msgid "API URL"
+msgstr "URL API"
+
+msgid "App"
+msgstr "Ứng dụng"
+
+msgid "Applied without asking"
+msgstr "Đã áp dụng mà không cần hỏi"
+
+msgid "Approve"
+msgstr "Duyệt"
+
+msgid "Apps"
+msgstr "Ứng dụng"
+
+msgid "Ask a follow-up…"
+msgstr "Hỏi thêm…"
+
+msgid "Ask a question, create an output, or create an app that works with your tools and data."
+msgstr "Đặt câu hỏi, tạo đầu ra hoặc tạo ứng dụng hoạt động với công cụ và dữ liệu của bạn."
+
+msgid "Ask the agent in chat to build something, and it will appear here."
+msgstr "Yêu cầu tác nhân trong cuộc trò chuyện xây dựng thứ gì đó, kết quả sẽ xuất hiện ở đây."
+
+msgid "attached file"
+msgstr "tệp đính kèm"
+
+msgid "Attached file"
+msgstr "Tệp đính kèm"
+
+msgid "Attached image"
+msgstr "Ảnh đính kèm"
+
+msgid "Authenticating..."
+msgstr "Đang xác thực..."
+
+msgid "Authentication error: {error}"
+msgstr "Lỗi xác thực: {error}"
+
+msgid "Author"
+msgstr "Tác giả"
+
+#. placeholder {0}: resolvedBy.name
+msgid "Auto-approved ({0}'s rule)"
+msgstr "Tự động duyệt (quy tắc của {0})"
+
+msgid "Available"
+msgstr "Có sẵn"
+
+msgid "Avatar"
+msgstr "Ảnh đại diện"
+
+msgid "Avatar preview"
+msgstr "Xem trước ảnh đại diện"
+
+msgid "Back"
+msgstr "Quay lại"
+
+msgid "Back to conversations"
+msgstr "Quay lại các cuộc trò chuyện"
+
+msgid "Back to Explore"
+msgstr "Quay lại Khám phá"
+
+msgid "Banner"
+msgstr "Banner"
+
+msgid "Before opening this workspace, confirm that your own accounts can access the connected data it uses."
+msgstr "Trước khi mở không gian làm việc này, xác nhận rằng tài khoản của bạn có thể truy cập dữ liệu đã kết nối mà không gian làm việc này sử dụng."
+
+msgid "Binding name"
+msgstr "Tên binding"
+
+#. placeholder {0}: row.targetTitle
+msgid "Binding name for {0}"
+msgstr "Tên binding cho {0}"
+
+msgid "Blueprint deleted. Remove this entry."
+msgstr "Blueprint đã bị xóa. Gỡ mục này."
+
+msgid "Blueprint description"
+msgstr "Mô tả blueprint"
+
+msgid "Blueprint not found"
+msgstr "Không tìm thấy blueprint"
+
+#. placeholder {0}: formatSuggestedResource(binding.resourceUrl)
+msgid "Blueprint recommends: <0>{0}</0>"
+msgstr "Blueprint đề xuất: <0>{0}</0>"
+
+msgid "Blueprint screenshot preview"
+msgstr "Bản xem trước ảnh chụp màn hình blueprint"
+
+msgid "Blueprint settings"
+msgstr "Cài đặt blueprint"
+
+msgid "Blueprint title"
+msgstr "Tiêu đề blueprint"
+
+msgid "Blueprints"
+msgstr "Blueprint"
+
+msgid "Browse all blueprints"
+msgstr "Duyệt tất cả blueprint"
+
+msgid "Bundled"
+msgstr "Tích hợp sẵn"
+
+#. placeholder {0}: resolvedBy.name
+msgid "By {0}"
+msgstr "Bởi {0}"
+
+msgid "Callbacks that let connected resources wake up this gadget when events happen."
+msgstr "Các callback cho phép tài nguyên đã kết nối đánh thức gadget này khi có sự kiện xảy ra."
+
+msgid "Can't reach the server. Retrying…"
+msgstr "Không thể kết nối đến server. Đang thử lại…"
+
+msgid "Cancel"
+msgstr "Hủy"
+
+msgid "Cancel creating link"
+msgstr "Hủy tạo liên kết"
+
+msgid "Cancel rename"
+msgstr "Hủy đổi tên"
+
+msgid "Cancel title edit"
+msgstr "Hủy chỉnh sửa tiêu đề"
+
+msgid "Change"
+msgstr "Đổi"
+
+msgid "Change logo"
+msgstr "Đổi logo"
+
+msgid "Change password"
+msgstr "Đổi mật khẩu"
+
+msgid "Changing…"
+msgstr "Đang đổi…"
+
+msgid "Chat"
+msgstr "Trò chuyện"
+
+msgid "Check your connection and try refreshing the page."
+msgstr "Kiểm tra kết nối của bạn và thử tải lại trang."
+
+msgid "Choose \"None\" to create conversations without an agent."
+msgstr "Chọn \"Không có\" để tạo cuộc trò chuyện không có tác nhân."
+
+msgid "Choose a Cloudflare account"
+msgstr "Chọn tài khoản Cloudflare"
+
+msgid "Choose a model for the agent spawner"
+msgstr "Chọn mô hình cho bộ khởi tạo tác nhân"
+
+msgid "Choose an account before selecting a resource."
+msgstr "Chọn tài khoản trước khi chọn tài nguyên."
+
+msgid "Choose an AI model"
+msgstr "Chọn mô hình AI"
+
+msgid "Choose an image file."
+msgstr "Chọn tệp hình ảnh."
+
+msgid "Choose icon"
+msgstr "Chọn biểu tượng"
+
+msgid "Choose the model spawned agents will use."
+msgstr "Chọn mô hình mà các tác nhân được tạo sẽ sử dụng."
+
+msgid "Choose the model this connection can use."
+msgstr "Chọn mô hình mà kết nối này có thể sử dụng."
+
+msgid "Choose the resource or model this new Gadget should use."
+msgstr "Chọn tài nguyên hoặc mô hình mà gadget mới này sẽ sử dụng."
+
+msgid "Choose what this gadget should be able to use."
+msgstr "Chọn những gì gadget này có thể sử dụng."
+
+msgid "Choose which Cloudflare account to bill"
+msgstr "Chọn tài khoản Cloudflare sẽ được tính phí"
+
+msgid "Choose your model"
+msgstr "Chọn mô hình của bạn"
+
+msgid "Clear"
+msgstr "Xóa"
+
+msgid "Clear quick model"
+msgstr "Xóa mô hình nhanh"
+
+msgid "Click the avatar to upload a new photo"
+msgstr "Nhấn vào ảnh đại diện để tải lên ảnh mới"
+
+msgid "Click to re-authenticate this account"
+msgstr "Nhấn để xác thực lại tài khoản này"
+
+msgid "Click to set as quick model"
+msgstr "Nhấn để đặt làm mô hình nhanh"
+
+msgid "Close"
+msgstr "Đóng"
+
+msgid "Close activity"
+msgstr "Đóng hoạt động"
+
+msgid "Close gadget pane"
+msgstr "Đóng ngăn gadget"
+
+msgid "Close menu"
+msgstr "Đóng menu"
+
+msgid "Close preview"
+msgstr "Đóng bản xem trước"
+
+msgid "Close screenshot"
+msgstr "Đóng ảnh chụp màn hình"
+
+msgid "Cloudflare account"
+msgstr "Tài khoản Cloudflare"
+
+msgid "Cloudflare Account ID"
+msgstr "ID tài khoản Cloudflare"
+
+msgid "Code"
+msgstr "Mã"
+
+msgid "Collapse outputs"
+msgstr "Thu gọn đầu ra"
+
+msgid "Collapse sidebar"
+msgstr "Thu gọn thanh bên"
+
+msgid "Command palette"
+msgstr "Bảng lệnh"
+
+msgid "Commands"
+msgstr "Lệnh"
+
+msgid "Compacting…"
+msgstr "Đang nén…"
+
+#. placeholder {0}: activeBinding.title || activeBindingName
+msgid "Configure {0}"
+msgstr "Cấu hình {0}"
+
+msgid "Configure the AI models available to your workspaces."
+msgstr "Cấu hình các mô hình AI khả dụng cho không gian làm việc của bạn."
+
+msgid "Confirm new password"
+msgstr "Xác nhận mật khẩu mới"
+
+msgid "Confirm Password"
+msgstr "Xác nhận mật khẩu"
+
+msgid "Connect"
+msgstr "Kết nối"
+
+#. placeholder {0}: msg.vendorName
+msgid "Connect {0}"
+msgstr "Kết nối {0}"
+
+msgid "Connect {vendorName}"
+msgstr "Kết nối {vendorName}"
+
+msgid "Connect a different account"
+msgstr "Kết nối tài khoản khác"
+
+msgid "Connect Account"
+msgstr "Kết nối tài khoản"
+
+msgid "Connect Cloudflare"
+msgstr "Kết nối Cloudflare"
+
+msgid "Connect Google Docs, GitHub, Google Sheets, and other services so this gadget can safely use external data."
+msgstr "Kết nối Google Docs, GitHub, Google Sheets và các dịch vụ khác để gadget này có thể sử dụng dữ liệu bên ngoài một cách an toàn."
+
+msgid "Connect new account"
+msgstr "Kết nối tài khoản mới"
+
+msgid "Connect resource"
+msgstr "Kết nối tài nguyên"
+
+#. placeholder {0}: usage.dailyLimit
+msgid "Connect your Cloudflare account to keep building now — usage beyond the free tier is billed to your own Cloudflare AI Gateway credits — or wait: your free {0, plural, one {request resets} other {requests reset}} at 00:00 UTC, in <0/>."
+msgstr "Kết nối tài khoản Cloudflare của bạn để tiếp tục xây dựng ngay — mức sử dụng vượt quá gói miễn phí sẽ được tính vào credit Cloudflare AI Gateway của riêng bạn — hoặc chờ: {0, plural, other {lượt yêu cầu miễn phí của bạn sẽ được làm mới}} lúc 00:00 UTC, sau <0/>."
+
+msgid "Connect your Cloudflare account to keep building now — usage beyond the free tier is billed to your own Cloudflare AI Gateway credits."
+msgstr "Kết nối tài khoản Cloudflare của bạn để tiếp tục xây dựng ngay — mức sử dụng vượt quá gói miễn phí sẽ được tính vào credit Cloudflare AI Gateway của riêng bạn."
+
+msgid "Connect your Cloudflare account to keep building once your free allowance runs out. Usage beyond the free tier is billed to your own Cloudflare AI Gateway credits."
+msgstr "Kết nối tài khoản Cloudflare của bạn để tiếp tục xây dựng khi bạn dùng hết hạn mức miễn phí. Mức sử dụng vượt quá gói miễn phí sẽ được tính vào credit Cloudflare AI Gateway của riêng bạn."
+
+msgid "Connect your services"
+msgstr "Kết nối dịch vụ của bạn"
+
+msgid "Connected"
+msgstr "Đã kết nối"
+
+msgid "Connected {vendorName} account"
+msgstr "Tài khoản {vendorName} đã kết nối"
+
+msgid "Connected account"
+msgstr "Tài khoản đã kết nối"
+
+msgid "Connecting..."
+msgstr "Đang kết nối..."
+
+msgid "connection"
+msgstr "kết nối"
+
+msgid "Connection hiccup — your message may not have been sent. Check the thread, then try again; if it keeps failing, reload the page."
+msgstr "Sự cố kết nối — tin nhắn của bạn có thể chưa được gửi. Kiểm tra cuộc trò chuyện, sau đó thử lại; nếu vẫn tiếp tục lỗi, tải lại trang."
+
+msgid "Connection hiccup — your message may not have been sent. Try again; if it keeps failing, reload the page."
+msgstr "Sự cố kết nối — tin nhắn của bạn có thể chưa được gửi. Thử lại; nếu vẫn tiếp tục lỗi, tải lại trang."
+
+msgid "Connection issue - changes will be saved when connection is restored"
+msgstr "Sự cố kết nối - các thay đổi sẽ được lưu khi kết nối được khôi phục"
+
+msgid "Connection name"
+msgstr "Tên kết nối"
+
+msgid "Connections"
+msgstr "Kết nối"
+
+msgid "Context & Skills"
+msgstr "Ngữ cảnh & kỹ năng"
+
+msgid "Context & Skills are coming soon to {siteName}"
+msgstr "Ngữ cảnh & kỹ năng sẽ sớm có mặt trên {siteName}"
+
+msgid "Context compacted"
+msgstr "Ngữ cảnh đã được nén"
+
+msgid "Continue"
+msgstr "Tiếp tục"
+
+#. placeholder {0}: vendorDescription.displayName
+msgid "Continue to {0}"
+msgstr "Tiếp tục đến {0}"
+
+#. placeholder {0}: vendor.displayName
+msgid "Continue with {0}"
+msgstr "Tiếp tục với {0}"
+
+msgid "Copied"
+msgstr "Đã sao chép"
+
+msgid "Copied message"
+msgstr "Đã sao chép tin nhắn"
+
+msgid "Copy"
+msgstr "Sao chép"
+
+#. placeholder {0}: sk.note || t`share link`
+msgid "Copy {0}"
+msgstr "Sao chép {0}"
+
+msgid "Copy failed"
+msgstr "Sao chép thất bại"
+
+msgid "Copy link"
+msgstr "Sao chép liên kết"
+
+msgid "Copy message"
+msgstr "Sao chép tin nhắn"
+
+msgid "Copy user ID"
+msgstr "Sao chép ID người dùng"
+
+msgid "Could not load auto-approval"
+msgstr "Không thể tải chế độ duyệt tự động"
+
+msgid "Couldn’t check which connections recipients will be asked to verify."
+msgstr "Không thể kiểm tra người nhận sẽ được yêu cầu xác minh những kết nối nào."
+
+#. placeholder {0}: format.output.noun
+msgid "Couldn't create a new {0}"
+msgstr "Không thể tạo {0} mới"
+
+msgid "Couldn’t load blueprint"
+msgstr "Không thể tải blueprint"
+
+msgid "Couldn’t load commands. {error}"
+msgstr "Không thể tải lệnh. {error}"
+
+msgid "Couldn't load deployment settings."
+msgstr "Không thể tải cài đặt triển khai."
+
+msgid "Create"
+msgstr "Tạo"
+
+msgid "Create a new file in this gadget."
+msgstr "Tạo tệp mới trong gadget này."
+
+msgid "Create a share link"
+msgstr "Tạo liên kết chia sẻ"
+
+msgid "Create account"
+msgstr "Tạo tài khoản"
+
+msgid "Create blueprint"
+msgstr "Tạo blueprint"
+
+msgid "Create file"
+msgstr "Tạo tệp"
+
+msgid "Create link"
+msgstr "Tạo liên kết"
+
+msgid "Create New Connection"
+msgstr "Tạo kết nối mới"
+
+msgid "Create workspace"
+msgstr "Tạo không gian làm việc"
+
+msgid "Create your account"
+msgstr "Tạo tài khoản của bạn"
+
+msgid "Create your profile"
+msgstr "Tạo hồ sơ của bạn"
+
+msgid "Created"
+msgstr "Đã tạo"
+
+#. placeholder {0}: sk.createdBy.name
+#. placeholder {1}: formatRelativeTime(sk.created)
+msgid "Created by {0} · {1}"
+msgstr "Được tạo bởi {0} · {1}"
+
+msgid "Created by you"
+msgstr "Do bạn tạo"
+
+msgid "Creating..."
+msgstr "Đang tạo..."
+
+msgid "Creating…"
+msgstr "Đang tạo…"
+
+msgid "Credentials expired"
+msgstr "Thông tin xác thực đã hết hạn"
+
+msgid "Credentials expired; reconnect from the Gatekeepers page"
+msgstr "Thông tin xác thực đã hết hạn; kết nối lại từ trang Gatekeepers"
+
+msgid "Curated collections of knowledge your agents read, plus reusable skills they can apply."
+msgstr "Các bộ sưu tập kiến thức được tuyển chọn mà tác nhân của bạn đọc, cùng các kỹ năng có thể tái sử dụng mà chúng có thể áp dụng."
+
+msgid "Current password"
+msgstr "Mật khẩu hiện tại"
+
+msgid "Currently hidden from the menus above and from the agent’s catalog."
+msgstr "Hiện đang bị ẩn khỏi các menu bên trên và khỏi danh mục của tác nhân."
+
+msgid "Custom"
+msgstr "Tùy chỉnh"
+
+msgid "Delete"
+msgstr "Xóa"
+
+#. placeholder {0}: blueprint?.metadata.title
+#. placeholder {0}: bp.title
+msgid "Delete \"{0}\"?"
+msgstr "Xóa \"{0}\"?"
+
+#. placeholder {0}: deleteTarget?.title || t`Untitled Workspace`
+#. placeholder {0}: deleteTarget?.title || t`Untitled workspace`
+msgid "Delete \"{0}\"? This cannot be undone."
+msgstr "Xóa \"{0}\"? Không thể hoàn tác."
+
+#. placeholder {0}: gk.resourceTitle
+msgid "Delete {0}?"
+msgstr "Xóa {0}?"
+
+msgid "Delete blueprint"
+msgstr "Xóa blueprint"
+
+msgid "Delete chat"
+msgstr "Xóa trò chuyện"
+
+msgid "Delete connection"
+msgstr "Xóa kết nối"
+
+msgid "Delete conversation?"
+msgstr "Xóa cuộc trò chuyện?"
+
+msgid "Delete file?"
+msgstr "Xóa tệp?"
+
+msgid "Delete hook"
+msgstr "Xóa hook"
+
+#. placeholder {0}: hook.description.title
+msgid "Delete hook \"{0}\"?"
+msgstr "Xóa hook \"{0}\"?"
+
+msgid "Delete provider"
+msgstr "Xóa nhà cung cấp"
+
+msgid "Delete workspace"
+msgstr "Xóa không gian làm việc"
+
+msgid "Delete workspace?"
+msgstr "Xóa không gian làm việc?"
+
+msgid "Deleted"
+msgstr "Đã xóa"
+
+msgid "Deleting..."
+msgstr "Đang xóa..."
+
+msgid "Denied"
+msgstr "Đã từ chối"
+
+msgid "Deny"
+msgstr "Từ chối"
+
+msgid "Deployment-wide settings. Changes apply to all users on their next connection."
+msgstr "Cài đặt áp dụng cho toàn bộ bản triển khai. Thay đổi sẽ áp dụng cho tất cả người dùng ở lần kết nối tiếp theo của họ."
+
+msgid "Describe what people get when they start from this blueprint."
+msgstr "Mô tả những gì mọi người nhận được khi bắt đầu từ blueprint này."
+
+msgid "Description (optional)"
+msgstr "Mô tả (tùy chọn)"
+
+msgid "Direct invite verification"
+msgstr "Xác minh lời mời trực tiếp"
+
+#. placeholder {0}: entry.actionKind.label
+msgid "Disable auto-approval for {0}"
+msgstr "Tắt duyệt tự động cho {0}"
+
+msgid "Disable hook"
+msgstr "Tắt hook"
+
+msgid "Disable this hook."
+msgstr "Tắt hook này."
+
+msgid "Disabled"
+msgstr "Đã tắt"
+
+msgid "Discard"
+msgstr "Hủy bỏ"
+
+msgid "Discard all pending changes?"
+msgstr "Hủy bỏ tất cả thay đổi chưa lưu?"
+
+msgid "Discard captured logs"
+msgstr "Hủy bỏ nhật ký đã ghi lại"
+
+msgid "Discard changes"
+msgstr "Hủy bỏ thay đổi"
+
+msgid "Discard…"
+msgstr "Hủy bỏ…"
+
+msgid "Discarding..."
+msgstr "Đang hủy bỏ..."
+
+msgid "Disconnect"
+msgstr "Ngắt kết nối"
+
+#. placeholder {0}: vendorDescription.displayName
+msgid "Disconnect {0}? Gadgets using this will lose access."
+msgstr "Ngắt kết nối {0}? Gadget dùng kết nối này sẽ mất quyền truy cập."
+
+msgid "Disconnecting..."
+msgstr "Đang ngắt kết nối..."
+
+msgid "Discover featured blueprints to use as starting points. Open one to create a workspace from it, or save it to reuse later."
+msgstr "Khám phá các blueprint nổi bật để làm điểm khởi đầu. Mở một blueprint để tạo không gian làm việc từ đó, hoặc lưu lại để dùng sau."
+
+msgid "Dismiss"
+msgstr "Bỏ qua"
+
+msgid "Dismiss added collaborator"
+msgstr "Bỏ qua người cộng tác đã thêm"
+
+msgid "Dismiss banner"
+msgstr "Bỏ qua banner"
+
+msgid "Dismiss created link"
+msgstr "Bỏ qua liên kết đã tạo"
+
+msgid "Display name"
+msgstr "Tên hiển thị"
+
+msgid "Display Name"
+msgstr "Tên hiển thị"
+
+msgid "Don't have an account? <0>Create one</0>"
+msgstr "Chưa có tài khoản? <0>Tạo tài khoản</0>"
+
+msgid "Download"
+msgstr "Tải xuống"
+
+msgid "Download {activeFile}"
+msgstr "Tải xuống {activeFile}"
+
+msgid "Download archive"
+msgstr "Tải xuống tệp lưu trữ"
+
+msgid "Download file"
+msgstr "Tải xuống tệp"
+
+msgid "Downloading..."
+msgstr "Đang tải xuống..."
+
+msgid "Draft"
+msgstr "Nháp"
+
+msgid "Draft changes in progress"
+msgstr "Thay đổi nháp đang diễn ra"
+
+msgid "Draft changes pending"
+msgstr "Thay đổi nháp đang chờ"
+
+msgid "Drop files to attach"
+msgstr "Thả tệp để đính kèm"
+
+msgid "e.g. 🎉 New: blueprints now support imports — [learn more](https://example.com)."
+msgstr "Ví dụ: 🎉 Mới: blueprint giờ đây hỗ trợ nhập — [tìm hiểu thêm](https://example.com)."
+
+msgid "e.g. ACME Corp is a logistics company that helps small businesses ship\n"
+"internationally. Our team builds internal tools and dashboards to track shipments."
+msgstr "Ví dụ: ACME Corp là công ty logistics giúp các doanh nghiệp nhỏ vận chuyển\n"
+"hàng quốc tế. Đội ngũ của chúng tôi xây dựng công cụ nội bộ và bảng điều khiển để theo dõi lô hàng."
+
+msgid "e.g. Email Responder"
+msgstr "Ví dụ: Trình trả lời email"
+
+msgid "e.g. Heads up: scheduled maintenance Saturday — see [status](https://status.example.com)."
+msgstr "Ví dụ: Lưu ý: bảo trì theo lịch vào thứ Bảy — xem [trạng thái](https://status.example.com)."
+
+msgid "e.g. prefer for customer-facing decks"
+msgstr "Ví dụ: ưu tiên dùng cho bản trình bày dành cho khách hàng"
+
+#. placeholder {0}: example!.modelId
+#. placeholder {0}: example!.name
+msgid "e.g., {0}"
+msgstr "Ví dụ: {0}"
+
+msgid "e.g., 0123456789abcdef0123456789abcdef"
+msgstr "Ví dụ: 0123456789abcdef0123456789abcdef"
+
+msgid "Each Gadget only sees the resources you connect. If the workspace is shared, Gatekeeper verifies other users have the required permissions before they can access those resources."
+msgstr "Mỗi gadget chỉ nhìn thấy các tài nguyên bạn kết nối. Nếu không gian làm việc được chia sẻ, Gatekeeper sẽ xác minh những người dùng khác có quyền cần thiết trước khi họ có thể truy cập các tài nguyên đó."
+
+msgid "Each workspace is an isolated environment with its own conversations, gatekeepers, and outputs."
+msgstr "Mỗi không gian làm việc là một môi trường biệt lập, có các cuộc trò chuyện, gatekeeper và đầu ra riêng."
+
+msgid "Edit blueprint"
+msgstr "Chỉnh sửa blueprint"
+
+msgid "Edit blueprint settings"
+msgstr "Chỉnh sửa cài đặt blueprint"
+
+msgid "Edit display name"
+msgstr "Chỉnh sửa tên hiển thị"
+
+msgid "Edit name used in code"
+msgstr "Chỉnh sửa tên dùng trong mã"
+
+#. placeholder {0}: resource.title
+msgid "Enable {0}"
+msgstr "Bật {0}"
+
+#. placeholder {0}: entry.actionKind.label
+msgid "Enable auto-approval for {0}"
+msgstr "Bật duyệt tự động cho {0}"
+
+msgid "Enable Email mailboxes"
+msgstr "Bật hộp thư Email"
+
+msgid "Enable hook"
+msgstr "Bật hook"
+
+msgid "Enable the Email receiver account, then choose the mailbox name below."
+msgstr "Bật tài khoản nhận Email, sau đó chọn tên hộp thư bên dưới."
+
+msgid "Enable this hook."
+msgstr "Bật hook này."
+
+msgid "Enabled"
+msgstr "Đã bật"
+
+msgid "Enabling..."
+msgstr "Đang bật..."
+
+msgid "Enter current password"
+msgstr "Nhập mật khẩu hiện tại"
+
+msgid "Enter display name"
+msgstr "Nhập tên hiển thị"
+
+msgid "Enter full screen"
+msgstr "Vào chế độ toàn màn hình"
+
+msgid "Enter new password"
+msgstr "Nhập mật khẩu mới"
+
+msgid "Error"
+msgstr "Lỗi"
+
+msgid "Event"
+msgstr "Sự kiện"
+
+msgid "Every resource an agent reads or changes is recorded here."
+msgstr "Mọi tài nguyên mà tác nhân đọc hoặc thay đổi đều được ghi lại tại đây."
+
+msgid "Everything is ready. You can change any connection before creating the Gadget."
+msgstr "Mọi thứ đã sẵn sàng. Bạn có thể thay đổi bất kỳ kết nối nào trước khi tạo Gadget."
+
+msgid "Everything your workspaces have produced, in one place."
+msgstr "Tất cả những gì không gian làm việc của bạn tạo ra, ở một nơi duy nhất."
+
+msgid "Example tasks"
+msgstr "Tác vụ mẫu"
+
+msgid "Existing blueprints"
+msgstr "Blueprint hiện có"
+
+msgid "Expand outputs"
+msgstr "Mở rộng đầu ra"
+
+msgid "Expand sidebar"
+msgstr "Mở rộng thanh bên"
+
+msgid "Expired — click to re-authenticate"
+msgstr "Đã hết hạn — nhấn để xác thực lại"
+
+msgid "Expired credentials"
+msgstr "Thông tin xác thực đã hết hạn"
+
+msgid "Explore"
+msgstr "Khám phá"
+
+msgid "Explore blueprints"
+msgstr "Khám phá blueprint"
+
+msgid "Export formats could not be loaded."
+msgstr "Không thể tải định dạng xuất."
+
+msgid "Export Gadget"
+msgstr "Xuất Gadget"
+
+#. placeholder {0}: exportingFormat.label
+msgid "Exporting to {0}"
+msgstr "Đang xuất sang {0}"
+
+msgid "External resources this gadget can use."
+msgstr "Tài nguyên bên ngoài mà gadget này có thể sử dụng."
+
+msgid "Extra instructions added to every agent’s system prompt on this deployment. Use this for instance-specific context, conventions, or guardrails."
+msgstr "Hướng dẫn bổ sung được thêm vào system prompt của mọi tác nhân trên bản triển khai này. Dùng mục này cho ngữ cảnh, quy ước hoặc rào chắn an toàn riêng cho bản triển khai này."
+
+msgid "Failed"
+msgstr "Thất bại"
+
+msgid "Failed to approve action"
+msgstr "Không thể duyệt hành động"
+
+msgid "Failed to deny action"
+msgstr "Không thể từ chối hành động"
+
+msgid "Failed to disable auto-approval"
+msgstr "Không thể tắt duyệt tự động"
+
+msgid "Failed to enable auto-approval"
+msgstr "Không thể bật duyệt tự động"
+
+msgid "Failed to encode the logo as PNG."
+msgstr "Không thể mã hóa logo thành PNG."
+
+msgid "Failed to load blueprint."
+msgstr "Không thể tải blueprint."
+
+msgid "Failed to prepare the logo image."
+msgstr "Không thể chuẩn bị hình ảnh logo."
+
+msgid "Failed to read the selected image."
+msgstr "Không thể đọc hình ảnh đã chọn."
+
+msgid "Favorite"
+msgstr "Yêu thích"
+
+msgid "Favorite a workspace to keep it here."
+msgstr "Đánh dấu yêu thích một không gian làm việc để giữ nó ở đây."
+
+msgid "Favorites"
+msgstr "Mục yêu thích"
+
+msgid "Feature blueprint"
+msgstr "Đánh dấu nổi bật blueprint"
+
+msgid "Featured"
+msgstr "Nổi bật"
+
+msgid "Featured blueprints will appear here when they’re published. You can still create blueprints from your own workspaces."
+msgstr "Các blueprint nổi bật sẽ xuất hiện ở đây sau khi được xuất bản. Bạn vẫn có thể tạo blueprint từ không gian làm việc của riêng mình."
+
+msgid "Filename"
+msgstr "Tên tệp"
+
+msgid "Files"
+msgstr "Tệp"
+
+msgid "Filter conversations"
+msgstr "Lọc cuộc trò chuyện"
+
+msgid "Free daily allowance"
+msgstr "Hạn mức miễn phí hàng ngày"
+
+msgid "Full screen"
+msgstr "Toàn màn hình"
+
+#. placeholder {0}: formatOf(selectedGadgetSummary?.output).noun
+msgid "Full screen is available in {0} view"
+msgstr "Chế độ toàn màn hình khả dụng trong chế độ xem {0}"
+
+msgid "Future <0>{actionLabel}</0> actions on <1>{resourceTitle}</1> will be applied automatically, without asking for approval. This action will be applied now too."
+msgstr "Các hành động <0>{actionLabel}</0> trong tương lai trên <1>{resourceTitle}</1> sẽ được áp dụng tự động, không cần yêu cầu duyệt. Hành động này cũng sẽ được áp dụng ngay bây giờ."
+
+msgid "Gadget full screen"
+msgstr "Gadget toàn màn hình"
+
+msgid "Gadget UI"
+msgstr "Giao diện Gadget"
+
+msgid "Gatekeeper"
+msgstr "Gatekeeper"
+
+msgid "Gatekeeper app"
+msgstr "Ứng dụng Gatekeeper"
+
+msgid "Gatekeeper keeps Gadget access limited to connected resources"
+msgstr "Gatekeeper giới hạn quyền truy cập Gadget ở các tài nguyên đã kết nối"
+
+#. placeholder {0}: vendorDescription.displayName
+msgid "Gatekeeper sits between {0} and your Gadgets."
+msgstr "Gatekeeper nằm giữa {0} và các Gadget của bạn."
+
+msgid "Gatekeepers"
+msgstr "Gatekeeper"
+
+msgid "Gatekeepers will appear here as they become available in your workspace."
+msgstr "Gatekeeper sẽ xuất hiện ở đây khi có sẵn trong không gian làm việc của bạn."
+
+msgid "Get started"
+msgstr "Bắt đầu"
+
+#. placeholder {0}: row.targetTitle
+msgid "Give spawned agents access to {0}"
+msgstr "Cấp quyền truy cập {0} cho các tác nhân được tạo ra"
+
+msgid "Go to workspace"
+msgstr "Đi đến không gian làm việc"
+
+msgid "Go to workspaces"
+msgstr "Đi đến các không gian làm việc"
+
+#. placeholder {0}: resource.title
+msgid "Grant {0}"
+msgstr "Cấp {0}"
+
+msgid "Grant access"
+msgstr "Cấp quyền truy cập"
+
+msgid "Grant the access needed to verify this resource"
+msgstr "Cấp quyền truy cập cần thiết để xác minh tài nguyên này"
+
+msgid "Help text for {displayTitle}"
+msgstr "Văn bản trợ giúp cho {displayTitle}"
+
+msgid "Here's a taste of what you can do with {siteName}"
+msgstr "Đây là một phần nhỏ những gì bạn có thể làm với {siteName}"
+
+msgid "Hide password"
+msgstr "Ẩn mật khẩu"
+
+msgid "Hide thinking"
+msgstr "Ẩn suy nghĩ"
+
+msgid "Hint"
+msgstr "Gợi ý"
+
+msgid "Home"
+msgstr "Trang chủ"
+
+msgid "Hooks"
+msgstr "Hooks"
+
+msgid "Hooks enabled"
+msgstr "Đã bật Hooks"
+
+msgid "How it’s presented"
+msgstr "Cách hiển thị"
+
+msgid "How should we call you?"
+msgstr "Chúng tôi nên gọi bạn là gì?"
+
+msgid "How the agent picks it"
+msgstr "Cách tác nhân chọn nó"
+
+msgid "How this connection appears in blueprints."
+msgstr "Cách kết nối này xuất hiện trong blueprint."
+
+msgid "Human-readable name shown in the UI"
+msgstr "Tên dễ đọc được hiển thị trong giao diện"
+
+msgid "Icon"
+msgstr "Biểu tượng"
+
+#. placeholder {0}: owner.name
+msgid "In a workspace shared by {0}"
+msgstr "Trong không gian làm việc do {0} chia sẻ"
+
+msgid "In a workspace you created"
+msgstr "Trong không gian làm việc bạn đã tạo"
+
+msgid "In the composer’s + menu, the command palette, and on an empty Outputs page, in this order."
+msgstr "Theo thứ tự này: trong menu + của ô soạn thảo, trong bảng lệnh, và trên trang Đầu ra khi trống."
+
+msgid "Information"
+msgstr "Thông tin"
+
+msgid "Invalid image dimensions."
+msgstr "Kích thước hình ảnh không hợp lệ."
+
+msgid "Invite"
+msgstr "Mời"
+
+msgid "Invite people or share a link."
+msgstr "Mời mọi người hoặc chia sẻ liên kết."
+
+msgid "Inviting…"
+msgstr "Đang mời…"
+
+msgid "It has observed sensitive data that can only be accessed by you, the owner."
+msgstr "Không gian làm việc này đã quan sát thấy dữ liệu nhạy cảm mà chỉ bạn, chủ sở hữu, mới có thể truy cập."
+
+msgid "It ships with the deployment, so it stays in this list either way."
+msgstr "Định dạng này đi kèm với bản triển khai, nên vẫn nằm trong danh sách này dù thế nào đi nữa."
+
+msgid "Just a few things before you start building"
+msgstr "Chỉ còn vài việc trước khi bạn bắt đầu xây dựng"
+
+msgid "Keep building with the agent in chat and files will appear here as it works, or create one yourself."
+msgstr "Tiếp tục xây dựng với tác nhân trong cuộc trò chuyện, các tệp sẽ xuất hiện ở đây khi tác nhân xử lý, hoặc bạn có thể tự tạo tệp mới."
+
+msgid "Keep this draft and make it the gadget's current version."
+msgstr "Giữ bản nháp này và đặt làm phiên bản hiện tại của gadget."
+
+msgid "Keeps each workspace limited to the resources you connect and ensures every user has the required permissions before accessing them."
+msgstr "Giới hạn mỗi không gian làm việc trong phạm vi các tài nguyên bạn kết nối, đồng thời đảm bảo mọi người dùng có đủ quyền cần thiết trước khi truy cập chúng."
+
+msgid "Kept in full from here"
+msgstr "Giữ nguyên đầy đủ từ đây"
+
+msgid "Last active"
+msgstr "Hoạt động lần cuối"
+
+msgid "Last publish failed"
+msgstr "Lần xuất bản gần nhất thất bại"
+
+msgid "Learn more about <0>AI Gateway unified billing</0>."
+msgstr "Tìm hiểu thêm về <0>thanh toán hợp nhất của AI Gateway</0>."
+
+msgid "Leave a field empty to use the name the blueprint declares. A bundled blueprint can change its declared names when this deployment updates; a value you type here stays as you set it. Applies to outputs made from now on — existing ones keep the name they were made with."
+msgstr "Để trống một trường để dùng tên do blueprint khai báo. Một blueprint đi kèm có thể thay đổi tên đã khai báo khi bản triển khai này cập nhật; giá trị bạn nhập vào đây sẽ giữ nguyên như bạn đã đặt. Áp dụng cho các đầu ra được tạo từ bây giờ trở đi — các đầu ra hiện có vẫn giữ tên đã được đặt khi tạo."
+
+msgid "Leave a field empty to use the name the blueprint declares. Applies to outputs made from now on — existing ones keep the name they were made with."
+msgstr "Để trống một trường để dùng tên do blueprint khai báo. Áp dụng cho các đầu ra được tạo từ bây giờ trở đi — các đầu ra hiện có vẫn giữ tên đã được đặt khi tạo."
+
+msgid "Let's build"
+msgstr "Bắt đầu xây dựng"
+
+msgid "Let's set you up"
+msgstr "Cùng thiết lập cho bạn"
+
+msgid "Link copied"
+msgstr "Đã sao chép liên kết"
+
+msgid "Link copied to your clipboard"
+msgstr "Đã sao chép liên kết vào khay nhớ tạm"
+
+msgid "Link ready"
+msgstr "Liên kết đã sẵn sàng"
+
+msgid "Link your accounts so your gadgets can access them. You can always add more later."
+msgstr "Liên kết tài khoản của bạn để các gadget có thể truy cập chúng. Bạn luôn có thể thêm sau."
+
+msgid "Loading accounts…"
+msgstr "Đang tải tài khoản…"
+
+msgid "Loading activity…"
+msgstr "Đang tải hoạt động…"
+
+msgid "Loading admin settings..."
+msgstr "Đang tải cài đặt quản trị..."
+
+msgid "Loading auto-approval…"
+msgstr "Đang tải duyệt tự động…"
+
+msgid "Loading blueprint..."
+msgstr "Đang tải blueprint..."
+
+msgid "Loading blueprints..."
+msgstr "Đang tải blueprint..."
+
+msgid "Loading code files..."
+msgstr "Đang tải tệp mã..."
+
+msgid "Loading commands…"
+msgstr "Đang tải lệnh…"
+
+msgid "Loading configurator..."
+msgstr "Đang tải trình cấu hình..."
+
+msgid "Loading connections..."
+msgstr "Đang tải kết nối..."
+
+msgid "Loading connections…"
+msgstr "Đang tải kết nối…"
+
+msgid "Loading conversation…"
+msgstr "Đang tải cuộc trò chuyện…"
+
+msgid "Loading diff..."
+msgstr "Đang tải diff..."
+
+msgid "Loading earlier messages…"
+msgstr "Đang tải tin nhắn trước đó…"
+
+msgid "Loading export formats"
+msgstr "Đang tải định dạng xuất"
+
+msgid "Loading gatekeepers..."
+msgstr "Đang tải gatekeeper..."
+
+msgid "Loading image…"
+msgstr "Đang tải hình ảnh…"
+
+msgid "Loading profile…"
+msgstr "Đang tải hồ sơ…"
+
+msgid "Loading usage…"
+msgstr "Đang tải mức sử dụng…"
+
+msgid "Loading workspace…"
+msgstr "Đang tải không gian làm việc…"
+
+msgid "Loading..."
+msgstr "Đang tải..."
+
+msgid "Loading…"
+msgstr "Đang tải…"
+
+msgid "Log in to add blueprint to library"
+msgstr "Đăng nhập để thêm blueprint vào thư viện"
+
+msgid "Log in to add to library"
+msgstr "Đăng nhập để thêm vào thư viện"
+
+msgid "Logo"
+msgstr "Logo"
+
+msgid "Logo is too complex to fit within the upload limit."
+msgstr "Logo quá phức tạp để đáp ứng giới hạn tải lên."
+
+#. placeholder {0}: response.status
+msgid "Logo request failed with status {0}"
+msgstr "Yêu cầu logo thất bại với trạng thái {0}"
+
+msgid "Logo source dimensions are too large."
+msgstr "Kích thước ảnh gốc của logo quá lớn."
+
+msgid "Logo source image is too large (max 5 MB)."
+msgstr "Ảnh gốc của logo quá lớn (tối đa 5 MB)."
+
+msgid "Manage your account details, avatar, and security."
+msgstr "Quản lý thông tin tài khoản, ảnh đại diện và bảo mật của bạn."
+
+msgid "Maybe later"
+msgstr "Để sau"
+
+msgid "Messages are limited to 5 attachments"
+msgstr "Tin nhắn được giới hạn tối đa 5 tệp đính kèm"
+
+msgid "Model"
+msgstr "Mô hình"
+
+msgid "Model ID"
+msgstr "ID mô hình"
+
+msgid "Modified"
+msgstr "Đã sửa đổi"
+
+msgid "More blueprint actions"
+msgstr "Hành động khác cho blueprint"
+
+msgid "Move down"
+msgstr "Di chuyển xuống"
+
+msgid "Move up"
+msgstr "Di chuyển lên"
+
+msgid "Must be at least 8 characters"
+msgstr "Phải có ít nhất 8 ký tự"
+
+msgid "Name"
+msgstr "Tên"
+
+msgid "Name each connection and add guidance for people using this blueprint."
+msgstr "Đặt tên cho từng kết nối và thêm hướng dẫn cho người dùng blueprint này."
+
+msgid "Name for {bindingName}"
+msgstr "Tên cho {bindingName}"
+
+msgid "Name this agent capability for this connection."
+msgstr "Đặt tên cho khả năng tác nhân này của kết nối này."
+
+msgid "Name this link (optional)…"
+msgstr "Đặt tên cho liên kết này (không bắt buộc)…"
+
+msgid "Name this link…"
+msgstr "Đặt tên cho liên kết này…"
+
+msgid "Needs a name"
+msgstr "Cần có tên"
+
+msgid "Needs review"
+msgstr "Cần xem xét"
+
+#. placeholder {0}: format.output.noun
+msgid "New {0}"
+msgstr "{0} mới"
+
+#. placeholder {0}: formatOf(gadget.output).noun.toLowerCase()
+msgid "New {0} · Click to preview"
+msgstr "{0} mới · Nhấn để xem trước"
+
+msgid "New account registration is currently disabled on this deployment."
+msgstr "Đăng ký tài khoản mới hiện đang bị tắt trên bản triển khai này."
+
+msgid "New file"
+msgstr "Tệp mới"
+
+msgid "New password"
+msgstr "Mật khẩu mới"
+
+msgid "Next"
+msgstr "Tiếp theo"
+
+msgid "No accounts available on this connection."
+msgstr "Không có tài khoản nào khả dụng trên kết nối này."
+
+msgid "No activity yet"
+msgstr "Chưa có hoạt động nào"
+
+msgid "No agent"
+msgstr "Không có tác nhân"
+
+msgid "No AI models are available yet. Add a model from AI Providers first."
+msgstr "Chưa có mô hình AI nào khả dụng. Thêm mô hình từ Nhà cung cấp AI trước."
+
+msgid "No AI providers yet"
+msgstr "Chưa có nhà cung cấp AI nào"
+
+msgid "No blueprints found"
+msgstr "Không tìm thấy blueprint nào"
+
+msgid "No blueprints match"
+msgstr "Không có blueprint nào khớp"
+
+msgid "No blueprints yet"
+msgstr "Chưa có blueprint nào"
+
+msgid "No blueprints yet."
+msgstr "Chưa có blueprint nào."
+
+msgid "No commands are available."
+msgstr "Không có lệnh nào khả dụng."
+
+msgid "No commands match your search."
+msgstr "Không có lệnh nào khớp với tìm kiếm của bạn."
+
+msgid "No configurable gatekeepers are installed on this deployment."
+msgstr "Không có gatekeeper có thể cấu hình nào được cài đặt trên bản triển khai này."
+
+msgid "No connected resources"
+msgstr "Không có tài nguyên nào được kết nối"
+
+msgid "No connection types available."
+msgstr "Không có loại kết nối nào khả dụng."
+
+msgid "No connections required"
+msgstr "Không yêu cầu kết nối nào"
+
+msgid "No conversations started by agents yet"
+msgstr "Chưa có cuộc trò chuyện nào do tác nhân bắt đầu"
+
+msgid "No conversations started by people yet"
+msgstr "Chưa có cuộc trò chuyện nào do con người bắt đầu"
+
+msgid "No conversations yet"
+msgstr "Chưa có cuộc trò chuyện nào"
+
+msgid "No declared format. You’ll name it."
+msgstr "Không có định dạng khai báo. Bạn sẽ đặt tên cho nó."
+
+msgid "No description"
+msgstr "Không có mô tả"
+
+msgid "No featured blueprints yet"
+msgstr "Chưa có blueprint nổi bật nào"
+
+msgid "No files yet"
+msgstr "Chưa có tệp nào"
+
+msgid "No gadget UI yet"
+msgstr "Chưa có giao diện gadget nào"
+
+msgid "No gadgets yet"
+msgstr "Chưa có gadget nào"
+
+msgid "No gatekeepers match"
+msgstr "Không có gatekeeper nào khớp"
+
+msgid "No gatekeepers yet"
+msgstr "Chưa có gatekeeper nào"
+
+msgid "No matches."
+msgstr "Không có kết quả khớp nào."
+
+msgid "No matching connection types."
+msgstr "Không có loại kết nối nào khớp."
+
+msgid "No matching events"
+msgstr "Không có sự kiện nào khớp"
+
+msgid "No matching resources."
+msgstr "Không có tài nguyên nào khớp."
+
+msgid "No models configured yet"
+msgstr "Chưa có mô hình nào được cấu hình"
+
+msgid "No outputs match"
+msgstr "Không có đầu ra nào khớp"
+
+msgid "No outputs yet"
+msgstr "Chưa có đầu ra nào"
+
+msgid "No providers found"
+msgstr "Không tìm thấy nhà cung cấp nào"
+
+msgid "No results."
+msgstr "Không có kết quả."
+
+msgid "No services available"
+msgstr "Không có dịch vụ nào khả dụng"
+
+msgid "No services available to connect."
+msgstr "Không có dịch vụ nào khả dụng để kết nối."
+
+msgid "No standard formats yet"
+msgstr "Chưa có định dạng chuẩn nào"
+
+msgid "No workspaces found"
+msgstr "Không tìm thấy không gian làm việc nào"
+
+msgid "No workspaces yet."
+msgstr "Chưa có không gian làm việc nào."
+
+msgid "No workspaces yet. Create your first one above!"
+msgstr "Chưa có không gian làm việc nào. Tạo không gian làm việc đầu tiên của bạn ở trên!"
+
+msgid "Not connected"
+msgstr "Chưa kết nối"
+
+msgid "Nothing after it was kept."
+msgstr "Không có gì sau đó được giữ lại."
+
+msgid "Nothing can run automatically"
+msgstr "Không có gì có thể chạy tự động"
+
+msgid "Nothing is available to offer spawned agents here. Create the agent from a gadget's Connections tab to give it access to that gadget and its resources."
+msgstr "Ở đây chưa có gì để cung cấp cho tác nhân được tạo. Tạo tác nhân từ tab Kết nối của gadget để cấp cho tác nhân quyền truy cập vào gadget đó và tài nguyên của gadget đó."
+
+msgid "Nothing is waiting on you."
+msgstr "Không có gì đang chờ bạn."
+
+msgid "Nothing to review"
+msgstr "Không có gì để xem xét"
+
+msgid "Nothing yet. People will only see “New workspace”."
+msgstr "Chưa có gì. Mọi người sẽ chỉ thấy “Không gian làm việc mới”."
+
+msgid "Off"
+msgstr "Tắt"
+
+msgid "Off for everyone"
+msgstr "Tắt cho mọi người"
+
+msgid "Offer as a standard format"
+msgstr "Cung cấp như định dạng chuẩn"
+
+msgid "Oldest first"
+msgstr "Cũ nhất trước"
+
+msgid "On for everyone automatically"
+msgstr "Tự động bật cho mọi người"
+
+msgid "On Outputs"
+msgstr "Trên Đầu ra"
+
+msgid "Open"
+msgstr "Mở"
+
+#. placeholder {0}: blueprint.metadata.title
+#. placeholder {0}: metadata.title
+msgid "Open blueprint {0}"
+msgstr "Mở blueprint {0}"
+
+msgid "Open chat options"
+msgstr "Mở tùy chọn trò chuyện"
+
+#. placeholder {0}: blueprint.metadata.title
+msgid "Open featured blueprint {0}"
+msgstr "Mở blueprint nổi bật {0}"
+
+msgid "Open larger screenshot of {title}"
+msgstr "Mở ảnh chụp màn hình lớn hơn của {title}"
+
+msgid "Open menu"
+msgstr "Mở menu"
+
+msgid "Open profile menu"
+msgstr "Mở menu hồ sơ"
+
+msgid "Open resource"
+msgstr "Mở tài nguyên"
+
+msgid "Open workspace"
+msgstr "Mở không gian làm việc"
+
+msgid "Opening..."
+msgstr "Đang mở..."
+
+msgid "Opening…"
+msgstr "Đang mở…"
+
+msgid "Optional"
+msgstr "Tùy chọn"
+
+msgid "Optional · you can manage connections any time"
+msgstr "Tùy chọn · bạn có thể quản lý kết nối bất cứ lúc nào"
+
+msgid "Optional for local Ollama access"
+msgstr "Tùy chọn cho quyền truy cập Ollama cục bộ"
+
+msgid "Optional image shown on Explore and the blueprint detail page."
+msgstr "Hình ảnh tùy chọn hiển thị trên Khám phá và trang chi tiết blueprint."
+
+msgid "Output"
+msgstr "Đầu ra"
+
+msgid "Output actions"
+msgstr "Hành động đầu ra"
+
+msgid "Outputs"
+msgstr "Đầu ra"
+
+msgid "Override the default API endpoint (useful for proxies like Cloudflare AI Gateway)"
+msgstr "Ghi đè điểm cuối API mặc định (hữu ích cho proxy như Cloudflare AI Gateway)"
+
+msgid "Owner"
+msgstr "Chủ sở hữu"
+
+msgid "Password"
+msgstr "Mật khẩu"
+
+msgid "Pending changes"
+msgstr "Thay đổi đang chờ"
+
+msgid "People who started a gadget from this blueprint won't be affected, but the link will stop working."
+msgstr "Những người đã khởi chạy gadget từ blueprint này sẽ không bị ảnh hưởng, nhưng liên kết sẽ ngừng hoạt động."
+
+#. placeholder {0}: roleLabel(role)
+msgid "People with <0>{0}</0> access must prove their own account can reach:"
+msgstr "Người có quyền truy cập <0>{0}</0> phải chứng minh tài khoản của riêng họ có thể truy cập:"
+
+msgid "People with access"
+msgstr "Người có quyền truy cập"
+
+msgid "Pick the AI model you'd like to use by default"
+msgstr "Chọn mô hình AI bạn muốn sử dụng theo mặc định"
+
+#. placeholder {0}: resourceTitle ?? t`connection`
+msgid "Pick which {vendorName} identity this {0} should use."
+msgstr "Chọn danh tính {vendorName} mà {0} này nên sử dụng."
+
+msgid "Plural"
+msgstr "Số nhiều"
+
+msgid "Press <0>Esc</0> to exit full screen"
+msgstr "Nhấn <0>Esc</0> để thoát chế độ toàn màn hình"
+
+#. placeholder {0}: attachment.name ?? t`attached file`
+msgid "Preview {0}"
+msgstr "Xem trước {0}"
+
+msgid "Preview {title}"
+msgstr "Xem trước {title}"
+
+msgid "Primary"
+msgstr "Chính"
+
+msgid "Processing..."
+msgstr "Đang xử lý..."
+
+#. placeholder {0}: candidate.declared.plural
+msgid "Produces {0}"
+msgstr "Tạo ra {0}"
+
+msgid "Profile"
+msgstr "Hồ sơ"
+
+msgid "Promote a blueprint"
+msgstr "Quảng bá blueprint"
+
+msgid "Promote a blueprint to offer it by name wherever people start something, and to have the agent prefer it over building the same thing from scratch."
+msgstr "Quảng bá blueprint để giới thiệu nó theo tên ở bất cứ nơi nào mọi người bắt đầu tạo điều gì đó, và để tác nhân ưu tiên dùng nó thay vì xây dựng lại từ đầu."
+
+msgid "Provider actions"
+msgstr "Hành động nhà cung cấp"
+
+msgid "Providers"
+msgstr "Nhà cung cấp"
+
+msgid "Publish a workspace as a blueprint, or add one from Explore."
+msgstr "Xuất bản không gian làm việc dưới dạng blueprint, hoặc thêm một blueprint từ Khám phá."
+
+msgid "Publish this gadget as a reusable template."
+msgstr "Xuất bản gadget này dưới dạng mẫu có thể tái sử dụng."
+
+msgid "Quick model. Click to clear"
+msgstr "Mô hình nhanh. Nhấn để xóa."
+
+msgid "Re-authenticating…"
+msgstr "Đang xác thực lại…"
+
+msgid "Ready"
+msgstr "Sẵn sàng"
+
+msgid "Recent workspaces"
+msgstr "Không gian làm việc gần đây"
+
+msgid "Recipient verification"
+msgstr "Xác minh người nhận"
+
+msgid "Recipients must prove their own account can reach:"
+msgstr "Người nhận phải chứng minh tài khoản của họ có thể kết nối đến:"
+
+msgid "Reconnect"
+msgstr "Kết nối lại"
+
+msgid "Reconnecting…"
+msgstr "Đang kết nối lại…"
+
+#. placeholder {0}: gk.name
+msgid "Referenced in code as: <0>{0}</0>"
+msgstr "Được tham chiếu trong mã dưới dạng: <0>{0}</0>"
+
+msgid "Referenced in code as: <0>{bindingName}</0>"
+msgstr "Được tham chiếu trong mã dưới dạng: <0>{bindingName}</0>"
+
+msgid "Reload"
+msgstr "Tải lại"
+
+msgid "Reload the Workshop to start again."
+msgstr "Tải lại Workshop để bắt đầu lại."
+
+msgid "Remove"
+msgstr "Gỡ"
+
+#. placeholder {0}: deleteTarget?.title || t`Untitled Workspace`
+#. placeholder {0}: deleteTarget?.title || t`Untitled workspace`
+msgid "Remove \"{0}\" from your list? You can still access it via its link."
+msgstr "Gỡ \"{0}\" khỏi danh sách của bạn? Bạn vẫn có thể truy cập qua liên kết của nó."
+
+#. placeholder {0}: removeOutput?.title || t`Untitled`
+msgid "Remove “{0}”?"
+msgstr "Gỡ “{0}”?"
+
+#. placeholder {0}: profile.name
+msgid "Remove {0}"
+msgstr "Gỡ {0}"
+
+msgid "Remove attachment"
+msgstr "Gỡ tệp đính kèm"
+
+msgid "Remove from library"
+msgstr "Gỡ khỏi thư viện"
+
+msgid "Remove workspace"
+msgstr "Gỡ không gian làm việc"
+
+msgid "Removing..."
+msgstr "Đang gỡ..."
+
+msgid "Removing…"
+msgstr "Đang gỡ…"
+
+msgid "Rename"
+msgstr "Đổi tên"
+
+#. placeholder {0}: chat.title
+#. placeholder {0}: gadget.title
+#. placeholder {0}: sk.note || t`share link`
+msgid "Rename {0}"
+msgstr "Đổi tên {0}"
+
+msgid "Rename {filename}"
+msgstr "Đổi tên {filename}"
+
+msgid "Rename chat"
+msgstr "Đổi tên trò chuyện"
+
+msgid "Rename gadget"
+msgstr "Đổi tên gadget"
+
+msgid "Rename output"
+msgstr "Đổi tên đầu ra"
+
+msgid "Rename workspace"
+msgstr "Đổi tên không gian làm việc"
+
+#. placeholder {0}: output?.workspaceTitle
+msgid "Renames the output for everyone with access to “{0}”."
+msgstr "Đổi tên đầu ra cho mọi người có quyền truy cập vào “{0}”."
+
+msgid "Replace all placeholders in the URL before selecting an account"
+msgstr "Thay thế tất cả các phần giữ chỗ trong URL trước khi chọn tài khoản."
+
+msgid "Requests that need your approval show up here and in the workspace header."
+msgstr "Các yêu cầu cần bạn duyệt sẽ xuất hiện ở đây và trong tiêu đề không gian làm việc."
+
+msgid "Required connections"
+msgstr "Kết nối bắt buộc"
+
+msgid "Reset"
+msgstr "Đặt lại"
+
+msgid "Resets at 00:00 UTC, in <0/>."
+msgstr "Được làm mới lúc 00:00 UTC, sau <0/>."
+
+msgid "Resource configurator"
+msgstr "Trình cấu hình tài nguyên"
+
+msgid "Resources"
+msgstr "Tài nguyên"
+
+msgid "Resources to enable"
+msgstr "Tài nguyên cần bật"
+
+msgid "Restore default"
+msgstr "Khôi phục mặc định"
+
+msgid "Retry"
+msgstr "Thử lại"
+
+msgid "Retry publish"
+msgstr "Thử lại xuất bản"
+
+msgid "Retry the last action."
+msgstr "Thử lại hành động gần nhất."
+
+msgid "Return to the last accepted version. Any gadgets created by these changes will be permanently deleted. Pending changes can't be restored."
+msgstr "Quay lại phiên bản đã chấp nhận gần nhất. Mọi gadget được tạo bởi các thay đổi này sẽ bị xóa vĩnh viễn. Các thay đổi chưa được chấp nhận sẽ không thể khôi phục."
+
+#. placeholder {0}: ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+msgid "Returned to the gadget state before the prompt sent at {0}."
+msgstr "Đã quay lại trạng thái gadget trước khi gửi prompt lúc {0}."
+
+msgid "Returned to the gadget state before the prompt sent earlier."
+msgstr "Đã quay lại trạng thái gadget trước khi gửi prompt trước đó."
+
+msgid "Reusable starting points you've published or saved. Spin up a workspace from any of them."
+msgstr "Các điểm khởi đầu có thể tái sử dụng mà bạn đã xuất bản hoặc lưu. Tạo một không gian làm việc từ bất kỳ mục nào trong số đó."
+
+msgid "Revoke"
+msgstr "Thu hồi"
+
+#. placeholder {0}: sk.note || t`share link`
+msgid "Revoke {0}"
+msgstr "Thu hồi {0}"
+
+msgid "Save"
+msgstr "Lưu"
+
+msgid "Save chat title"
+msgstr "Lưu tiêu đề trò chuyện"
+
+msgid "Save connection"
+msgstr "Lưu kết nối"
+
+msgid "Save display name"
+msgstr "Lưu tên hiển thị"
+
+msgid "Save draft"
+msgstr "Lưu bản nháp"
+
+msgid "Save gadget name"
+msgstr "Lưu tên gadget"
+
+msgid "Save these edits as a draft version. They won't affect the gadget until you accept changes."
+msgstr "Lưu các thay đổi này thành bản nháp. Chúng sẽ không ảnh hưởng đến gadget cho đến khi bạn chấp nhận thay đổi."
+
+msgid "Save workspace title"
+msgstr "Lưu tiêu đề không gian làm việc"
+
+msgid "Saving..."
+msgstr "Đang lưu..."
+
+msgid "Saving…"
+msgstr "Đang lưu…"
+
+msgid "Screenshot"
+msgstr "Ảnh chụp màn hình"
+
+msgid "Screenshot of {title}"
+msgstr "Ảnh chụp màn hình của {title}"
+
+msgid "Screenshot will be removed when you save."
+msgstr "Ảnh chụp màn hình sẽ bị xóa khi bạn lưu."
+
+msgid "Search"
+msgstr "Tìm kiếm"
+
+msgid "Search (⌘K)"
+msgstr "Tìm kiếm (⌘K)"
+
+msgid "Search blueprints…"
+msgstr "Tìm kiếm blueprint…"
+
+msgid "Search gatekeepers…"
+msgstr "Tìm kiếm gatekeeper…"
+
+msgid "Search outputs…"
+msgstr "Tìm kiếm đầu ra…"
+
+msgid "Search providers…"
+msgstr "Tìm kiếm nhà cung cấp…"
+
+msgid "Search services, apps, data sources..."
+msgstr "Tìm kiếm dịch vụ, ứng dụng, nguồn dữ liệu..."
+
+msgid "Search workspaces and actions…"
+msgstr "Tìm kiếm không gian làm việc và hành động…"
+
+msgid "Search workspaces…"
+msgstr "Tìm kiếm không gian làm việc…"
+
+msgid "Security"
+msgstr "Bảo mật"
+
+msgid "Select a file to start editing"
+msgstr "Chọn tệp để bắt đầu chỉnh sửa"
+
+msgid "Select a file to view changes"
+msgstr "Chọn tệp để xem thay đổi"
+
+msgid "Select a model"
+msgstr "Chọn mô hình"
+
+msgid "Select an AI model"
+msgstr "Chọn mô hình AI"
+
+msgid "Select at least one resource to continue."
+msgstr "Chọn ít nhất một tài nguyên để tiếp tục."
+
+msgid "Select model"
+msgstr "Chọn mô hình"
+
+msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {error} other {errors}} to chat"
+msgstr "Gửi {pendingConsoleLogCount} {pendingConsoleLogCount, plural, other {lỗi}} đã ghi nhận vào trò chuyện"
+
+msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {log} other {logs}} to chat"
+msgstr "Gửi {pendingConsoleLogCount} {pendingConsoleLogCount, plural, other {nhật ký}} đã ghi nhận vào trò chuyện"
+
+msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {warning} other {warnings}} to chat"
+msgstr "Gửi {pendingConsoleLogCount} {pendingConsoleLogCount, plural, other {cảnh báo}} đã ghi nhận vào trò chuyện"
+
+msgid "Send message"
+msgstr "Gửi tin nhắn"
+
+msgid "Send them this link to open it"
+msgstr "Gửi liên kết này cho họ để mở"
+
+msgid "Set as quick model"
+msgstr "Đặt làm mô hình nhanh"
+
+msgid "Set up"
+msgstr "Thiết lập"
+
+msgid "Setting up..."
+msgstr "Đang thiết lập..."
+
+msgid "Share"
+msgstr "Chia sẻ"
+
+#. placeholder {0}: metadata.title
+msgid "Share “{0}”"
+msgstr "Chia sẻ “{0}”"
+
+msgid "share link"
+msgstr "liên kết chia sẻ"
+
+msgid "Share link name"
+msgstr "Tên liên kết chia sẻ"
+
+msgid "Share link name (optional)"
+msgstr "Tên liên kết chia sẻ (tùy chọn)"
+
+msgid "Share links"
+msgstr "Liên kết chia sẻ"
+
+msgid "Share workspace"
+msgstr "Chia sẻ không gian làm việc"
+
+msgid "Share-link verification"
+msgstr "Xác minh liên kết chia sẻ"
+
+#. placeholder {0}: gadget.owner.name
+#. placeholder {0}: output.owner.name
+#. placeholder {0}: owner.name
+msgid "Shared by {0}"
+msgstr "Được chia sẻ bởi {0}"
+
+msgid "Show all"
+msgstr "Hiện tất cả"
+
+#. placeholder {0}: recent.length
+msgid "Show all ({0})"
+msgstr "Hiện tất cả ({0})"
+
+msgid "Show all activity"
+msgstr "Hiện tất cả hoạt động"
+
+msgid "Show password"
+msgstr "Hiện mật khẩu"
+
+msgid "Show thinking"
+msgstr "Hiện suy nghĩ"
+
+msgid "Shown centered in the top navigation bar. Markdown is supported, so you can include links. Keep it short — it renders on a single line. Leave empty to show nothing. Applies on each user’s next connection."
+msgstr "Hiển thị ở giữa thanh điều hướng trên cùng. Hỗ trợ Markdown nên bạn có thể thêm liên kết. Giữ nội dung ngắn gọn — nội dung hiển thị trên một dòng duy nhất. Để trống nếu không muốn hiển thị gì. Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
+
+msgid "Shown in the app chrome, sign-in screens, and browser tab. Images are scaled without cropping and converted to a static PNG. Square images work best. Applies on each user’s next connection."
+msgstr "Hiển thị trong giao diện ứng dụng, màn hình đăng nhập và tab trình duyệt. Hình ảnh được thay đổi kích thước mà không cắt xén và chuyển đổi thành PNG tĩnh. Hình vuông cho kết quả tốt nhất. Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
+
+msgid "Shown next to the logo in the top bar. Leave empty to use the default (“{DEFAULT_SITE_NAME}”). Applies on each user’s next connection."
+msgstr "Hiển thị cạnh logo trên thanh trên cùng. Để trống để dùng giá trị mặc định (“{DEFAULT_SITE_NAME}”). Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
+
+msgid "Sign in"
+msgstr "Đăng nhập"
+
+msgid "Sign in to your account"
+msgstr "Đăng nhập vào tài khoản của bạn"
+
+msgid "Sign out"
+msgstr "Đăng xuất"
+
+msgid "Signups are closed"
+msgstr "Đã đóng đăng ký"
+
+msgid "Site name"
+msgstr "Tên trang"
+
+#. placeholder {0}: selectedSlashCommand.choice.name
+#. placeholder {1}: selectedSlashCommand.choice.providerLabel
+msgid "Slash command /{0} from {1} is ready to send"
+msgstr "Lệnh gạch chéo /{0} từ {1} đã sẵn sàng để gửi"
+
+msgid "Slash commands"
+msgstr "Lệnh gạch chéo"
+
+msgid "Some auto-approval options could not be loaded."
+msgstr "Không thể tải một số tùy chọn duyệt tự động."
+
+msgid "Something went wrong"
+msgstr "Đã xảy ra lỗi"
+
+msgid "Something went wrong loading admin settings."
+msgstr "Đã xảy ra lỗi khi tải cài đặt quản trị."
+
+msgid "Something went wrong loading your blueprints."
+msgstr "Đã xảy ra lỗi khi tải các blueprint của bạn."
+
+msgid "Something went wrong loading your gatekeepers."
+msgstr "Đã xảy ra lỗi khi tải các gatekeeper của bạn."
+
+msgid "Something went wrong loading your outputs."
+msgstr "Đã xảy ra lỗi khi tải các đầu ra của bạn."
+
+msgid "Something went wrong loading your providers."
+msgstr "Đã xảy ra lỗi khi tải các nhà cung cấp của bạn."
+
+msgid "Something went wrong loading your workspaces."
+msgstr "Đã xảy ra lỗi khi tải các không gian làm việc của bạn."
+
+msgid "Split diff"
+msgstr "Diff chia đôi"
+
+msgid "Split diff needs more space"
+msgstr "Diff chia đôi cần thêm khoảng trống"
+
+msgid "Stacked diff"
+msgstr "Diff xếp chồng"
+
+msgid "Standard formats"
+msgstr "Định dạng tiêu chuẩn"
+
+msgid "Standard formats are listed first in the agent’s catalog, as the entry below — the blueprint’s own description does most of the work. Add a hint only if the agent needs to know when to prefer this format over another one."
+msgstr "Định dạng tiêu chuẩn được liệt kê đầu tiên trong danh mục của tác nhân, giống như mục bên dưới — mô tả riêng của blueprint đã đảm nhiệm phần lớn công việc. Chỉ thêm gợi ý nếu tác nhân cần biết khi nào nên ưu tiên định dạng này hơn định dạng khác."
+
+msgid "Start a new conversation…"
+msgstr "Bắt đầu cuộc trò chuyện mới…"
+
+msgid "Start from a featured blueprint."
+msgstr "Bắt đầu từ một blueprint nổi bật."
+
+msgid "Start with"
+msgstr "Bắt đầu với"
+
+msgid "Status"
+msgstr "Trạng thái"
+
+msgid "Stop agent"
+msgstr "Dừng tác nhân"
+
+msgid "Stop offering"
+msgstr "Ngừng cung cấp"
+
+msgid "Suggested: {suggestion}"
+msgstr "Gợi ý: {suggestion}"
+
+msgid "SVG logos cannot contain embedded images or external resources."
+msgstr "Logo SVG không được chứa hình ảnh nhúng hoặc tài nguyên bên ngoài."
+
+msgid "Switch to this tab to load the Gadget UI"
+msgstr "Chuyển sang tab này để tải giao diện gadget"
+
+#. placeholder {0}: entry.author.name
+msgid "Switched to {0}"
+msgstr "Đã chuyển sang {0}"
+
+#. placeholder {0}: binding.gatekeeperName
+msgid "The \"{0}\" gatekeeper is not available on this workshop, so this connection can't be configured."
+msgstr "Gatekeeper \"{0}\" không khả dụng trên Workshop này, nên kết nối này không thể được cấu hình."
+
+msgid "The agent"
+msgstr "Tác nhân"
+
+msgid "The agent reads this in place of everything earlier in the chat."
+msgstr "Tác nhân đọc nội dung này thay cho mọi thứ trước đó trong cuộc trò chuyện."
+
+#. placeholder {0}: gk.name
+msgid "The binding <0>{0}</0> will be removed from this gadget."
+msgstr "Binding <0>{0}</0> sẽ bị gỡ khỏi gadget này."
+
+msgid "The blueprint behind this format was deleted, so nobody is offered it. Remove the entry."
+msgstr "Blueprint đứng sau định dạng này đã bị xóa, nên không ai được cung cấp định dạng đó. Gỡ mục này."
+
+msgid "The Cloudflare account to bill for Workers AI usage"
+msgstr "Tài khoản Cloudflare để tính phí cho mức sử dụng Workers AI"
+
+msgid "The current rules may be incomplete. Try loading them again."
+msgstr "Các quy tắc hiện tại có thể chưa đầy đủ. Thử tải lại."
+
+msgid "The current screenshot will stay unless you upload a new one."
+msgstr "Ảnh chụp màn hình hiện tại sẽ được giữ nguyên trừ khi bạn tải lên ảnh mới."
+
+#. placeholder {0}: example!.modelId
+msgid "The model identifier as specified by the provider (e.g., '{0}')"
+msgstr "Mã định danh mô hình do nhà cung cấp chỉ định (ví dụ: '{0}')"
+
+#. placeholder {0}: vendor.description.displayName
+msgid "The required resource type for this binding isn't offered by {0}."
+msgstr "Loại tài nguyên bắt buộc cho binding này không được {0} cung cấp."
+
+msgid "The selected file could not be decoded as an image."
+msgstr "Không thể giải mã tệp đã chọn thành hình ảnh."
+
+msgid "The selected file is not a supported image."
+msgstr "Tệp đã chọn không phải là hình ảnh được hỗ trợ."
+
+msgid "Theme"
+msgstr "Giao diện"
+
+msgid "Thinking"
+msgstr "Đang suy nghĩ"
+
+msgid "This account can be used by Gadgets you connect it to. Shared users must have the required permissions before they can access those connected resources."
+msgstr "Tài khoản này có thể được dùng trong các gadget mà bạn kết nối nó tới. Những người được chia sẻ quyền truy cập phải có các quyền cần thiết trước khi có thể truy cập những tài nguyên đã kết nối đó."
+
+msgid "This account has expired — click to re-authenticate"
+msgstr "Tài khoản này đã hết hạn — nhấn để xác thực lại"
+
+msgid "This blueprint can create a Gadget without configuring external resources."
+msgstr "Blueprint này có thể tạo gadget mà không cần cấu hình tài nguyên bên ngoài."
+
+msgid "This blueprint doesn’t declare what it produces. Give it a name to offer it."
+msgstr "Blueprint này không khai báo những gì nó tạo ra. Đặt tên để cung cấp nó."
+
+msgid "This blueprint link will stop working, but gadgets already created from it won’t be affected."
+msgstr "Liên kết blueprint này sẽ ngừng hoạt động, nhưng các gadget đã được tạo từ đó sẽ không bị ảnh hưởng."
+
+msgid "This blueprint may have been removed or the link may be incorrect."
+msgstr "Blueprint này có thể đã bị gỡ bỏ, hoặc liên kết có thể không chính xác."
+
+msgid "This blueprint no longer exists"
+msgstr "Blueprint này không còn tồn tại"
+
+msgid "This blueprint was uploaded manually and cannot be recovered."
+msgstr "Blueprint này đã được tải lên thủ công và không thể khôi phục."
+
+msgid "This connection no longer offers this action; the rule still applies."
+msgstr "Kết nối này không còn cung cấp hành động này; quy tắc vẫn được áp dụng."
+
+msgid "This conversation has pending changes"
+msgstr "Cuộc trò chuyện này có thay đổi đang chờ xử lý"
+
+msgid "This file can’t be previewed here."
+msgstr "Không thể xem trước tệp này ở đây."
+
+msgid "This Gadget does not support exports."
+msgstr "Gadget này không hỗ trợ xuất."
+
+msgid "This is how you'll appear in conversations"
+msgstr "Đây là cách bạn sẽ xuất hiện trong các cuộc trò chuyện"
+
+msgid "This permanently removes the hook. Future events will stop being delivered."
+msgstr "Thao tác này sẽ xóa vĩnh viễn hook. Các sự kiện trong tương lai sẽ ngừng được gửi đến."
+
+#. placeholder {0}: removeOutput?.workspaceTitle
+msgid "This permanently removes the output from “{0}”, for everyone with access to that workspace. Other outputs in that workspace stay available. This can’t be undone."
+msgstr "Thao tác này sẽ xóa vĩnh viễn đầu ra khỏi “{0}”, đối với tất cả những người có quyền truy cập vào không gian làm việc đó. Các đầu ra khác trong không gian làm việc đó vẫn khả dụng. Không thể hoàn tác thao tác này."
+
+#. placeholder {0}: removeOutput?.workspaceTitle
+msgid "This permanently removes the output from “{0}”. Other outputs in that workspace stay available. This can’t be undone."
+msgstr "Thao tác này sẽ xóa vĩnh viễn đầu ra khỏi “{0}”. Các đầu ra khác trong không gian làm việc đó vẫn khả dụng. Không thể hoàn tác thao tác này."
+
+#. placeholder {0}: deleteTarget?.title
+#. placeholder {0}: metadata.title
+msgid "This removes <0>{0}</0>. You can't undo this."
+msgstr "Thao tác này sẽ xóa <0>{0}</0>. Bạn không thể hoàn tác việc này."
+
+msgid "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
+msgstr "Thao tác này sẽ xóa <0>{deletingFile}</0> khỏi gadget. Bạn không thể hoàn tác việc này."
+
+msgid "This workspace can’t be shared"
+msgstr "Không thể chia sẻ không gian làm việc này"
+
+msgid "This workspace has no gadgets yet."
+msgstr "Không gian làm việc này chưa có gadget nào."
+
+msgid "Throw away these draft edits."
+msgstr "Hủy bỏ các chỉnh sửa nháp này."
+
+msgid "Time"
+msgstr "Thời gian"
+
+msgid "Title"
+msgstr "Tiêu đề"
+
+msgid "To open this workspace, you must choose connected accounts for the services it uses."
+msgstr "Để mở không gian làm việc này, bạn phải chọn tài khoản đã kết nối cho các dịch vụ mà nó sử dụng."
+
+msgid "To share something similar, create a blueprint from a gadget in this workspace, then use it to create a new workspace."
+msgstr "Để chia sẻ nội dung tương tự, tạo một blueprint từ một gadget trong không gian làm việc này, rồi dùng blueprint đó để tạo một không gian làm việc mới."
+
+msgid "Top-bar notice"
+msgstr "Thông báo đầu trang"
+
+msgid "Total cost"
+msgstr "Tổng chi phí"
+
+msgid "Try a different filter or search term."
+msgstr "Thử bộ lọc hoặc từ khóa tìm kiếm khác."
+
+msgid "Try a different search term."
+msgstr "Thử từ khóa tìm kiếm khác."
+
+msgid "Try again"
+msgstr "Thử lại"
+
+msgid "Turn connectors and resource types on or off for each service. Auto-provisioned gatekeepers (like the Context Library) have three modes — disabled, optional, or enabled for everyone. Changes are soft: they don’t revoke access a gadget already holds."
+msgstr "Bật hoặc tắt trình kết nối và loại tài nguyên cho từng dịch vụ. Các gatekeeper được cấp tự động (như Context Library) có ba chế độ — tắt, tùy chọn hoặc bật cho mọi người. Các thay đổi này có tác động mềm: chúng không thu hồi quyền truy cập mà một gadget đã có."
+
+msgid "Turn this gadget into a reusable starting point."
+msgstr "Biến gadget này thành điểm khởi đầu có thể tái sử dụng."
+
+msgid "Turning this off removes it from the menus above and from the agent’s catalog. Outputs already made from it keep working."
+msgstr "Tắt tùy chọn này sẽ loại bỏ nó khỏi các menu ở trên và khỏi danh mục của tác nhân. Các đầu ra đã tạo trước đó từ nó vẫn tiếp tục hoạt động."
+
+msgid "Type"
+msgstr "Loại"
+
+msgid "Unable to copy message"
+msgstr "Không thể sao chép tin nhắn"
+
+msgid "Unable to load your workspaces. Check your connection and try refreshing."
+msgstr "Không thể tải không gian làm việc của bạn. Kiểm tra kết nối của bạn và thử làm mới."
+
+msgid "Unchanged"
+msgstr "Không thay đổi"
+
+msgid "Unfavorite"
+msgstr "Bỏ yêu thích"
+
+msgid "Unfeature blueprint"
+msgstr "Bỏ nổi bật blueprint"
+
+msgid "Unknown file type"
+msgstr "Loại tệp không xác định"
+
+msgid "Untitled"
+msgstr "Chưa đặt tên"
+
+msgid "Untitled blueprint"
+msgstr "Blueprint chưa đặt tên"
+
+msgid "Untitled link"
+msgstr "Liên kết chưa đặt tên"
+
+msgid "Untitled workspace"
+msgstr "Không gian làm việc chưa đặt tên"
+
+msgid "Untitled Workspace"
+msgstr "Không gian làm việc chưa đặt tên"
+
+msgid "Update code"
+msgstr "Cập nhật mã"
+
+msgid "Update the details, screenshot, and connection guidance for this blueprint."
+msgstr "Cập nhật thông tin chi tiết, ảnh chụp màn hình và hướng dẫn kết nối cho blueprint này."
+
+#. placeholder {0}: new Date(meta.lastUpdated).toLocaleDateString()
+msgid "Updated {0}"
+msgstr "Đã cập nhật {0}"
+
+msgid "Updating..."
+msgstr "Đang cập nhật..."
+
+msgid "Upload"
+msgstr "Tải lên"
+
+msgid "Upload .gadget"
+msgstr "Tải lên .gadget"
+
+msgid "Upload a .gadget archive"
+msgstr "Tải lên tệp lưu trữ .gadget"
+
+msgid "Upload file"
+msgstr "Tải lên tệp"
+
+msgid "Upload logo"
+msgstr "Tải lên logo"
+
+msgid "Uploading"
+msgstr "Đang tải lên"
+
+msgid "Uploading…"
+msgstr "Đang tải lên…"
+
+msgid "URL of your Ollama server"
+msgstr "URL server Ollama của bạn"
+
+msgid "Usage & billing"
+msgstr "Mức sử dụng & thanh toán"
+
+msgid "Use another {vendorName} account"
+msgstr "Dùng tài khoản {vendorName} khác"
+
+msgid "Use split diff layout"
+msgstr "Dùng bố cục diff dạng chia đôi"
+
+msgid "Use stacked diff layout"
+msgstr "Dùng bố cục diff dạng xếp chồng"
+
+msgid "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
+msgstr "Dùng <0/><1>mũi tên hoàn tác</1> bên dưới bất kỳ phản hồi nào của tác nhân để hủy bỏ từ lượt đó trở đi."
+
+msgid "Used for fast tasks like generating chat titles. Click a model to set it."
+msgstr "Dùng cho các tác vụ nhanh như tạo tiêu đề trò chuyện. Nhấn vào một mô hình để đặt mô hình đó."
+
+msgid "Used the gadget"
+msgstr "Đã dùng gadget"
+
+#. placeholder {0}: formatFullTimestamp(msg.timestamp)
+msgid "Used the gadget at {0}"
+msgstr "Đã dùng gadget lúc {0}"
+
+msgid "User ID"
+msgstr "ID người dùng"
+
+msgid "Username"
+msgstr "Tên người dùng"
+
+msgid "Username or email"
+msgstr "Tên người dùng hoặc email"
+
+msgid "Users can add it themselves"
+msgstr "Người dùng có thể tự thêm"
+
+msgid "Using your account"
+msgstr "Tài khoản đang sử dụng"
+
+msgid "Verify again"
+msgstr "Xác minh lại"
+
+msgid "Verify and open"
+msgstr "Xác minh và mở"
+
+msgid "Verify your access"
+msgstr "Xác minh quyền truy cập của bạn"
+
+msgid "Verify your access again"
+msgstr "Xác minh lại quyền truy cập của bạn"
+
+msgid "View activity"
+msgstr "Xem hoạt động"
+
+msgid "View all"
+msgstr "Xem tất cả"
+
+#. placeholder {0}: pending.length
+msgid "View all {0} requests"
+msgstr "Xem tất cả {0} yêu cầu"
+
+msgid "View all activity"
+msgstr "Xem tất cả hoạt động"
+
+msgid "View history"
+msgstr "Xem lịch sử"
+
+msgid "Wait for pending changes to finish discarding."
+msgstr "Đợi quá trình hủy bỏ các thay đổi đang chờ xử lý hoàn tất."
+
+msgid "Wait for the agent to finish before accepting changes."
+msgstr "Đợi tác nhân hoàn tất trước khi chấp nhận thay đổi."
+
+msgid "Waiting for access…"
+msgstr "Đang chờ quyền truy cập…"
+
+msgid "Waiting for agent…"
+msgstr "Đang chờ tác nhân…"
+
+msgid "Waiting for connection…"
+msgstr "Đang chờ kết nối…"
+
+msgid "Waiting for server…"
+msgstr "Đang chờ server…"
+
+msgid "Waits for your approval"
+msgstr "Chờ bạn duyệt"
+
+msgid "We couldn’t confirm your access to everything this workspace has read. Re-authenticate the account below, or choose a different one, then try again."
+msgstr "Chúng tôi không thể xác nhận quyền truy cập của bạn vào mọi thứ mà không gian làm việc này đã đọc. Xác thực lại tài khoản bên dưới, hoặc chọn một tài khoản khác, rồi thử lại."
+
+msgid "We couldn't find anything matching your search."
+msgstr "Không tìm thấy kết quả nào khớp với tìm kiếm của bạn."
+
+msgid "What are we working on?"
+msgstr "Chúng ta đang làm gì?"
+
+msgid "What people will see"
+msgstr "Những gì mọi người sẽ thấy"
+
+msgid "What should people connect here?"
+msgstr "Mọi người nên kết nối gì ở đây?"
+
+msgid "What spawned agents may use, and the names they see it under."
+msgstr "Những gì các tác nhân được tạo có thể sử dụng, và tên gọi mà chúng nhìn thấy nó."
+
+msgid "What this gatekeeper can do"
+msgstr "Những gì gatekeeper này có thể làm"
+
+msgid "When off, existing users can still log in but no new accounts can be created."
+msgstr "Khi tắt, người dùng hiện có vẫn có thể đăng nhập nhưng không thể tạo tài khoản mới."
+
+msgid "When the gadget builds one, it will appear here."
+msgstr "Khi gadget tạo ra một mục, nó sẽ xuất hiện ở đây."
+
+msgid "Working"
+msgstr "Đang xử lý"
+
+msgid "Workspace actions"
+msgstr "Hành động không gian làm việc"
+
+#. placeholder {0}: formatRelativeTime(output.lastActive)
+msgid "Workspace active {0}"
+msgstr "Không gian làm việc hoạt động {0}"
+
+msgid "Workspaces"
+msgstr "Không gian làm việc"
+
+msgid "Yes, disconnect"
+msgstr "Có, ngắt kết nối"
+
+msgid "You can copy it again anytime from Share links"
+msgstr "Bạn có thể sao chép lại bất cứ lúc nào từ Liên kết chia sẻ"
+
+#. placeholder {0}: createdGadgets.length
+msgid "You created {0, plural, one {gadget} other {gadgets}} {createdTitles}"
+msgstr "Bạn đã tạo {0, plural, other {gadget}} {createdTitles}"
+
+msgid "You don't have access to this page."
+msgstr "Bạn không có quyền truy cập trang này."
+
+msgid "You haven't created any workspaces yet"
+msgstr "Bạn chưa tạo không gian làm việc nào"
+
+msgid "You saved edits"
+msgstr "Bạn đã lưu các chỉnh sửa"
+
+msgid "You're all set"
+msgstr "Bạn đã sẵn sàng"
+
+msgid "You've reached your free usage limit"
+msgstr "Bạn đã đạt giới hạn mức sử dụng miễn phí"
+
+#. placeholder {0}: usage.dailyLimit
+msgid "You've used all {0, plural, one {# of your free request} other {# of your free requests}} for today."
+msgstr "Bạn đã sử dụng hết {0, plural, other {# yêu cầu miễn phí}} trong ngày hôm nay."
+
+#. placeholder {0}: PROVIDER_LABELS[selection.provider]
+msgid "Your {0} API token for billing"
+msgstr "Token API {0} của bạn để thanh toán"
+
+#. placeholder {0}: usage.balance.toFixed(2)
+msgid "Your Cloudflare account is connected with a balance of <0>${0}</0>, but it's below the minimum needed to continue."
+msgstr "Tài khoản Cloudflare của bạn đã được kết nối với số dư <0>${0}</0>, nhưng số dư này thấp hơn mức tối thiểu cần thiết để tiếp tục."
+
+msgid "Your Cloudflare account is connected, but it's below the minimum needed to continue."
+msgstr "Tài khoản Cloudflare của bạn đã được kết nối, nhưng thấp hơn mức tối thiểu cần thiết để tiếp tục."
+
+msgid "Your Cloudflare connection has access to multiple accounts. Choose which one's AI Gateway credits should be billed for usage beyond the free tier."
+msgstr "Kết nối Cloudflare của bạn có quyền truy cập nhiều tài khoản. Chọn tài khoản có credit AI Gateway sẽ được tính phí cho mức sử dụng vượt quá gói miễn phí."
+
+msgid "Your Cloudflare connection has access to multiple accounts. Select the one whose credits should be billed for usage beyond the free tier."
+msgstr "Kết nối Cloudflare của bạn có quyền truy cập nhiều tài khoản. Chọn tài khoản có credit sẽ được tính phí cho mức sử dụng vượt quá gói miễn phí."
+
+msgid "Your connection has access to multiple Cloudflare accounts. Select the one whose AI Gateway credits should be used."
+msgstr "Kết nối của bạn có quyền truy cập nhiều tài khoản Cloudflare. Chọn tài khoản có credit AI Gateway sẽ được sử dụng."
+
+msgid "Your edits are still a live draft."
+msgstr "Các chỉnh sửa của bạn vẫn đang là bản nháp."
+
+msgid "Your workspaces"
+msgstr "Không gian làm việc của bạn"

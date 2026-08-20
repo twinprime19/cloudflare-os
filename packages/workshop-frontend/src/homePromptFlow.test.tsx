@@ -2,7 +2,8 @@
 /* eslint-disable react/react-in-jsx-scope */
 
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { type Root } from "react-dom/client";
+import { createI18nRoot } from "./testI18nRoot";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const testState = vi.hoisted(() => {
@@ -72,7 +73,7 @@ describe("Home prompt route flow", () => {
   it("seeds the composer once, clears route state, and does not create a workspace", async () => {
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
+    root = createI18nRoot(container);
     await act(async () => root!.render(<HomePageContent prompt="Create a daily brief." />));
 
     expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Prompt"]')?.value).toBe(

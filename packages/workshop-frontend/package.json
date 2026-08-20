@@ -4,19 +4,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "test": "vitest run",
     "preview": "vite preview",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@cloudflare/kumo": "^2.9.2",
     "@gadgets/error-reporting": "workspace:*",
+    "@gadgets/i18n": "workspace:*",
     "@gadgets/workshop-shared": "workspace:*",
+    "@lingui/core": "6.6.0",
+    "@lingui/react": "6.6.0",
     "@monaco-editor/react": "^4.7.0",
     "@phosphor-icons/react": "^2.1.10",
     "@tailwindcss/vite": "^4.3.3",
-    "@tanstack/react-router": "^1.170.21",
+    "@tanstack/react-router": "^1.170.23",
     "capnweb": "catalog:",
     "hash-wasm": "^4.12.0",
     "monaco-editor": "^0.56.0",
@@ -31,7 +33,10 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
-    "@tanstack/router-plugin": "^1.168.26",
+    "@lingui/babel-plugin-lingui-macro": "6.6.0",
+    "@lingui/conf": "6.6.0",
+    "@lingui/vite-plugin": "6.6.0",
+    "@tanstack/router-plugin": "^1.168.27",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.2.0",

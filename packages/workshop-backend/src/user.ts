@@ -154,6 +154,28 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return result === 0;
 }
 
+// Longest display name accepted from a gatekeeper. Provider display names are short in practice;
+// the cap is here because the string is a third party's and ends up wherever the user is named.
+const MAX_NAME_HINT_LENGTH = 100;
+
+/**
+ * Vets a display name a gatekeeper offered for a user signing in: trimmed, non-empty, no longer
+ * than MAX_NAME_HINT_LENGTH, and free of control characters (which would let a provider push line
+ * breaks into anything that renders the name). Returns null when the hint is unusable, leaving the
+ * caller to fall back to the email's local-part.
+ *
+ * Takes `unknown` deliberately: the hint crosses a worker boundary, so a gatekeeper can hand back
+ * null, a number, or a stub where a string was declared, and none of that may reach a sign-in as a
+ * type error.
+ */
+export function sanitizeDisplayNameHint(hint: unknown): string | null {
+  if (typeof hint !== "string") return null;
+  let trimmed = hint.trim();
+  if (trimmed === "" || trimmed.length > MAX_NAME_HINT_LENGTH) return null;
+  if (/\p{Cc}/u.test(trimmed)) return null;
+  return trimmed;
+}
+
 function makeUserStorage(storage: DurableObjectStorage) {
   return createTypedStorage(storage, {
     collections: {
@@ -403,27 +425,44 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
    * Log in via an authentication gatekeeper, creating the account on first use. The user DO is keyed
    * by the verified email (this DO's id derives from idFromName(email)), so `email` is also used as
    * the profile id and the initial display name is the email's local-part — consistent with the
-   * Cloudflare Access flow. Password login is left disabled for these accounts. Returns the session
-   * secret to store client-side.
+   * Cloudflare Access flow — unless the gatekeeper supplied a better one in `nameHint`. Password
+   * login is left disabled for these accounts. Returns the session `secret` to store client-side,
+   * plus whether the hint actually became the stored name (`nameSeeded`), which the caller logs.
    *
-   * The profile is written only on first sign-in. We intentionally do NOT refresh the display name
-   * on later logins: once set, the name is the user's to change (via setOwnDisplayName), so we don't
-   * clobber a customized name with the email local-part.
+   * A display name we seeded ourselves is still ours to improve: when the stored name is exactly the
+   * email local-part we put there, a later sign-in backfills the gatekeeper's name over it, so users
+   * created before their gatekeeper offered one stop looking like a mangled email. Any other stored
+   * name is left alone — once the user changes it (via setOwnDisplayName) the name is theirs, and no
+   * gatekeeper gets to clobber it.
    *
    * When the account doesn't yet exist and `allowCreate` is false (deployment signups are closed),
    * returns null instead of creating one — existing users can still sign in.
    */
-  async loginOrCreateViaGatekeeper(email: string, allowCreate: boolean): Promise<string | null> {
+  async loginOrCreateViaGatekeeper(email: string, allowCreate: boolean, nameHint?: unknown)
+      : Promise<{ secret: string; nameSeeded: boolean } | null> {
+    // Sanitized here too, not just at the caller: this is an RPC entrypoint, and the hint is
+    // whatever a third-party gatekeeper chose to send.
+    let hint = sanitizeDisplayNameHint(nameHint);
+    let seedName = email.split("@")[0];
+    let nameSeeded = false;
     if (!this.storage.created.get()) {
       if (!allowCreate) return null;
       this.storage.created.put(true);
       this.storage.profile.put({
         type: "user",
-        name: email.split("@")[0],
+        name: hint ?? seedName,
         id: email,
       });
+      nameSeeded = hint !== null;
+    } else if (hint !== null) {
+      let profile = this.storage.profile.get();
+      if (profile.name === seedName) {
+        profile.name = hint;
+        this.storage.profile.put(profile);
+        nameSeeded = true;
+      }
     }
-    return this.#newSessionToken();
+    return { secret: await this.#newSessionToken(), nameSeeded };
   }
 
   /** Whether this account has a password set (false for gatekeeper sign-in accounts). */
@@ -1555,7 +1594,8 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
    * Persist a connected gatekeeper account that was established during sign-in (rather than via the
    * usual logged-in connectAccount flow). Used for providers like Cloudflare where signing in also
    * links the account for AI Gateway billing: the login callback resolves this user by verified
-   * email, then calls here to store the full-scope grant.
+   * email, then calls here to store the resulting grant. That grant covers billing only: sign-in
+   * requests no gadget-facing resources, so any later resource access is authorized separately.
    */
   async linkConnectedAccountFromLogin(
       account: Fetcher<GatekeeperUser>, vendorId: string, expiresAt?: Date): Promise<void> {

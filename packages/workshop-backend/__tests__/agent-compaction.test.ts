@@ -90,16 +90,16 @@ function buildState(messages: AiChatMessage[], compactedTo: number) {
 }
 
 describe("compaction trigger", () => {
-  it("triggers at 85 percent of the input budget", () => {
-    expect(shouldCompactChat(84_999, 100_000)).toBe(false);
-    expect(shouldCompactChat(85_000, 100_000)).toBe(true);
+  it("triggers at 65 percent of the input budget", () => {
+    expect(shouldCompactChat(64_999, 100_000)).toBe(false);
+    expect(shouldCompactChat(65_000, 100_000)).toBe(true);
   });
 
   it("reserves output capacity only where the model counts it against its own window", () => {
     // Workers AI charges the response to the window, so it has to be withheld.
     expect(getModelTokenLimits({
-      provider: "cloudflare", model: "@cf/moonshotai/kimi-k2.7-code", apiToken: "",
-    })).toEqual({inputBudget: 229_376, maxOutputTokens: 32_768});
+      provider: "cloudflare", model: "alibaba/qwen3.7-plus", apiToken: "",
+    })).toEqual({inputBudget: 884_736, maxOutputTokens: 32_768});
 
     // Anthropic publishes an input-only window, so withholding anything would waste it.
     expect(getModelTokenLimits({

@@ -3,6 +3,8 @@ import { Popover } from '@cloudflare/kumo'
 import { ArrowRight, Pulse } from '@phosphor-icons/react'
 import type { RpcStub } from 'capnweb'
 import type { ActionLogEntry, Overseer } from '@gadgets/workshop-shared/api'
+import { Trans } from '@lingui/react/macro'
+import { plural, t } from '@lingui/core/macro'
 import { CountBadge } from './components/CountBadge'
 import { ResolveButton } from './components/ResolveButton'
 import { formatRelativeTime, type ActivityView } from './Activity'
@@ -41,8 +43,8 @@ export default function ActivityNotifications({
           <button
             type="button"
             aria-label={pending.length > 0
-              ? `Activity — ${pending.length} ${pending.length === 1 ? 'request needs' : 'requests need'} review`
-              : 'Activity'}
+              ? t`Activity — ${plural(pending.length, { one: '# request needs', other: '# requests need' })} review`
+              : t`Activity`}
             className={`relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors duration-150 hover:bg-kumo-tint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kumo-ring ${
               pending.length > 0 ? 'text-kumo-strong' : 'text-kumo-subtle hover:text-kumo-default'
             }`}
@@ -62,14 +64,14 @@ export default function ActivityNotifications({
       >
         <div className="flex items-center justify-between gap-2 px-3.5 pb-1 pt-2.5">
           <Popover.Title className="text-[11px] font-medium uppercase tracking-[0.06em] text-kumo-inactive">
-            Needs review
+            <Trans>Needs review</Trans>
           </Popover.Title>
           <CountBadge count={pending.length} />
         </div>
 
         {pending.length === 0 ? (
           <p className="m-0 px-3.5 pb-3 pt-1 text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
-            Nothing is waiting on you.
+            <Trans>Nothing is waiting on you.</Trans>
           </p>
         ) : (
           <div className="max-h-[min(58vh,420px)] overflow-y-auto pb-1">
@@ -125,8 +127,8 @@ export default function ActivityNotifications({
           >
             <span>
               {pending.length > PREVIEW_LIMIT
-                ? `View all ${pending.length} requests`
-                : 'View all activity'}
+                ? t`View all ${pending.length} requests`
+                : t`View all activity`}
             </span>
             <ArrowRight size={13} className="text-kumo-inactive" />
           </button>

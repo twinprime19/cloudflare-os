@@ -10,7 +10,10 @@ import {zeroUsage} from "./ai-invoke";
 // the UI can still page back through them, but agent replay starts at the boundary.
 
 // Compact when the prompt reaches this share of the input budget, leaving room for the response.
-const COMPACTION_TRIGGER_RATIO = 0.85;
+// Set well below where the budget alone would allow: providers have severed streams far under
+// their declared windows (a declared ~900k window cut streams near 640k), so the trigger must
+// fire before the real serving ceiling, not the declared one.
+const COMPACTION_TRIGGER_RATIO = 0.65;
 
 // Target this share of the input budget for retained messages, leaving room for the summary and
 // the turns that follow.

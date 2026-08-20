@@ -22,10 +22,92 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import { GatekeeperConnectCallback, GatekeeperUser } from "@gadgets/workshop-shared/gatekeeper";
 import { createWorkshopLogger } from "../observability";
-import { CLOUDFLARE_VENDOR_ID } from "../user.js";
+import { CLOUDFLARE_VENDOR_ID, sanitizeDisplayNameHint } from "../user.js";
 import { readAdminConfig } from "../admin-config.js";
+import { AvatarEnv, putUserAvatar, userAvatarExists, validateAvatarBytes } from "../avatar.js";
 
 const logger = createWorkshopLogger("workshop.auth");
+
+type LoginLogger = ReturnType<typeof createWorkshopLogger>;
+
+// How long sign-in waits for the gatekeeper's profile hints. Deliberately much tighter than the
+// timeouts a gatekeeper applies to its own provider calls: the hints are a nicety, so a slow
+// provider costs the user a seeded name, never a slow sign-in.
+const PROFILE_HINT_TIMEOUT_MS = 5000;
+
+// getAuthenticatedProfile() is optional on GatekeeperUser. We don't probe the stub for it — the
+// vendor's providesAuthProfile declaration is what we gate on — but TypeScript still can't call an
+// optional method on the stub type, so we view the stub through a shape derived from the interface
+// that marks the method required (same approach as user.ts's account stub views).
+type ProfileAccountStub = Required<Pick<GatekeeperUser, "getAuthenticatedProfile">>;
+type ProfileHints = Awaited<ReturnType<ProfileAccountStub["getAuthenticatedProfile"]>>;
+
+// Distinguishes "we stopped waiting" from anything the gatekeeper itself could return, null included.
+const HINTS_TIMED_OUT = Symbol("profile hints timed out");
+
+/**
+ * Ask the gatekeeper for display-name/photo hints, bounded by PROFILE_HINT_TIMEOUT_MS. Never
+ * throws: a slow, broken, or hint-less gatekeeper yields `{}` and sign-in carries on.
+ */
+async function fetchProfileHints(
+    account: Fetcher<GatekeeperUser>, log: LoginLogger): Promise<ProfileHints> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    // On timeout the gatekeeper's promise stays pending, but Promise.race has already attached
+    // handlers to it, so a late rejection can't surface as an unhandled rejection.
+    let hints = await Promise.race([
+      (account as unknown as ProfileAccountStub).getAuthenticatedProfile(),
+      new Promise<typeof HINTS_TIMED_OUT>(resolve => {
+        timer = setTimeout(() => resolve(HINTS_TIMED_OUT), PROFILE_HINT_TIMEOUT_MS);
+      }),
+    ]);
+    if (hints === HINTS_TIMED_OUT) {
+      log.warn("gatekeeper profile hints timed out", {
+        event: "gatekeeper.login.profile.timeout",
+      });
+      return {};
+    }
+    // What came back is another worker's value, only a hints object by declaration; anything else
+    // is "no hints", so reading a field off it later can't turn into a sign-in failure.
+    if (hints === null || typeof hints !== "object") return {};
+    return hints;
+  } catch (err) {
+    log.warn("gatekeeper profile hints unavailable", {
+      event: "gatekeeper.login.profile.failed", error: err,
+    });
+    return {};
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Store the gatekeeper's photo as the user's avatar, but only when they have none — an avatar the
+ * user (or an earlier sign-in) already set is never overwritten. Returns whether it was written.
+ * Never throws: a photo the Workshop won't accept, or a KV failure, must not fail a sign-in.
+ */
+async function seedAvatar(
+    env: AvatarEnv, userId: string, photo: NonNullable<ProfileHints["photo"]>,
+    log: LoginLogger): Promise<boolean> {
+  try {
+    if (await userAvatarExists(env, userId)) return false;
+    validateAvatarBytes(photo.data);
+    await putUserAvatar(env, userId, photo.data);
+    return true;
+  } catch (err) {
+    log.warn("gatekeeper profile photo not seeded", {
+      event: "gatekeeper.login.profile.photo.failed", error: err,
+    });
+    return false;
+  }
+}
+
+function describeSeeded(name: boolean, photo: boolean): "name+photo" | "name" | "photo" | "none" {
+  if (name && photo) return "name+photo";
+  if (name) return "name";
+  if (photo) return "photo";
+  return "none";
+}
 
 type PendingResult = { token: string } | { error: string };
 
@@ -79,7 +161,9 @@ export class PendingLogin extends DurableObject<Cloudflare.Env> {
   }
 }
 
-type LoginCallbackProps = { pendingId: string; vendorId: string };
+// `providesProfile` mirrors the vendor's providesAuthProfile declaration, read once when the login
+// starts, so complete() knows whether asking for profile hints is worth an RPC.
+type LoginCallbackProps = { pendingId: string; vendorId: string; providesProfile: boolean };
 
 export class LoginConnectCallbackImpl
     extends WorkerEntrypoint<Cloudflare.Env, LoginCallbackProps>
@@ -97,7 +181,8 @@ export class LoginConnectCallbackImpl
     const pending = this.#pending();
     // `account` is a call parameter, so Cap'n Web disposes it automatically when this method
     // returns — no explicit disposal needed. We read the verified email to resolve/create the user.
-    // The email's local-part seeds the initial display name, like the Cloudflare Access flow.
+    // The email's local-part seeds the initial display name, like the Cloudflare Access flow, unless
+    // the gatekeeper offers a better one (see the profile hints below).
     try {
       const email = await account.getAuthenticatedEmail();
       if (!email) {
@@ -107,19 +192,28 @@ export class LoginConnectCallbackImpl
         await pending.fail("This account has no verified email, so it can't be used to sign in.");
         return;
       }
+      // Profile hints (display name, photo) seed the new user's profile. They are gathered and
+      // applied before the token is delivered, so the welcome screen sees the seeded state on its
+      // first render — and every step of it degrades to "no hints" rather than failing the login.
+      const hints = this.ctx.props.providesProfile ? await fetchProfileHints(account, loginLogger)
+                                                  : {};
+      const nameHint = sanitizeDisplayNameHint(hints.name);
       const userStub = this.ctx.exports.UserDurableObject.get(
           this.ctx.exports.UserDurableObject.idFromName(email));
       // Closed signups block first-time account creation here too (not just password signup); an
       // existing user signing in is unaffected.
       const signupsEnabled = (await readAdminConfig(this.env)).signupsEnabled;
-      const secret = await userStub.loginOrCreateViaGatekeeper(email, signupsEnabled);
-      if (secret === null) {
+      const login = await userStub.loginOrCreateViaGatekeeper(
+          email, signupsEnabled, nameHint ?? undefined);
+      if (login === null) {
         loginLogger.info("gatekeeper login finished", {
           event: "gatekeeper.login.finished", outcome: "signups_disabled",
         });
         await pending.fail("New sign-ups are currently disabled on this deployment.");
         return;
       }
+      const photoSeeded = hints.photo !== undefined
+          && await seedAvatar(this.env, email, hints.photo, loginLogger);
       // For Cloudflare, signing in also links the account for AI Gateway billing: startGatekeeperLogin
       // requested full (non-transient) scopes, so persist the grant as a connected account before
       // handing back the session. Other providers use minimal, transient sign-in grants (no persist).
@@ -128,9 +222,12 @@ export class LoginConnectCallbackImpl
       }
       // Session tokens are "<doName>:<secret>"; PublicApi.authenticate() routes via idFromName of
       // the first part. The user DO is keyed by email, so the prefix must be the email.
-      await pending.deliver(`${email}:${secret}`);
+      await pending.deliver(`${email}:${login.secret}`);
+      // Which hints we managed to seed, never their values: the name and the email are the user's.
+      // `nameSeeded` comes from the user DO, so a hint it declined (customised name) reads as none.
       loginLogger.info("gatekeeper login finished", {
         event: "gatekeeper.login.finished", outcome: "ok",
+        profileSeeded: describeSeeded(login.nameSeeded, photoSeeded),
       });
     } catch (err) {
       loginLogger.error("gatekeeper login failed", {

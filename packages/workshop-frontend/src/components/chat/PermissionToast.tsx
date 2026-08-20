@@ -3,6 +3,7 @@ import { Button } from '@cloudflare/kumo'
 import { Badge } from '@cloudflare/kumo'
 import { Text } from '@cloudflare/kumo'
 import { Shield, X, Check } from '@phosphor-icons/react'
+import { Trans } from '@lingui/react/macro'
 import { samplePermissions, type PermissionRequest } from '../../data/chat'
 import { logoComponents } from '../ConnectionLogos'
 
@@ -28,10 +29,10 @@ function PermissionCard({
           <Shield size={14} className="text-kumo-brand" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-kumo-default">Permission requested</div>
+          <div className="text-sm font-semibold text-kumo-default"><Trans>Permission requested</Trans></div>
           <div className="mt-0.5">
             <Text variant="secondary" size="xs" as="span">
-              Workshop wants to access <strong>{perm.connectionName}</strong>
+              <Trans>Workshop wants to access <strong>{perm.connectionName}</strong></Trans>
             </Text>
           </div>
         </div>
@@ -73,7 +74,7 @@ function PermissionCard({
           {perm.resources && perm.resources.length > 0 && (
             <div className="px-3 py-2 rounded-md bg-kumo-tint/50">
               <span className="font-mono text-[10px] text-kumo-subtle uppercase tracking-wider block mb-1">
-                Resources
+                <Trans>Resources</Trans>
               </span>
               {perm.resources.map((res) => (
                 <div key={res} className="flex items-center gap-1.5 mt-0.5">
@@ -86,7 +87,7 @@ function PermissionCard({
           {/* API scopes */}
           <div className="px-3 py-2 rounded-md bg-kumo-tint/50">
             <span className="font-mono text-[10px] text-kumo-subtle uppercase tracking-wider block mb-1">
-              API scopes
+              <Trans>API scopes</Trans>
             </span>
             {perm.scopes.map((scope) => (
               <div key={scope} className="font-mono text-xs text-kumo-subtle">{scope}</div>
@@ -98,10 +99,10 @@ function PermissionCard({
       {/* Actions */}
       <div className="grid grid-cols-2 gap-2 p-3 pt-2">
         <Button variant="outline" size="sm" onClick={onDeny} className="w-full justify-center">
-          Deny
+          <Trans>Deny</Trans>
         </Button>
         <Button variant="primary" size="sm" onClick={onGrant} className="w-full justify-center">
-          Allow access
+          <Trans>Allow access</Trans>
         </Button>
       </div>
     </div>
@@ -151,7 +152,7 @@ export default function PermissionToasts() {
             <Check size={11} className="text-kumo-success" />
           </div>
           <span className="text-xs text-kumo-default">
-            <strong>{grantedToast}</strong> access granted
+            <Trans><strong>{grantedToast}</strong> access granted</Trans>
           </span>
         </div>
       )}

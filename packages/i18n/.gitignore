@@ -1,0 +1,6 @@
+# `lingui compile` output. The `.po` sources beside it are tracked -- they are the catalogs -- but
+# the compiled form is derived: `@lingui/vite-plugin` compiles each `.po` in memory at build time,
+# so a checked-in copy could only ever be stale.
+locales/*.js
+locales/*.mjs
+locales/*.ts

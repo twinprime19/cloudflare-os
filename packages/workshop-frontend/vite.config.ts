@@ -1,14 +1,79 @@
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
+import { lingui } from '@lingui/vite-plugin'
+import { getConfig as getLinguiConfig } from '@lingui/conf'
+import { vitestTask } from '../../scripts/vitest-task-vite-config.js'
+
+// `dist/` is this package's own build output, excluded from the inputs of both tasks: vp declines to
+// cache a task that reads a path it also wrote. Package-relative rather than workspace-wide --
+// `typed-storage` emits, and its `exports` resolves to `dist/index.js`, so a pattern matching every
+// package's `dist` would drop a real input.
+const ownDist = { pattern: '!dist/**', base: 'package' } as const
+
+// `@gadgets/i18n` owns `lingui.config.ts` and the catalogs beside it. Both Lingui plugins below
+// otherwise discover that config by searching upwards from `process.cwd()`, which finds nothing
+// from either of the two directories they actually run in: `vp run -r` loads this file from the
+// workspace root to build its task graph, and the Babel pass runs with the cwd set to this package.
+// So the config is resolved once, here, from a path relative to this file.
+const linguiConfigCwd = resolve(dirname(fileURLToPath(import.meta.url)), '../i18n')
+const linguiConfig = getLinguiConfig({ cwd: linguiConfigCwd })
+
+const runConfig = {
+  run: {
+    tasks: {
+      'clean:dist': { command: 'rm -rf dist', cache: false },
+      /**
+       * `build` is a task rather than a package.json script so `env` can declare the `VITE_*` flags
+       * it reads: a cached `vp` run executes scripts in a clean environment, and the values would be
+       * missing from the fingerprint besides. `VITE_CF_ACCESS_MODE` is inlined into the bundle
+       * (`src/useAuth.ts`) and `VITE_FRONTEND_ERROR_REPORTING` selects hidden source maps below, so
+       * replaying a bundle built under different values is wrong rather than merely stale.
+       *
+       * Separate commands rather than one `&&` string so each is a cache entry of its own; `env` is
+       * task-wide, so changing a flag re-runs all three anyway. `tsconfig.vite.json` is the
+       * config-file pass (`vite.config.ts` and the scripts it imports), which the app's own
+       * `tsconfig.json` excludes.
+       *
+       * `NODE_ENV=production` applies to this command alone and changes nothing in the normal case:
+       * vite already defaults a build to production when `NODE_ENV` is unset. It is here because
+       * vite takes `isProduction` from `NODE_ENV` and not from `--mode`, so an ambient
+       * `NODE_ENV=development` would otherwise ship a development bundle from `--no-cache`, the
+       * path `deploy` uses.
+       */
+      build: {
+        command: ['tsc', 'tsc -p tsconfig.vite.json', 'NODE_ENV=production vite build'],
+        dependsOn: ['clean:dist'],
+        env: ['VITE_*'],
+        input: [
+          { auto: true },
+          ownDist,
+          // Wrangler's scratch bundles are randomly named, and tracking reaches past the package
+          // that owns the task, so any sibling that ran `wrangler dev` guarantees a miss here on the
+          // next run -- vp reported one as `'bundle-1434329262.js' added in
+          // 'packages/workshop-backend/.wrangler/tmp'`. Workspace-wide for that reason; `build:app`
+          // and the shared `test` task exclude the same tree.
+          { pattern: '!**/.wrangler/**', base: 'workspace' } as const,
+        ],
+        output: ['dist/**'],
+      },
+      test: vitestTask('vitest run', [ownDist]),
+    },
+  },
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
   const backendHost = env.VITE_BACKEND_HOST?.trim() || 'localhost:8787'
   const frontendErrorReporting = env.VITE_FRONTEND_ERROR_REPORTING === 'true'
   return {
+    // Spread, not a literal `run: {...}`: `run` is Vite+'s field and vite's own `defineConfig` has
+    // no such property, but the excess-property check doesn't reach spreads.
+    ...runConfig,
     resolve: {
       // Remove when y-monaco supports Monaco 0.56: https://github.com/yjs/y-monaco/pull/31
       alias: {
@@ -17,7 +82,24 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       TanStackRouterVite({ target: 'react', autoCodeSplitting: true }),
-      react(),
+      // The Lingui macros (`<Trans>`, `` t`...` ``) are a compile-time transform, so they ride
+      // plugin-react's existing Babel pass rather than adding a second one. This is scoped to this
+      // package and leaves the workspace-wide esbuild transform untouched.
+      //
+      // `descriptorFields: 'message'` rather than the default `'auto'`: `'auto'` compiles a
+      // production build down to the message id alone, which renders as a bare hash unless a
+      // compiled catalog for the active locale is loaded and still matches. English is the source
+      // language and lives inline here, so keeping the message beside the id makes the source text
+      // its own fallback -- a missed `lingui extract` can then never blank out the UI.
+      react({
+        babel: {
+          plugins: [
+            ['@lingui/babel-plugin-lingui-macro', { descriptorFields: 'message', linguiConfig }],
+          ],
+        },
+      }),
+      // Compiles `.po` catalogs on import.
+      lingui({ cwd: linguiConfigCwd }),
       tailwindcss(),
       tsconfigPaths(),
     ],

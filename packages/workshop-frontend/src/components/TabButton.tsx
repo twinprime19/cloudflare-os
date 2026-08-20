@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { t } from '@lingui/core/macro'
 
 type TabButtonProps = {
   active: boolean
@@ -26,7 +27,7 @@ export function TabButton({ active, onClick, children, badgeCount = 0, className
         <span
           className="inline-flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-kumo-contrast px-1 text-[10px] leading-none font-semibold text-kumo-inverse"
           style={{ fontVariantNumeric: 'tabular-nums' }}
-          aria-label={`${badgeCount} pending`}
+          aria-label={t`${badgeCount} pending`}
         >
           {badgeCount}
         </span>

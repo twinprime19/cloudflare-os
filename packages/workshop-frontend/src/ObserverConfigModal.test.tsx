@@ -2,7 +2,8 @@
 /* eslint-disable react/react-in-jsx-scope */
 
 import { act, type ComponentProps, type ReactNode } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { type Root } from 'react-dom/client'
+import { createI18nRoot } from './testI18nRoot'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { RpcStub } from 'capnweb'
 import type {
@@ -140,7 +141,7 @@ describe('ObserverConfigModal account selection', () => {
   ) {
     container = document.createElement('div')
     document.body.append(container)
-    root = createRoot(container)
+    root = createI18nRoot(container)
     await act(async () => {
       root!.render(
         <ObserverConfigModal

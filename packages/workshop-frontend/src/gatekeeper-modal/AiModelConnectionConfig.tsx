@@ -1,5 +1,6 @@
 import { Select, type PortalContainer } from '@cloudflare/kumo'
 import { AiChatAuthorInfo } from '@gadgets/workshop-shared/api'
+import { t } from '@lingui/core/macro'
 import { ConnectionConfigField } from './ConnectionConfigField'
 
 export interface AiModelConnectionConfigProps {
@@ -18,14 +19,14 @@ export function AiModelConnectionConfig({
   return (
     <section className="grid gap-3">
       <ConnectionConfigField
-        label="Model"
-        description="Choose the model this connection can use."
+        label={t`Model`}
+        description={t`Choose the model this connection can use.`}
       >
         <Select
-          aria-label="Select an AI model"
+          aria-label={t`Select an AI model`}
           className="w-full text-sm [&_button]:!h-9"
           container={selectContainer}
-          placeholder="Select an AI model"
+          placeholder={t`Select an AI model`}
           value={selectedModelId}
           onValueChange={(v) => onSelectedModelIdChange(v as string | undefined)}
           renderValue={(id) => availableModels.find((m) => m.id === id)?.name ?? id}

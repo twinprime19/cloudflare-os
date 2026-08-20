@@ -14,6 +14,8 @@ import {
   SupportedResource,
   resolveRequestedResource,
 } from '@gadgets/workshop-shared/gatekeeper'
+import { Trans } from '@lingui/react/macro'
+import { t } from '@lingui/core/macro'
 import { WorkshopButton } from './components/WorkshopControls'
 import Avatar from './components/Avatar'
 import { AccountsSubscriberAdapter } from './accountsSubscriber'
@@ -315,14 +317,14 @@ export default function ObserverConfigModal({
     <Dialog.Root open disablePointerDismissal onOpenChange={open => { if (!open) onCancel() }}>
       <Dialog className="p-6" size="lg">
         <Dialog.Title className="mb-2 text-lg font-semibold">
-          {isRetry ? 'Verify your access again' : 'Verify your access'}
+          {isRetry ? t`Verify your access again` : t`Verify your access`}
         </Dialog.Title>
         <Text variant="secondary" size="sm" as="p">
-          {isRetry
-            ? 'We couldn’t confirm your access to everything this workspace has read. Re-authenticate ' +
-              'the account below, or choose a different one, then try again.'
-            : 'Before opening this workspace, confirm that your own accounts can access the connected ' +
-              'data it uses.'}
+          {isRetry ? (
+            <Trans>We couldn’t confirm your access to everything this workspace has read. Re-authenticate the account below, or choose a different one, then try again.</Trans>
+          ) : (
+            <Trans>Before opening this workspace, confirm that your own accounts can access the connected data it uses.</Trans>
+          )}
         </Text>
 
         {!ready || !vendorsReady ? (
@@ -365,7 +367,7 @@ export default function ObserverConfigModal({
                         onClick={() => handleConnect(need)}
                         disabled={connecting === need.vendorId}
                       >
-                        {connecting === need.vendorId ? 'Waiting for connection…' : 'Connect'}
+                        {connecting === need.vendorId ? t`Waiting for connection…` : t`Connect`}
                       </WorkshopButton>
                     )}
                   </div>
@@ -390,14 +392,14 @@ export default function ObserverConfigModal({
                       {matching.length === 1 ? (
                         <div className="flex min-h-10 items-center gap-3 rounded-lg border border-kumo-line bg-kumo-elevated/50 px-3 py-2">
                           <div className="min-w-0 flex-1">
-                            <div className="text-[11px] leading-4 text-kumo-subtle">Using your account</div>
+                            <div className="text-[11px] leading-4 text-kumo-subtle"><Trans>Using your account</Trans></div>
                             <div className="truncate text-sm font-medium text-kumo-default">
                               {accountLabel(matching[0], matching[0].id)}
                             </div>
                           </div>
                           {accountSatisfies(need, matching[0]) && (
                             <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-kumo-success">
-                              <CheckCircle size={15} weight="fill" /> Ready
+                              <CheckCircle size={15} weight="fill" /> <Trans>Ready</Trans>
                             </span>
                           )}
                         </div>
@@ -439,8 +441,8 @@ export default function ObserverConfigModal({
                             <Warning size={12} />
                           )}
                           {granting === chosen.id
-                            ? 'Waiting for access…'
-                            : 'Grant the access needed to verify this resource'}
+                            ? t`Waiting for access…`
+                            : t`Grant the access needed to verify this resource`}
                         </button>
                       )}
 
@@ -463,10 +465,10 @@ export default function ObserverConfigModal({
                             <Warning size={12} />
                           )}
                           {reconnecting === chosen.id
-                            ? 'Re-authenticating…'
+                            ? t`Re-authenticating…`
                             : chosen.credentialsValid
-                              ? 'Click to re-authenticate this account'
-                              : 'This account has expired — click to re-authenticate'}
+                              ? t`Click to re-authenticate this account`
+                              : t`This account has expired — click to re-authenticate`}
                         </button>
                       )}
 
@@ -478,7 +480,7 @@ export default function ObserverConfigModal({
                           className="flex items-center gap-1 text-xs text-kumo-subtle hover:text-kumo-default disabled:opacity-60 self-start"
                         >
                           <Plus size={11} />
-                          {connecting === need.vendorId ? 'Waiting for connection…' : 'Connect a different account'}
+                          {connecting === need.vendorId ? t`Waiting for connection…` : t`Connect a different account`}
                         </button>
                       )}
                     </div>
@@ -491,14 +493,14 @@ export default function ObserverConfigModal({
 
         <div className="flex justify-end gap-2 mt-6">
           <WorkshopButton tone="secondary" onClick={onCancel}>
-            Cancel
+            <Trans>Cancel</Trans>
           </WorkshopButton>
           <WorkshopButton
             tone="primary"
             onClick={handleConfirm}
             disabled={!ready || !vendorsReady || !allSatisfied}
           >
-            {isRetry ? 'Verify again' : 'Verify and open'}
+            {isRetry ? t`Verify again` : t`Verify and open`}
           </WorkshopButton>
         </div>
       </Dialog>

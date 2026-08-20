@@ -22,6 +22,32 @@ return an email the provider has verified (Google `email_verified`, a GitHub pri
 the Cloudflare account email, a Microsoft tenant member's address on a verified domain); otherwise
 it returns null and can't be used to sign in.
 
+## Profile hints: name and avatar
+
+A gatekeeper that advertises `providesAuthProfile` may additionally supply display-name/photo hints
+via the optional `GatekeeperUser.getAuthenticatedProfile()`. These hints seed the Workshop's display
+name and avatar so the onboarding screen isn't empty on first login — they are never used for
+anything else.
+
+**Never an identity signal.** Sign-in identity is `getAuthenticatedEmail()` alone; hints are seeded
+convenience, not verification, and cannot influence which account a login resolves to.
+
+**Name policy — seed + backfill-while-unchanged.** On user creation, the name hint (trimmed) seeds
+`profile.name`, falling back to the email local-part when there's no hint. On a later login, the hint
+backfills `profile.name` only while the stored name still equals the email local-part seed — so an
+existing user with a mangled local-part name gets fixed on their next sign-in, while a name the user
+has customised (via `setOwnDisplayName`) is never clobbered.
+
+**Avatar policy — write once.** The photo hint is written to the `AVATARS` KV namespace only when the
+user has no avatar yet; an avatar already present, whether seeded or user-uploaded, is left alone.
+The "has no avatar yet" check is a KV read, and KV is eventually consistent, so a re-login inside the
+edge negative-cache window (~60 s) can in principle seed over a photo the user has just uploaded —
+accepted for this deployment.
+
+**Best-effort and bounded.** The profile fetch is wrapped in a try/catch bounded to roughly 5 seconds.
+Any failure or timeout degrades to no hints; sign-in always proceeds and is never blocked or failed by
+a profile-hint problem.
+
 ## Incremental scopes
 
 Sign-in requests only the **minimal scopes** needed to verify the user's email (e.g. GitHub
@@ -71,7 +97,7 @@ OAuth app with its own redirect URI:
 - Microsoft 365: `${PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth` (must register under **Web**
   platform in Entra, not "Single-page application")
 
-In local dev, `run-dev-server.js` seeds each gatekeeper's `CLIENT_ID`/`CLIENT_SECRET` from
+In local dev, `run-dev-server.ts` seeds each gatekeeper's `CLIENT_ID`/`CLIENT_SECRET` from
 `GOOGLE_*` / `GITHUB_*` / `CLOUDFLARE_OAUTH_*` / `MICROSOFT_*` shell vars. Microsoft additionally
 needs `MICROSOFT_TENANT_ID`, which seeds the worker's `TENANT_ID`: Entra pins every OAuth endpoint
 to a single tenant, so the gatekeeper is unusable without it.

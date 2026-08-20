@@ -2,7 +2,8 @@
 /* eslint-disable react/react-in-jsx-scope */
 
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { type Root } from "react-dom/client";
+import { createI18nRoot } from "./testI18nRoot";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -94,7 +95,7 @@ describe("SandboxedGatekeeperApp navigation", () => {
 
     container = document.createElement("div");
     document.body.append(container);
-    root = createRoot(container);
+    root = createI18nRoot(container);
     await act(async () => root!.render(<RouterProvider router={router} />));
 
     const iframe = container.querySelector("iframe");

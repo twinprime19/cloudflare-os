@@ -29,6 +29,8 @@ import {
   BlueprintOutput,
   WorkpiecesSubscriber,
 } from '@gadgets/workshop-shared/api'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import ObserverConfigModal from './ObserverConfigModal'
 import GadgetCodeInterface from './GadgetCodeInterface'
 import GadgetUI from './GadgetUI'
@@ -286,7 +288,7 @@ function PaneWorkpieceTabs({
             <span className="truncate">{gadget.title}</span>
             {gadget.chatId !== undefined && (
               <span className="flex-shrink-0 rounded-full bg-kumo-fill px-1.5 py-0.5 text-[10px] font-medium leading-none text-kumo-subtle">
-                Draft
+                <Trans>Draft</Trans>
               </span>
             )}
           </button>
@@ -404,10 +406,10 @@ function NoGadgetPlaceholder({ height }: { height: string }) {
     <div className="flex items-center justify-center px-6 text-center" style={{ height }}>
       <div className="max-w-[360px]">
         <p className="m-0 text-[15px] leading-[22px] font-semibold tracking-[-0.3px] text-kumo-default">
-          No gadgets yet
+          <Trans>No gadgets yet</Trans>
         </p>
         <p className="mt-1.5 mb-0 text-[13px] leading-[19px] tracking-[-0.25px] text-kumo-subtle">
-          Ask the agent in chat to build something, and it will appear here.
+          <Trans>Ask the agent in chat to build something, and it will appear here.</Trans>
         </p>
       </div>
     </div>
@@ -549,8 +551,8 @@ export default function GadgetEditor() {
   // Auto-dismiss the hint a few seconds after entering fullscreen.
   useEffect(() => {
     if (!showFullscreenHint) return
-    const t = setTimeout(() => setShowFullscreenHint(false), 4000)
-    return () => clearTimeout(t)
+    const timeoutId = setTimeout(() => setShowFullscreenHint(false), 4000)
+    return () => clearTimeout(timeoutId)
   }, [showFullscreenHint])
 
   // Move focus into the overlay when entering fullscreen, and back to the prior element on exit.
@@ -1203,7 +1205,7 @@ export default function GadgetEditor() {
   }, [overseer])
 
   // ── reload UI when preview branch/code changes ────────────────────────────────
-  useEffect(() => { setUiReloadTrigger(t => t + 1) }, [previewChatId, proposedChanges])
+  useEffect(() => { setUiReloadTrigger(count => count + 1) }, [previewChatId, proposedChanges])
 
   // ── user info ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1275,10 +1277,10 @@ export default function GadgetEditor() {
         </p>
         <div className="flex items-center gap-2">
           <WorkshopButton tone="secondary" onClick={handleGoToWorkspaces}>
-            Go to workspaces
+            <Trans>Go to workspaces</Trans>
           </WorkshopButton>
           <WorkshopButton tone="primary" onClick={retryOpen}>
-            Try again
+            <Trans>Try again</Trans>
           </WorkshopButton>
         </div>
       </div>
@@ -1293,7 +1295,7 @@ export default function GadgetEditor() {
       <div className="min-h-screen flex items-center justify-center bg-kumo-base">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-kumo-subtle">Loading workspace…</p>
+          <p className="text-sm text-kumo-subtle"><Trans>Loading workspace…</Trans></p>
         </div>
         {observerConfig && (
           <ObserverConfigModal
@@ -1336,7 +1338,7 @@ export default function GadgetEditor() {
         <div className="flex items-center gap-2 min-w-0">
           <Link
             to="/"
-            aria-label="Home"
+            aria-label={t`Home`}
             className="flex-shrink-0 hover:opacity-80 transition-opacity"
           >
             <SiteLogo size={22}>
@@ -1363,14 +1365,14 @@ export default function GadgetEditor() {
                 onClick={handleSaveTitle}
                 disabled={!titleInput.trim()}
                 className="!h-7 !w-7 hover:text-kumo-brand disabled:opacity-30"
-                aria-label="Save workspace title"
+                aria-label={t`Save workspace title`}
               >
                 <Check size={14} />
               </WorkshopIconButton>
               <WorkshopIconButton
                 onClick={handleCancelEdit}
                 className="!h-7 !w-7"
-                aria-label="Cancel title edit"
+                aria-label={t`Cancel title edit`}
               >
                 <X size={14} />
               </WorkshopIconButton>
@@ -1383,8 +1385,8 @@ export default function GadgetEditor() {
               <WorkshopIconButton
                 onClick={() => setIsEditingTitle(true)}
                 className="!h-7 !w-7 flex-shrink-0"
-                title="Rename workspace"
-                aria-label="Rename workspace"
+                title={t`Rename workspace`}
+                aria-label={t`Rename workspace`}
               >
                 <Pencil size={16} />
               </WorkshopIconButton>
@@ -1422,8 +1424,8 @@ export default function GadgetEditor() {
 
           <WorkshopIconButton
             onClick={() => setShareModalOpen(true)}
-            title="Share workspace"
-            aria-label="Share workspace"
+            title={t`Share workspace`}
+            aria-label={t`Share workspace`}
           >
             <ShareNetwork size={15} />
           </WorkshopIconButton>
@@ -1431,8 +1433,8 @@ export default function GadgetEditor() {
           <WorkshopIconButton
             onClick={() => setBlueprintModalOpen(true)}
             disabled={!selectedGadgetStub}
-            title="Blueprints"
-            aria-label="Blueprints"
+            title={t`Blueprints`}
+            aria-label={t`Blueprints`}
           >
             <Blueprint size={16} />
           </WorkshopIconButton>
@@ -1441,8 +1443,8 @@ export default function GadgetEditor() {
             <WorkshopIconButton
               danger
               onClick={() => setDeleteDialogOpen(true)}
-              title="Delete workspace"
-              aria-label="Delete workspace"
+              title={t`Delete workspace`}
+              aria-label={t`Delete workspace`}
             >
               <Trash size={16} />
             </WorkshopIconButton>
@@ -1507,7 +1509,7 @@ export default function GadgetEditor() {
                   constrainChatWidth
                   onChatCountChange={handleChatCountChange}
                   onAgentActiveChange={handleAgentActiveChange}
-                  onAutoApproveChange={() => setAutoApproveReloadTrigger(t => t + 1)}
+                  onAutoApproveChange={() => setAutoApproveReloadTrigger(count => count + 1)}
                   onHasAnyCodeChange={setHasAnyProposedChanges}
                   onSelectedChatHasProposedChangesChange={setSelectedChatHasProposedChanges}
                   onOpenGadget={handleSelectWorkpiece}
@@ -1519,7 +1521,7 @@ export default function GadgetEditor() {
                 <div className="absolute inset-0 flex items-center justify-center bg-kumo-base">
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-6 h-6 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
-                    <p className="text-sm text-kumo-subtle">Loading conversation…</p>
+                    <p className="text-sm text-kumo-subtle"><Trans>Loading conversation…</Trans></p>
                   </div>
                 </div>
               )}
@@ -1558,7 +1560,7 @@ export default function GadgetEditor() {
           >
             <div className="flex min-w-0 flex-1 items-center overflow-hidden">
               {paneShowsActivity ? (
-                <PaneLabel icon={Pulse} title="Activity" />
+                <PaneLabel icon={Pulse} title={t`Activity`} />
               ) : visibleGadgets.length > 1 ? (
                 <PaneWorkpieceTabs
                   gadgets={visibleGadgets}
@@ -1601,16 +1603,15 @@ export default function GadgetEditor() {
                   gadget={selectedGadgetStub}
                   gadgetTitle={selectedGadgetSummary?.title ?? 'Gadget'}
                   chatId={previewChatId}
-                  disabled={activeTab !== 'app' || previewMode}
                 />
               )}
 
               {!paneShowsActivity && (
                 <WorkshopIconButton
-                  aria-label="Enter full screen"
+                  aria-label={t`Enter full screen`}
                   title={activeTab === 'app' && !previewMode
-                    ? 'Full screen'
-                    : `Full screen is available in ${formatOf(selectedGadgetSummary?.output).noun} view`}
+                    ? t`Full screen`
+                    : t`Full screen is available in ${formatOf(selectedGadgetSummary?.output).noun} view`}
                   onClick={enterGadgetFullscreen}
                   disabled={activeTab !== 'app' || previewMode}
                 >
@@ -1619,8 +1620,8 @@ export default function GadgetEditor() {
               )}
 
               <WorkshopIconButton
-                aria-label={paneShowsActivity ? 'Close activity' : 'Close gadget pane'}
-                title="Close"
+                aria-label={paneShowsActivity ? t`Close activity` : t`Close gadget pane`}
+                title={t`Close`}
                 onClick={closeWorkspacePane}
               >
                 <X size={16} />
@@ -1634,7 +1635,7 @@ export default function GadgetEditor() {
                 overseer={overseer.stub}
                 view={activityView}
                 onViewChange={setActivityView}
-                onAutoApproveChange={() => setAutoApproveReloadTrigger(t => t + 1)}
+                onAutoApproveChange={() => setAutoApproveReloadTrigger(count => count + 1)}
                 autoApproveReloadTrigger={autoApproveReloadTrigger}
               />
             )}
@@ -1644,7 +1645,7 @@ export default function GadgetEditor() {
               tabIndex={isGadgetFullscreen ? -1 : undefined}
               role={isGadgetFullscreen ? 'dialog' : undefined}
               aria-modal={isGadgetFullscreen ? true : undefined}
-              aria-label={isGadgetFullscreen ? 'Gadget full screen' : undefined}
+              aria-label={isGadgetFullscreen ? t`Gadget full screen` : undefined}
               className={
                 activeTab !== 'app' || previewMode
                   ? 'hidden'
@@ -1674,7 +1675,7 @@ export default function GadgetEditor() {
                   className="pointer-events-none absolute left-1/2 top-4 z-10 -translate-x-1/2 transform"
                 >
                   <div className="rounded-full border border-kumo-line bg-kumo-base/90 px-4 py-1.5 text-[13px] leading-[18px] text-kumo-default shadow-md backdrop-blur-sm">
-                    Press <kbd className="rounded border border-kumo-line bg-kumo-elevated px-1.5 py-0.5 text-[11px] font-medium">Esc</kbd> to exit full screen
+                    <Trans>Press <kbd className="rounded border border-kumo-line bg-kumo-elevated px-1.5 py-0.5 text-[11px] font-medium">Esc</kbd> to exit full screen</Trans>
                   </div>
                 </div>
               )}
@@ -1686,7 +1687,7 @@ export default function GadgetEditor() {
                   overseer={overseer.stub}
                   filesRoot={selectedFilesRoot}
                   height={RIGHT_CONTENT_H}
-                  onCodeChange={() => setUiReloadTrigger(t => t + 1)}
+                  onCodeChange={() => setUiReloadTrigger(count => count + 1)}
                   selectedChatId={effectiveSelectedChatId}
                   proposedChanges={proposedChanges}
                   draftProposedChanges={draftProposedChanges}
@@ -1709,7 +1710,7 @@ export default function GadgetEditor() {
                   gadget={selectedGadgetStub}
                   chatId={effectiveSelectedChatId ?? undefined}
                   authenticatedApi={authenticatedApi}
-                  onConnectionsChange={() => setUiReloadTrigger(t => t + 1)}
+                  onConnectionsChange={() => setUiReloadTrigger(count => count + 1)}
                   isVisible={activeTab === 'connections'}
                   onHasGatekeepersChange={setHasBindings}
                 />
@@ -1781,8 +1782,8 @@ export default function GadgetEditor() {
 
       <DeleteConfirmationDialog
         open={deleteDialogOpen}
-        title="Delete workspace?"
-        description={<>This removes <span className="font-medium text-kumo-default">{metadata.title}</span>. You can&apos;t undo this.</>}
+        title={t`Delete workspace?`}
+        description={<Trans>This removes <span className="font-medium text-kumo-default">{metadata.title}</span>. You can&apos;t undo this.</Trans>}
         isDeleting={isDeleting}
         onOpenChange={setDeleteDialogOpen}
         onConfirm={handleDeleteConfirm}

@@ -11,6 +11,8 @@ import {
 } from '@phosphor-icons/react'
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { DropdownMenu, useKumoToastManager } from '@cloudflare/kumo'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { useAuthenticatedApi } from '../AuthContext'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER } from './menuStyles'
 
@@ -75,7 +77,7 @@ function BlueprintRow({
         <div className="flex items-center gap-2">
           {item.pinned && <Star size={12} weight="fill" className="flex-shrink-0 text-kumo-brand" />}
           <h3 className="truncate text-sm font-medium text-kumo-default">
-            {item.title || 'Untitled blueprint'}
+            {item.title || t`Untitled blueprint`}
           </h3>
         </div>
         {item.description && (
@@ -105,12 +107,12 @@ function BlueprintRow({
           <DropdownMenu.Content className={MENU_CONTENT}>
             <DropdownMenu.Item onClick={() => onTogglePin(item)} className={MENU_ITEM}>
               <Star size={13} className="mr-2" weight={item.pinned ? 'fill' : 'regular'} />
-              {item.pinned ? 'Unfavorite' : 'Favorite'}
+              {item.pinned ? t`Unfavorite` : t`Favorite`}
             </DropdownMenu.Item>
             {item.inLibrary && (
               <DropdownMenu.Item variant="danger" onClick={() => onRemoveFromLibrary(item)} className={MENU_ITEM_DANGER}>
                 <Trash size={13} className="mr-2" />
-                Remove from library
+                <Trans>Remove from library</Trans>
               </DropdownMenu.Item>
             )}
           </DropdownMenu.Content>
@@ -266,7 +268,7 @@ export default function BlueprintList() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search blueprints…"
+              placeholder={t`Search blueprints…`}
               className="h-9 w-full rounded-lg border border-kumo-line bg-kumo-base pl-9 pr-4 text-[13px] tracking-[-0.25px] text-kumo-default placeholder:text-kumo-inactive transition-[border-color,box-shadow] duration-150 ease-out focus:border-kumo-ring focus:outline-none focus:ring-[3px] focus:ring-kumo-ring/15"
             />
           </div>
@@ -275,17 +277,17 @@ export default function BlueprintList() {
           <div className="grid shrink-0 grid-cols-2 gap-2">
             <Link to="/explore" className={ACTION_BUTTON}>
               <Compass size={14} />
-              Explore
+              <Trans>Explore</Trans>
             </Link>
             <button
               type="button"
               onClick={() => uploadInputRef.current?.click()}
               disabled={uploading}
-              title="Upload a .gadget archive"
+              title={t`Upload a .gadget archive`}
               className={ACTION_BUTTON}
             >
               <UploadSimple size={14} weight="bold" />
-              {uploading ? 'Uploading…' : 'Upload'}
+              {uploading ? t`Uploading…` : t`Upload`}
             </button>
           </div>
         </div>
@@ -302,27 +304,27 @@ export default function BlueprintList() {
           </div>
         ) : loadError ? (
           <div className="py-12 text-center text-sm">
-            <p className="text-kumo-danger">Something went wrong loading your blueprints.</p>
-            <button type="button" onClick={load} className="mt-1 text-kumo-brand underline">Try again</button>
+            <p className="text-kumo-danger"><Trans>Something went wrong loading your blueprints.</Trans></p>
+            <button type="button" onClick={load} className="mt-1 text-kumo-brand underline"><Trans>Try again</Trans></button>
           </div>
         ) : filtered.length === 0 ? (
           search ? (
-            <div className="py-12 text-center text-sm text-kumo-inactive">No blueprints found</div>
+            <div className="py-12 text-center text-sm text-kumo-inactive"><Trans>No blueprints found</Trans></div>
           ) : (
             <div className="flex flex-col items-center gap-3 px-3 py-16 text-center">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-kumo-fill text-kumo-subtle">
                 <BlueprintIcon size={18} />
               </div>
               <div>
-                <p className="text-sm font-medium text-kumo-default">No blueprints yet</p>
+                <p className="text-sm font-medium text-kumo-default"><Trans>No blueprints yet</Trans></p>
                 <p className="mt-1 text-[13px] leading-[18px] text-kumo-subtle">
-                  Publish a workspace as a blueprint, or add one from Explore.
+                  <Trans>Publish a workspace as a blueprint, or add one from Explore.</Trans>
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <Link to="/explore" className={ACTION_BUTTON}>
                   <Compass size={14} />
-                  Explore blueprints
+                  <Trans>Explore blueprints</Trans>
                 </Link>
                 <button
                   type="button"
@@ -331,7 +333,7 @@ export default function BlueprintList() {
                   className={ACTION_BUTTON}
                 >
                   <UploadSimple size={14} weight="bold" />
-                  {uploading ? 'Uploading…' : 'Upload .gadget'}
+                  {uploading ? t`Uploading…` : t`Upload .gadget`}
                 </button>
               </div>
             </div>

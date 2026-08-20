@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useKumoToastManager } from '@cloudflare/kumo'
 import type { RpcStub } from 'capnweb'
+import { t } from '@lingui/core/macro'
 import type { Overseer, OutputFormatOffer } from '@gadgets/workshop-shared/api'
 import { useAuthenticatedApi } from '../../AuthContext'
 
@@ -70,7 +71,7 @@ export async function createFromFormat(
     navigate({ to: '/workspace/$id', params: { id } })
   } catch (err) {
     console.error('Failed to create from format:', err)
-    toasts.add({ title: `Couldn't create a new ${format.output.noun}`, variant: 'error' })
+    toasts.add({ title: t`Couldn't create a new ${format.output.noun}`, variant: 'error' })
     throw err
   } finally {
     overseer?.[Symbol.dispose]()

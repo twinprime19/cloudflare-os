@@ -427,11 +427,29 @@ describe("agent catalog", () => {
     stubFetch();
     const authorizer = fakeApprovalQueue();
 
-    const catalog = await gatekeeper.getAgentCatalog({ limit: 10 }, authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
 
     expect(catalog!.entries.map(entry => entry.title)).toEqual(["Inbox", "Archive"]);
     expect(catalog!.entries[0].description).toContain("3 unread");
     expect(authorizer.observations[0].title).toBe("Outlook folder catalog");
+  });
+
+  it("caps a large mailbox at 25 folders and flags the catalog truncated", async () => {
+    const manyFolders = Array.from({ length: 30 }, (_unused, index) => ({
+      id: `folder-${index}`,
+      displayName: `Folder ${index}`,
+      totalItemCount: index,
+      unreadItemCount: 0,
+    }));
+    stubFetch(() => jsonResponse({ value: manyFolders }));
+    const authorizer = fakeApprovalQueue();
+
+    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
+
+    expect(catalog!.entries).toHaveLength(25);
+    expect(catalog!.truncated).toBe(true);
+    expect(catalog!.entries[0].title).toBe("Folder 0");
+    expect(authorizer.observations[0].description).toContain("25 Outlook mail folder(s)");
   });
 });
 

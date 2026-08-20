@@ -8,6 +8,8 @@ import { GadgetClient, ConsoleLogEvent } from '@gadgets/workshop-shared/api'
 // the whole module and embed it. We can import the module using ?raw to get a string of the
 // content.
 import CAPNWEB_BUNDLE from 'capnweb?raw'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 
 // btoa() below requires this to stay ASCII; capnweb's build enforces ASCII-only dist bundles
 // since 0.11.1.
@@ -403,7 +405,7 @@ function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chat
         style={{ height }}
       >
         <Text variant="secondary">
-          Switch to this tab to load the Gadget UI
+          <Trans>Switch to this tab to load the Gadget UI</Trans>
         </Text>
       </div>
     )
@@ -433,7 +435,7 @@ function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chat
       }}>
         <Banner
           variant="error"
-          title="Error"
+          title={t`Error`}
           description={error}
           action={
             <Banner.Action
@@ -444,7 +446,7 @@ function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chat
                 setRetryNonce(n => n + 1)
               }}
             >
-              Try again
+              <Trans>Try again</Trans>
             </Banner.Action>
           }
         />
@@ -476,10 +478,10 @@ function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chat
           </div>
           <div className="space-y-1">
             <h2 className="text-[20px] leading-7 font-normal tracking-[-0.45px] text-kumo-default">
-              No gadget UI yet
+              <Trans>No gadget UI yet</Trans>
             </h2>
             <p className="text-[15px] leading-5 font-normal tracking-[-0.3px] text-kumo-subtle">
-              When the gadget builds one, it will appear here.
+              <Trans>When the gadget builds one, it will appear here.</Trans>
             </p>
           </div>
         </div>
@@ -500,7 +502,7 @@ function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chat
           border: 'none'
         }}
         sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
-        title="Gadget UI"
+        title={t`Gadget UI`}
       />
     </div>
   )

@@ -4,6 +4,8 @@ import { RpcStub } from 'capnweb'
 import { PublicApi } from '@gadgets/workshop-shared/api'
 import { Hexagon } from '@phosphor-icons/react'
 import { Input, Button, Banner, Loader } from '@cloudflare/kumo'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { hashPassword } from './passwordHash'
 import { useServerConfig, useServerConfigError, useSiteName } from './ServerConfigContext'
 import { useDocumentTitle } from './useDocumentTitle'
@@ -26,7 +28,7 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
   const serverConfigError = useServerConfigError()
   const siteName = useSiteName()
   const connectionLost = useConnectionLost()
-  useDocumentTitle('Sign in')
+  useDocumentTitle(t`Sign in`)
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -66,9 +68,9 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
           className="min-h-screen flex flex-col items-center justify-center gap-4 bg-kumo-base px-4"
         >
           <p className="text-sm text-kumo-danger text-center">
-            Couldn&apos;t load deployment settings.
+            <Trans>Couldn&apos;t load deployment settings.</Trans>
           </p>
-          <Button variant="secondary" onClick={() => window.location.reload()}>Reload</Button>
+          <Button variant="secondary" onClick={() => window.location.reload()}><Trans>Reload</Trans></Button>
         </div>
       )
     }
@@ -76,7 +78,7 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-kumo-base px-4">
         <Loader size="lg" />
         <p className="text-sm text-kumo-subtle text-center">
-          {connectionLost ? "Can't reach the server. Retrying…" : 'Loading…'}
+          {connectionLost ? t`Can't reach the server. Retrying…` : t`Loading…`}
         </p>
       </div>
     )
@@ -107,7 +109,7 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
             </div>
           </SiteLogo>
           <h1 className="text-xl font-semibold text-kumo-default">{siteName}</h1>
-          <p className="text-sm text-kumo-subtle mt-1">Sign in to your account</p>
+          <p className="text-sm text-kumo-subtle mt-1"><Trans>Sign in to your account</Trans></p>
         </div>
 
         {passwordAuthEnabled && (
@@ -115,7 +117,7 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
             {/* Username / password form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
-                label="Username"
+                label={t`Username`}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoFocus
@@ -126,7 +128,7 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
 
               <Input
                 type="password"
-                label="Password"
+                label={t`Password`}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
@@ -145,15 +147,17 @@ export default function LoginPage({ rpcStub, onLoginSuccess }: LoginPageProps) {
                 loading={loading}
                 className="w-full justify-center"
               >
-                Sign in
+                <Trans>Sign in</Trans>
               </Button>
             </form>
 
             <p className="text-center text-sm text-kumo-subtle mt-6">
-              Don't have an account?{' '}
-              <Link to="/signup" className="text-kumo-brand hover:underline font-medium">
-                Create one
-              </Link>
+              <Trans>
+                Don't have an account?{' '}
+                <Link to="/signup" className="text-kumo-brand hover:underline font-medium">
+                  Create one
+                </Link>
+              </Trans>
             </p>
           </>
         )}

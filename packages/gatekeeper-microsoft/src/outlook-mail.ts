@@ -21,7 +21,7 @@
 import { DurableObject, RpcStub, RpcTarget } from "cloudflare:workers";
 import { validateRpc } from "capnweb-validate";
 import {
-  ActionKind, AgentCatalog, AgentCatalogRequest, ApprovalQueue, Cursor, Gatekeeper,
+  ActionKind, AgentCatalog, ApprovalQueue, Cursor, Gatekeeper,
   GatekeeperUserVerifier, ObservationAuthorizer, ResourceDescription, boundAgentCatalog,
 } from "@gadgets/workshop-shared/gatekeeper";
 import { AccessTokenCache, AccessTokenRequest } from "./auth-retry";
@@ -42,7 +42,11 @@ const MAX_CURSOR_PAGES = 40;
 /** Ceiling on queued-but-undecided actions, matching the Gmail gatekeeper. */
 const MAX_PENDING_ACTIONS = 100;
 
-/** Ceiling on folders offered to the agent catalog before `boundAgentCatalog` trims further. */
+/**
+ * Ceiling on folders offered to the agent catalog. Folders are the one item class here that grows
+ * with the mailbox, so they are bounded well under the shared AGENT_CATALOG_MAX_ENTRIES ceiling;
+ * folders past the cap stay reachable through the session's listFolders().
+ */
 const MAX_CATALOG_FOLDERS = 25;
 
 /** Longest single-line value echoed into an approval title. */
@@ -576,7 +580,6 @@ export class OutlookMailGatekeeperImpl
    * paging the session API.
    */
   async getAgentCatalog(
-      request: AgentCatalogRequest,
       authorizer: RpcStub<ObservationAuthorizer>): Promise<AgentCatalog | null> {
     let folders = await this.#api().listFolders();
     let entries = folders
@@ -588,7 +591,10 @@ export class OutlookMailGatekeeperImpl
               `Outlook mail folder with ${folder.totalItemCount} message(s), ` +
               `${folder.unreadItemCount} unread.`,
         }));
-    let catalog = boundAgentCatalog(entries, request);
+    let catalog = boundAgentCatalog(entries);
+    // A mailbox can hold more folders than the catalog advertises; boundAgentCatalog only flags its
+    // own shared ceiling, so the drop at MAX_CATALOG_FOLDERS is reported here.
+    if (folders.length > MAX_CATALOG_FOLDERS) catalog.truncated = true;
     if (catalog.entries.length > 0) {
       await authorizer.authorizeObservation({
         title: "Outlook folder catalog",

@@ -2,7 +2,8 @@
 /* eslint-disable react/react-in-jsx-scope */
 
 import { act, type ReactNode } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { type Root } from 'react-dom/client'
+import { createI18nRoot } from './testI18nRoot'
 import { newMessagePortRpcSession, RpcStub, RpcTarget } from 'capnweb'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GadgetClient, UiBundle } from '@gadgets/workshop-shared/api'
@@ -158,7 +159,7 @@ describe('GadgetUI RPC recovery', () => {
   beforeEach(() => {
     container = document.createElement('div')
     document.body.append(container)
-    root = createRoot(container)
+    root = createI18nRoot(container)
   })
 
   afterEach(async () => {

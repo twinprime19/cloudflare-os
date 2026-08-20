@@ -3,6 +3,8 @@ import { Dialog, useKumoToastManager } from '@cloudflare/kumo'
 import { ArrowsClockwise, Check, Copy, ImageSquare, Pencil, Plus, Trash, Warning, X } from '@phosphor-icons/react'
 import { RpcStub } from 'capnweb'
 import { BlueprintGadgetSummary, GadgetClient, GadgetMetadata, Overseer, BlueprintBindingAnnotation, BlueprintScreenshotUpload } from '@gadgets/workshop-shared/api'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { WorkshopButton, WorkshopIconButton, WorkshopInput, WorkshopInputArea } from './components/WorkshopControls'
 import { copyToClipboard } from './clipboard'
 import {
@@ -284,14 +286,14 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
             <div className="flex min-w-0 items-start gap-3">
               <div className="min-w-0">
               <Dialog.Title className="text-[17px] leading-6 font-medium tracking-[-0.35px] text-kumo-default">
-                {formMode === 'create' ? 'Create blueprint' : formMode === 'edit' ? 'Edit blueprint' : 'Blueprints'}
+                {formMode === 'create' ? t`Create blueprint` : formMode === 'edit' ? t`Edit blueprint` : t`Blueprints`}
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-subtle">
                 {formMode === 'create'
-                  ? 'Describe what people get when they start from this blueprint.'
+                  ? t`Describe what people get when they start from this blueprint.`
                   : formMode === 'edit'
-                    ? 'Update the details, screenshot, and connection guidance for this blueprint.'
-                    : 'Turn this gadget into a reusable starting point.'}
+                    ? t`Update the details, screenshot, and connection guidance for this blueprint.`
+                    : t`Turn this gadget into a reusable starting point.`}
               </Dialog.Description>
               </div>
             </div>
@@ -299,7 +301,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
               render={(props) => (
                 <WorkshopIconButton
                   {...props}
-                  aria-label="Close"
+                  aria-label={t`Close`}
                 >
                   <X size={18} />
                 </WorkshopIconButton>
@@ -316,15 +318,15 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                 <div className="flex-1 overflow-y-auto chat-panel space-y-5 px-4 py-5 sm:px-6">
                   <div className="space-y-3">
                     <WorkshopInput
-                      placeholder="Title"
-                      aria-label="Blueprint title"
+                      placeholder={t`Title`}
+                      aria-label={t`Blueprint title`}
                       value={newTitle}
                       onChange={(e) => setNewTitle(e.target.value)}
                       className="w-full"
                     />
                     <WorkshopInputArea
-                      placeholder="Description (optional)"
-                      aria-label="Blueprint description"
+                      placeholder={t`Description (optional)`}
+                      aria-label={t`Blueprint description`}
                       value={newDescription}
                       onChange={(e) => setNewDescription(e.target.value)}
                       rows={3}
@@ -341,11 +343,18 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="m-0 text-[13px] leading-[18px] font-medium tracking-[-0.25px] text-kumo-default">
-                            Screenshot
+                            <Trans>Screenshot</Trans>
                           </p>
                           <p className="m-0 mt-0.5 text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-                            Optional image shown on Explore and the blueprint detail page.
-                            {formMode === 'edit' && !newScreenshotUrl && editingBlueprint?.screenshotUrl && !clearScreenshot ? ' The current screenshot will stay unless you upload a new one.' : ''}
+                            <Trans>Optional image shown on Explore and the blueprint detail page.</Trans>
+                            {formMode === 'edit' && !newScreenshotUrl && editingBlueprint?.screenshotUrl && !clearScreenshot ? (
+                              <>
+                                {' '}
+                                <Trans>The current screenshot will stay unless you upload a new one.</Trans>
+                              </>
+                            ) : (
+                              ''
+                            )}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
@@ -362,7 +371,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                               }}
                               disabled={processingScreenshot || creating}
                             >
-                              Clear
+                              <Trans>Clear</Trans>
                             </WorkshopButton>
                           )}
                           <WorkshopButton
@@ -371,7 +380,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                             disabled={processingScreenshot || creating}
                           >
                             <ImageSquare size={13} weight="bold" />
-                            {processingScreenshot ? 'Processing...' : newScreenshotUrl || (formMode === 'edit' && editingBlueprint?.screenshotUrl && !clearScreenshot) ? 'Change' : 'Upload'}
+                            {processingScreenshot ? t`Processing...` : newScreenshotUrl || (formMode === 'edit' && editingBlueprint?.screenshotUrl && !clearScreenshot) ? t`Change` : t`Upload`}
                           </WorkshopButton>
                         </div>
                       </div>
@@ -379,14 +388,14 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                         <div className="mt-3 overflow-hidden rounded-lg border border-kumo-line bg-kumo-tint">
                           <img
                             src={screenshotPreviewUrl}
-                            alt="Blueprint screenshot preview"
+                            alt={t`Blueprint screenshot preview`}
                             className="max-h-[320px] w-full object-contain"
                           />
                         </div>
                       )}
                       {clearScreenshot && !newScreenshotUrl && (
                         <div className="mt-3 rounded-lg border border-dashed border-kumo-line bg-kumo-tint px-3 py-2 text-[12px] leading-4 text-kumo-subtle">
-                          Screenshot will be removed when you save.
+                          <Trans>Screenshot will be removed when you save.</Trans>
                         </div>
                       )}
                     </div>
@@ -394,7 +403,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
 
                   {bindingsLoading ? (
                     <div className="rounded-xl border border-kumo-line bg-kumo-base px-4 py-6 text-center text-[13px] text-kumo-subtle">
-                      Loading connections...
+                      <Trans>Loading connections...</Trans>
                     </div>
                   ) : bindingsError ? (
                     <div className="rounded-xl border border-kumo-line bg-kumo-base px-4 py-3 text-[13px] text-kumo-subtle">
@@ -403,10 +412,10 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                   ) : bindings.length > 0 ? (
                     <section>
                       <h3 className="m-0 mb-1 text-[13px] leading-[18px] font-medium tracking-[-0.25px] text-kumo-default">
-                        Connections
+                        <Trans>Connections</Trans>
                       </h3>
                       <p className="m-0 mb-3 text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-                        Name each connection and add guidance for people using this blueprint.
+                        <Trans>Name each connection and add guidance for people using this blueprint.</Trans>
                       </p>
                       <div className="space-y-2">
                         {bindings.map((b) => (
@@ -437,7 +446,7 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                       }}
                       disabled={creating}
                     >
-                      Back
+                      <Trans>Back</Trans>
                     </WorkshopButton>
                     <WorkshopButton
                       tone="primary"
@@ -446,10 +455,10 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
                       disabled={creating || bindingsLoading || processingScreenshot}
                     >
                       {creating
-                        ? formMode === 'create' ? 'Creating...' : 'Saving...'
-                        : processingScreenshot ? 'Processing...'
-                          : bindingsLoading ? 'Loading...'
-                            : formMode === 'create' ? 'Create' : 'Save'}
+                        ? formMode === 'create' ? t`Creating...` : t`Saving...`
+                        : processingScreenshot ? t`Processing...`
+                          : bindingsLoading ? t`Loading...`
+                            : formMode === 'create' ? t`Create` : t`Save`}
                     </WorkshopButton>
                   </div>
                 </div>
@@ -471,10 +480,10 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
               >
                 <span>
                   <span className="block text-[13px] leading-[18px] font-medium tracking-[-0.25px] text-kumo-default">
-                    Create blueprint
+                    <Trans>Create blueprint</Trans>
                   </span>
                   <span className="mt-0.5 block text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-subtle">
-                    Publish this gadget as a reusable template.
+                    <Trans>Publish this gadget as a reusable template.</Trans>
                   </span>
                 </span>
                 <Plus size={16} className="text-kumo-subtle" />
@@ -482,17 +491,17 @@ export default function BlueprintModal({ open, onClose, overseer, gadget, metada
 
             <section>
               <h3 className="mb-2 text-[13px] leading-[18px] font-medium tracking-[-0.25px] text-kumo-default">
-                Existing blueprints
+                <Trans>Existing blueprints</Trans>
               </h3>
 
               {loading ? (
                 <div className="rounded-xl border border-kumo-line bg-kumo-base px-4 py-6 text-center text-[13px] text-kumo-subtle">
-                  Loading blueprints...
+                  <Trans>Loading blueprints...</Trans>
                 </div>
               ) : blueprints.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-kumo-line bg-kumo-base px-4 py-6 text-center">
                   <p className="text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-subtle">
-                    No blueprints yet.
+                    <Trans>No blueprints yet.</Trans>
                   </p>
                 </div>
               ) : (
@@ -579,8 +588,8 @@ function BlueprintRow({
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   useEffect(() => {
     if (copyState === 'idle') return
-    const t = setTimeout(() => setCopyState('idle'), 1500)
-    return () => clearTimeout(t)
+    const timeoutId = setTimeout(() => setCopyState('idle'), 1500)
+    return () => clearTimeout(timeoutId)
   }, [copyState])
 
   const ROW_MIN_H = 'min-h-[116px]'
@@ -592,10 +601,10 @@ function BlueprintRow({
         <div className="flex w-full flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="m-0 truncate text-[14px] leading-5 font-semibold tracking-[-0.3px] text-kumo-danger">
-              Delete "{bp.title}"?
+              <Trans>Delete "{bp.title}"?</Trans>
             </p>
             <p className="m-0 mt-0.5 text-[12px] leading-4 font-normal tracking-[-0.2px] text-kumo-subtle">
-              People who started a gadget from this blueprint won't be affected, but the link will stop working.
+              <Trans>People who started a gadget from this blueprint won't be affected, but the link will stop working.</Trans>
             </p>
           </div>
           <button
@@ -604,7 +613,7 @@ function BlueprintRow({
             disabled={isDeleting}
             className="inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md bg-kumo-danger px-2.5 text-[12px] leading-4 font-medium tracking-[-0.2px] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isDeleting ? 'Deleting...' : 'Delete'}
+            {isDeleting ? t`Deleting...` : t`Delete`}
           </button>
           <button
             type="button"
@@ -612,7 +621,7 @@ function BlueprintRow({
             disabled={isDeleting}
             className="inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md bg-transparent px-2.5 text-[12px] leading-4 font-medium tracking-[-0.2px] text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Cancel
+            <Trans>Cancel</Trans>
           </button>
         </div>
       </div>
@@ -634,7 +643,7 @@ function BlueprintRow({
               ? 'border-kumo-brand/25 bg-kumo-brand/10 text-kumo-brand'
               : 'border-kumo-line bg-kumo-tint text-kumo-subtle'
           }`}
-          title={bp.dirty ? 'Last publish failed' : undefined}
+          title={bp.dirty ? t`Last publish failed` : undefined}
         >
           {bp.dirty && (
             <span
@@ -653,7 +662,7 @@ function BlueprintRow({
           </p>
         ) : (
           <p className="m-0 text-[13px] leading-[18px] font-normal tracking-[-0.25px] text-kumo-inactive">
-            No description
+            <Trans>No description</Trans>
           </p>
         )}
       </div>
@@ -661,11 +670,11 @@ function BlueprintRow({
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div className="-ml-[7px] flex flex-wrap items-center gap-1">
           <GhostButton onClick={onUpdateCode} icon={<ArrowsClockwise size={13} />}>
-            Update code
+            <Trans>Update code</Trans>
           </GhostButton>
           {bp.dirty && (
             <GhostButton onClick={onRetryPublish} icon={<ArrowsClockwise size={13} />}>
-              Retry publish
+              <Trans>Retry publish</Trans>
             </GhostButton>
           )}
           <GhostButton
@@ -680,7 +689,7 @@ function BlueprintRow({
               )
             }
           >
-            {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy link'}
+            {copyState === 'copied' ? t`Copied` : copyState === 'failed' ? t`Copy failed` : t`Copy link`}
           </GhostButton>
         </div>
         <div className="-mr-1.5 ml-auto flex items-center gap-0.5 opacity-60 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
@@ -688,7 +697,7 @@ function BlueprintRow({
             type="button"
             onClick={onStartEdit}
             className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md bg-transparent text-kumo-subtle transition-colors hover:bg-kumo-tint hover:text-kumo-default"
-            aria-label="Edit blueprint"
+            aria-label={t`Edit blueprint`}
           >
             <Pencil size={13} />
           </button>
@@ -696,7 +705,7 @@ function BlueprintRow({
             type="button"
             onClick={onStartDelete}
             className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md bg-transparent text-kumo-subtle transition-colors hover:bg-kumo-danger-tint hover:text-kumo-danger"
-            aria-label="Delete blueprint"
+            aria-label={t`Delete blueprint`}
           >
             <Trash size={13} />
           </button>

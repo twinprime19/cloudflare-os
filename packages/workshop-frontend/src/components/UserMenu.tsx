@@ -1,5 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { DropdownMenu } from '@cloudflare/kumo'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { useAuthenticatedApi } from '../AuthContext'
 import { useAvatar } from '../useAvatar'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER, MENU_POSITIONER_STYLE } from './menuStyles'
@@ -20,8 +22,8 @@ export default function UserMenu() {
         render={
           <button
             className="w-7 h-7 cursor-pointer rounded-full flex items-center justify-center bg-kumo-tint hover:bg-kumo-fill transition-colors overflow-hidden"
-            title="Open profile menu"
-            aria-label="Open profile menu"
+            title={t`Open profile menu`}
+            aria-label={t`Open profile menu`}
           >
             {avatarUrl ? (
               <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
@@ -36,20 +38,20 @@ export default function UserMenu() {
           onClick={() => navigate({ to: '/profile' })}
           className={MENU_ITEM}
         >
-          Profile
+          <Trans>Profile</Trans>
         </DropdownMenu.Item>
         <DropdownMenu.Item
           onClick={() => navigate({ to: '/providers' })}
           className={MENU_ITEM}
         >
-          Providers
+          <Trans>Providers</Trans>
         </DropdownMenu.Item>
         {isAdmin && (
           <DropdownMenu.Item
             onClick={() => navigate({ to: '/admin' })}
             className={MENU_ITEM}
           >
-            Admin
+            <Trans>Admin</Trans>
           </DropdownMenu.Item>
         )}
         <DropdownMenu.Separator />
@@ -58,7 +60,7 @@ export default function UserMenu() {
           onClick={logout}
           className={MENU_ITEM_DANGER}
         >
-          Sign out
+          <Trans>Sign out</Trans>
         </DropdownMenu.Item>
       </DropdownMenu.Content>
     </DropdownMenu>

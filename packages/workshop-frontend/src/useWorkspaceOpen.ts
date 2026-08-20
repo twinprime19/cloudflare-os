@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { RpcStub, RpcTarget } from 'capnweb'
+import { t } from '@lingui/core/macro'
 import type {
   AuthenticatedApi,
   GadgetMetadata,
@@ -145,7 +146,7 @@ export function useWorkspaceOpen({
         if (message.includes(OBSERVER_CANCELLED)) {
           showTerminalError({
             kind: 'message',
-            message: 'To open this workspace, you must choose connected accounts for the services it uses.',
+            message: t`To open this workspace, you must choose connected accounts for the services it uses.`,
           })
         } else if (message.includes('permitted to observe') ||
                    message.includes('no longer connected') ||

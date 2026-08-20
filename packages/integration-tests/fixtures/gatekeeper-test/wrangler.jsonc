@@ -16,7 +16,7 @@
   "migrations": [
     {
       "tag": "v0",
-      "new_sqlite_classes": ["TestGatekeeper", "TestControl"]
+      "new_sqlite_classes": ["TestGatekeeper", "TestControl", "PendingSignIn"]
     }
   ]
 }

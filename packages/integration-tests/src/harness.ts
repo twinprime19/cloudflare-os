@@ -26,7 +26,7 @@ export const TEST_GATEKEEPER_WORKER = "gatekeeper-test";
 export const TEST_GATEKEEPER_BINDING = "TEST";
 export const TEST_VENDOR_ID = TEST_GATEKEEPER_BINDING.toLowerCase();
 
-/** Username that `vars.ADMINS` grants deployment-admin rights to, mirroring run-dev-server.js. */
+/** Username that `vars.ADMINS` grants deployment-admin rights to, mirroring run-dev-server.ts. */
 export const ADMIN_USERNAME = "admin";
 
 // The slice of wrangler.jsonc the harness reads or rewrites. Loose on purpose: everything else a
@@ -64,7 +64,7 @@ export type GatekeeperSpec = {
 // Read a checked-in wrangler.jsonc and make it usable as an *inline* harness config.
 //
 // A worker whose `main` is generated (capnweb-validate) needs `build.cwd` pinned to its own directory
-// or the output lands in the wrong place -- run-dev-server.js pins it for the same reason. `main` then
+// or the output lands in the wrong place -- run-dev-server.ts pins it for the same reason. `main` then
 // has to be absolute too: an inline config has no file path of its own, so wrangler resolves a
 // relative `main` against the harness `root` rather than the worker directory.
 function readWorkerConfig(dir: string): WorkerConfig {
@@ -84,7 +84,7 @@ function workshopConfig(
     patch?: (config: WorkerConfig) => void): WorkerConfig {
   const config = readWorkerConfig(WORKSHOP_DIR);
 
-  // The checked-in config declares no services; run-dev-server.js adds one per gatekeeper. We add
+  // The checked-in config declares no services; run-dev-server.ts adds one per gatekeeper. We add
   // only the ones the suite asked for, so buildGatekeeperVendorMap() discovers exactly those vendors
   // and the observer-config prompt has no surprise rows.
   config.services = gatekeepers.map(gk => ({
@@ -124,6 +124,15 @@ export type Harness = {
 export async function startHarness(opts: {
   gatekeepers: GatekeeperSpec[];
   patchWorkshop?: (config: WorkerConfig) => void;
+  /**
+   * Workshop vars a suite depends on, e.g. `{ AUTH_GATEKEEPERS: "test" }`.
+   *
+   * Set them here rather than through `patchWorkshop`: a `vars` entry in the config is overridden by
+   * whatever the developer happens to have in the repo's `.dev.vars`, so a suite that patched the
+   * config would pass on CI and fail (or worse, pass for the wrong reason) on a machine set up to run
+   * the dev server. A harness-level override wins over both.
+   */
+  workshopVars?: Record<string, string>;
   /** Defaults to this repo's root. Override when a gatekeeper lives outside it. */
   root?: string;
 }): Promise<Harness> {
@@ -139,7 +148,7 @@ export async function startHarness(opts: {
     root: opts.root ?? REPO_ROOT,
     // workshop-backend is primary, so unrouted requests (e.g. /api) go to it.
     workers: [
-      { config: workshopConfig(gatekeepers, opts.patchWorkshop) },
+      { config: workshopConfig(gatekeepers, opts.patchWorkshop), vars: opts.workshopVars },
       ...gatekeepers.map(({ config }) => ({ config })),
     ],
   });

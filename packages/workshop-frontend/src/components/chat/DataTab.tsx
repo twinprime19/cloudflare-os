@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Table } from '@cloudflare/kumo'
 import { Badge } from '@cloudflare/kumo'
 import { Button } from '@cloudflare/kumo'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { sampleDataRows } from '../../data/chat'
 
 export default function DataTab() {
@@ -38,8 +40,8 @@ export default function DataTab() {
               {selectedIds.size} selected
             </span>
           )}
-          <Button variant="ghost" size="xs">Filter</Button>
-          <Button variant="ghost" size="xs">Sort</Button>
+          <Button variant="ghost" size="xs"><Trans>Filter</Trans></Button>
+          <Button variant="ghost" size="xs"><Trans>Sort</Trans></Button>
         </div>
       </div>
 
@@ -52,12 +54,12 @@ export default function DataTab() {
                 checked={selectedIds.size === sampleDataRows.length}
                 indeterminate={selectedIds.size > 0 && selectedIds.size < sampleDataRows.length}
                 onValueChange={toggleAll}
-                aria-label="Select all rows"
+                aria-label={t`Select all rows`}
               />
-              <Table.Head>Channel</Table.Head>
-              <Table.Head>Messages</Table.Head>
-              <Table.Head>Last Active</Table.Head>
-              <Table.Head>Status</Table.Head>
+              <Table.Head><Trans>Channel</Trans></Table.Head>
+              <Table.Head><Trans>Messages</Trans></Table.Head>
+              <Table.Head><Trans>Last Active</Trans></Table.Head>
+              <Table.Head><Trans>Status</Trans></Table.Head>
             </Table.Row>
           </Table.Header>
           <Table.Body>
@@ -81,9 +83,9 @@ export default function DataTab() {
                 </Table.Cell>
                 <Table.Cell>
                   {row.unread ? (
-                    <Badge variant="primary">Unread</Badge>
+                    <Badge variant="primary"><Trans>Unread</Trans></Badge>
                   ) : (
-                    <Badge variant="secondary">Read</Badge>
+                    <Badge variant="secondary"><Trans>Read</Trans></Badge>
                   )}
                 </Table.Cell>
               </Table.Row>
@@ -95,10 +97,12 @@ export default function DataTab() {
       {/* Footer */}
       <div className="px-4 py-2 border-t border-kumo-fill bg-kumo-elevated flex items-center justify-between">
         <span className="font-mono text-xs text-kumo-subtle">
-          {sampleDataRows.length} rows in channels
+          <Trans>{sampleDataRows.length} rows in channels</Trans>
         </span>
         <span className="font-mono text-xs text-kumo-subtle">
-          {sampleDataRows.reduce((sum, r) => sum + r.messages, 0).toLocaleString()} total messages
+          <Trans>
+            {sampleDataRows.reduce((sum, r) => sum + r.messages, 0).toLocaleString()} total messages
+          </Trans>
         </span>
       </div>
     </div>

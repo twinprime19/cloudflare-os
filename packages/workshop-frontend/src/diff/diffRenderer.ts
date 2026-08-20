@@ -1,4 +1,5 @@
 import type { editor } from 'monaco-editor'
+import { plural } from '@lingui/core/macro'
 import {
   type ChangeRun,
   type DiffModel,
@@ -345,7 +346,10 @@ function createDeletionZoneNodes({
       button.type = 'button'
       button.className = 'gadgets-deleted-code-row gadgets-deleted-omitted-row'
       const hidden = total - 2 * DELETED_HEAD_TAIL
-      button.textContent = `Show ${hidden} hidden deleted line${hidden === 1 ? '' : 's'}`
+      button.textContent = plural(hidden, {
+        one: 'Show # hidden deleted line',
+        other: 'Show # hidden deleted lines',
+      })
       button.addEventListener("click", onExpand)
       code.append(button)
     }

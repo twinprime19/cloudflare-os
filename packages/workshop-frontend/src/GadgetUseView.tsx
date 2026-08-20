@@ -10,6 +10,8 @@ import {
   WorkpieceId,
   WorkpieceSummary,
 } from '@gadgets/workshop-shared/api'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import GadgetUI from './GadgetUI'
 import UserMenu from './components/UserMenu'
 import { GadgetPresence } from './components/GadgetPresence'
@@ -23,7 +25,7 @@ import GadgetExportMenu from './GadgetExportMenu'
 // Gadget/Code/Connections controls, workspace activity, and every editor-only control. The
 // overseer and gadget passed in here are the restricted capabilities returned by openGadget() for
 // "use" sessions; calling anything outside getMetadata()/subscribeToMetadata()/subscribeToPresence()/
-// subscribeToWorkpieces()/getGadget() (and, on the gadget, getUiBundle()/connectToGadget()/exportPdf())
+// subscribeToWorkpieces()/getGadget() (and, on the gadget, UI connection and export methods)
 // would throw.
 //
 // When the workspace has more than one gadget, a simple picker in the top bar switches between
@@ -64,7 +66,7 @@ export default function GadgetUseView({
         <TopBarNotice />
         {/* Left: logo / title */}
         <div className="flex items-center gap-2 min-w-0">
-          <Link to="/" aria-label="Home" className="flex-shrink-0 hover:opacity-80 transition-opacity">
+          <Link to="/" aria-label={t`Home`} className="flex-shrink-0 hover:opacity-80 transition-opacity">
             <SiteLogo size={22}>
               <Hexagon size={22} className="text-kumo-brand" weight="bold" />
             </SiteLogo>
@@ -133,7 +135,7 @@ export default function GadgetUseView({
           />
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center">
-            <p className="text-sm text-kumo-subtle">This workspace has no gadgets yet.</p>
+            <p className="text-sm text-kumo-subtle"><Trans>This workspace has no gadgets yet.</Trans></p>
           </div>
         )}
       </div>

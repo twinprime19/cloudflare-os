@@ -2,7 +2,8 @@
 /* eslint-disable react/react-in-jsx-scope */
 
 import { act, type ReactNode } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { type Root } from 'react-dom/client'
+import { createI18nRoot } from './testI18nRoot'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RpcStub } from 'capnweb'
 import {
@@ -97,7 +98,7 @@ describe('useWorkspaceOpen', () => {
 
     container = document.createElement('div')
     document.body.append(container)
-    root = createRoot(container)
+    root = createI18nRoot(container)
     await act(async () => root!.render(<Probe />))
 
     act(() => root!.unmount())
@@ -129,7 +130,7 @@ describe('useWorkspaceOpen', () => {
 
     container = document.createElement('div')
     document.body.append(container)
-    root = createRoot(container)
+    root = createI18nRoot(container)
     await act(async () => root!.render(<WorkspaceProbe authenticatedApi={api(firstOverseer)} />))
     expect(container.textContent).toContain('Quarterly planning')
     expect(document.title).toBe('Quarterly planning - Cloudflare OS')

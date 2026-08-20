@@ -4,7 +4,7 @@ End-to-end tests that drive the real Workshop and a real gatekeeper over the act
 toolkit those tests are built from. Part of `pnpm test`, so CI runs it like any other package.
 
 ```bash
-pnpm --filter @gadgets/integration-tests test
+pnpm --filter @gadgets/integration-tests test:run
 ```
 
 ## The toolkit
@@ -31,6 +31,10 @@ vendor this one as a submodule:
   per-test resource URLs; account labels are allocated for you, so two tests can't pick the same one.
 - **The escape assertion lives in `afterAll`, not `afterEach`** — an `afterEach` fires while sibling
   tests are still running, so it would inspect and clear state they are still using.
+- **Set Workshop vars through `startHarness({workshopVars})`, not by patching the config.** A `vars`
+  entry in the config is overridden by whatever the developer has in the repo's `.dev.vars` (the
+  harness boots from the repo root), so a suite that patched the config would behave one way on CI and
+  another on a machine set up to run the dev server. `workshopVars` wins over both.
 
 ## The fixture gatekeeper
 
@@ -47,6 +51,15 @@ cost that would dominate the test:
 Adding a test hook to those workers was considered and rejected: a "mark observed" hook would stub the
 very state the tracker maintains, and an injected dev credential for an OAuth gatekeeper would bypass
 exactly the flow that makes a real vendor worth testing.
+
+It doubles as an **authentication** gatekeeper, for the same reason: sign-in is otherwise reachable
+only behind a live vendor's OAuth dance. `connectAccount()` in `"auth"` scope returns a URL carrying a
+single-use nonce, and fetching that URL with `?email=` completes the flow — the query parameter
+standing in for the provider's login page, where a human would say who they are. The account it mints
+answers `getAuthenticatedEmail()` with that address and `getAuthenticatedProfile()` with a fixed name
+and a 1x1 PNG, so `gatekeeper-sign-in.test.ts` can watch the Workshop seed a new user's display name
+and write real photo bytes into the `AVATARS` namespace. `GET /control/profile-hints` reports those
+hints, so a test compares what was stored against what the gatekeeper actually sent.
 
 Two deliberate departures from a shipping gatekeeper, both to keep the fixture cheap:
 

@@ -8,6 +8,8 @@
 
 import { DropdownMenu } from '@cloudflare/kumo'
 import type { OutputFormatOffer } from '@gadgets/workshop-shared/api'
+import { Trans } from '@lingui/react/macro'
+import { t } from '@lingui/core/macro'
 import { FormatGlyph } from './FormatVisuals'
 import { useOutputFormats } from './useOutputFormats'
 
@@ -32,7 +34,7 @@ export default function ComposerFormatMenuItems({
   return (
     <>
       <p className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase leading-4 tracking-[0.06em] text-kumo-inactive">
-        Start with
+        <Trans>Start with</Trans>
       </p>
       {formats.map((format) => (
         <DropdownMenu.Item
@@ -49,7 +51,7 @@ export default function ComposerFormatMenuItems({
             />
           </span>
           <span className="flex-1 truncate">
-            {creating === format.blueprintId ? 'Creating…' : format.output.noun}
+            {creating === format.blueprintId ? t`Creating…` : format.output.noun}
           </span>
         </DropdownMenu.Item>
       ))}

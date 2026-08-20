@@ -1,6 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Desktop, Moon, Plug, Sun } from '@phosphor-icons/react'
 import { Tooltip } from '@cloudflare/kumo'
+import { t } from '@lingui/core/macro'
 import UserMenu from '../UserMenu'
 import { useTheme } from '../../ThemeContext'
 import type { ThemeMode } from '../../theme'
@@ -20,11 +21,11 @@ function ThemeModeButton() {
 
   return (
     <Tooltip
-      content={`${label}. Switch to ${nextMode}.`}
+      content={t`${label}. Switch to ${nextMode}.`}
       render={(
         <button
           type="button"
-          aria-label={`${label}. Switch to ${nextMode}.`}
+          aria-label={t`${label}. Switch to ${nextMode}.`}
           onClick={() => setThemeMode(nextMode)}
           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-kumo-inactive transition-colors hover:bg-kumo-tint hover:text-kumo-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kumo-ring focus-visible:ring-offset-2 focus-visible:ring-offset-kumo-elevated"
         >
@@ -83,7 +84,7 @@ export default function SidebarUtilityStrip({ collapsed = false }: { collapsed?:
         collapsed ? 'flex-col justify-center gap-2 px-1.5' : '',
       ].join(' ')}
     >
-      <StripLink to="/gatekeepers" label="Gatekeepers">
+      <StripLink to="/gatekeepers" label={t`Gatekeepers`}>
         <Plug size={15} />
       </StripLink>
       <div className={collapsed ? 'flex flex-col items-center gap-2' : 'ml-auto flex items-center gap-1'}>

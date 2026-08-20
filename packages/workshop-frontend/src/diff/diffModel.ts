@@ -1,6 +1,33 @@
 import type { editor } from 'monaco-editor'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { i18n } from '@gadgets/i18n'
 
+/**
+ * A type discriminant (compared and switched on elsewhere, e.g. `model.status !== 'Modified'` in
+ * CodeDiffEditor.tsx) as well as the source text for the badge that displays it. The values
+ * themselves must stay these exact English identifiers -- wrapping them in place would either
+ * break the comparisons or require a parallel translated-copy field. {@link diffStatusLabel} below
+ * is the translated label for display; callers render its return value, never `model.status`
+ * directly.
+ */
 export type DiffStatus = 'Added' | 'Deleted' | 'Modified' | 'Unchanged'
+
+// Message descriptors, not resolved strings: this module is imported (and this object literal
+// evaluated) before the active locale is guaranteed to be set. `msg` only captures the source text
+// and message id at compile time: it has no runtime dependency on the active locale. Resolution
+// happens in `diffStatusLabel`, called at render time.
+const DIFF_STATUS_LABELS: Record<DiffStatus, MessageDescriptor> = {
+  Added: msg`Added`,
+  Deleted: msg`Deleted`,
+  Modified: msg`Modified`,
+  Unchanged: msg`Unchanged`,
+}
+
+/** Translated display text for a `DiffStatus`. Resolves against the active locale at call time. */
+export function diffStatusLabel(status: DiffStatus): string {
+  return i18n._(DIFF_STATUS_LABELS[status])
+}
 
 export type DiffModel = {
   status: DiffStatus

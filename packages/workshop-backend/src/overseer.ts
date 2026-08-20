@@ -1,7 +1,7 @@
 import { RpcCompatible, RpcStub, RpcTarget } from "capnweb";
 import { validateRpc } from "capnweb-validate";
 import { Overseer, GadgetMetadata, UiBundle, WorkpieceId, WorkpieceSummary, WorkpiecesSubscriber, GadgetClient, GadgetBindingInfo, GatekeeperClient, ActionState, ActionLogEntry, ActionsSubscriber, CodeUpdate, CodeSubscriber, AiChatMetadata, AiChatMessage, AiChatHistoryPage, AiChatSubscriber, AiChatAuthorInfo, AiModelConfig, AiChatMessageBody, AgentSpawnerConfig, ConsoleLogSubscriber, ConsoleLogEvent, CapsuleSpecifier, CollaboratorInfo, CollaboratorRole, AffectedCollaborator, ShareLinkInfo, GatekeeperCreationSpec, ObserverConfigCallback, ObserverBindingNeed, ObserverBindingFailure, BlueprintBindingAnnotation, BlueprintBinding, BlueprintMetadata, BlueprintOutput, MessageFormatRef, isOutputIcon, SpawnerEnvTarget, BlueprintGadgetSummary, AiChatStreamEvent, BlueprintScreenshotUpload, BLUEPRINT_SCREENSHOT_R2_PREFIX, blueprintScreenshotUrl, ChatAttachmentUpload, ChatAttachmentHandle, ChatAttachmentRef, BoundHookInfo, PreApprovableAction, PresenceParticipant, PresenceSubscriber, SlashCommandChoice, SlashCommandRequest, validateBindingName, createOpenGadgetError, OPEN_GADGET_ERROR_CODES, resolveSiteName } from '@gadgets/workshop-shared/api';
-import { Gatekeeper, HookInitiator, ResourceDescription, ApprovalQueue, ActionDescription, ObservationAuthorizer, ObservationDescription, VendorDescription, SupportedResource, resolveRequestedResource, HookController, HookDescription, AGENT_CATALOG_MAX_ENTRIES, ActionKind } from "@gadgets/workshop-shared/gatekeeper";
+import { Gatekeeper, HookInitiator, ResourceDescription, ApprovalQueue, ActionDescription, ObservationAuthorizer, ObservationDescription, VendorDescription, SupportedResource, resolveRequestedResource, HookController, HookDescription, ActionKind } from "@gadgets/workshop-shared/gatekeeper";
 import {
   DurableObject, WorkerEntrypoint, RpcStub as NativeRpcStub,
   RpcTarget as NativeRpcTarget, restore,
@@ -40,12 +40,23 @@ import { collectSlashCommands, invokeSlashCommand } from "./slash-commands";
 import { createWorkshopLogger, obsContext, traced } from "./observability";
 import { wrapDoStubForTelemetry } from "./do-telemetry";
 import type { ChatGatewayRpcTarget, SubmitExternalMessageResult } from "@gadgets/workshop-shared/external-message-gateway";
+import type { GadgetExportFormat } from "@gadgets/workshop-shared/api";
 import {
   assertChatAttachmentSupportedByProvider,
   isAllowedChatAttachmentImageMimeType,
+  assertChatMessageWithinBudget,
+  isChatAttachmentSupportedByProvider,
   validateChatAttachmentUpload,
 } from "./chat-attachment-validation";
-import { renderGadgetPdf } from "./browser-export";
+import type { DocToMarkdownEnv } from "./doc-to-markdown";
+import { renderGadgetInBrowser } from "./browser-export";
+import {
+  defaultExportFormats,
+  exportServerFormat,
+  GADGET_EXPORT_ENTRYPOINT,
+  type GadgetExportEntrypoint,
+  readCustomExportFormats,
+} from "./gadget-export";
 
 const logger = createWorkshopLogger("workshop.overseer");
 export const AGENT_RUNNING_ERROR_MESSAGE = "Agent is running, wait for it to finish.";
@@ -467,8 +478,11 @@ function validateBlueprintScreenshotUpload(screenshot: BlueprintScreenshotUpload
   return screenshot;
 }
 
-const MAX_CHAT_ATTACHMENTS_PER_MESSAGE = 5;
-const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 5 * 1024 * 1024;
+const MAX_CHAT_ATTACHMENTS_PER_MESSAGE = 8;
+// Per-file size is capped separately in chat-attachment-validation.ts, bounded by the 2 MB
+// key-plus-value limit on SQLite-backed Durable Object storage. This total bounds how many bytes
+// one message can replay into each model request.
+const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 8 * 1024 * 1024;
 // Staged attachments (not associated with chat) older than this may be deleted when the gadget next stages an attachment.
 const MAX_STAGED_CHAT_ATTACHMENT_AGE_MS = 24 * 60 * 60 * 1000;
 const CHAT_ATTACHMENT_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -487,11 +501,23 @@ type ChatAttachmentContentRecord = {
         uploadedAt: number;
         mimeType: string;
         name?: string;
+        // Original MIME type when the upload was a document converted to Markdown. Set only on
+        // converted uploads, so the send-time budget for converted text can tell them apart from
+        // Markdown the user wrote and attached directly.
+        convertedFrom?: string;
       }
     | {
         type: "committed";
         chatId: number;
       };
+};
+
+// Canonical refs for one message's attachments, plus the byte total of the converted documents
+// among them. Only converted text counts against the message's combined text budget; attachments
+// stored as-is are bounded by the storage caps instead.
+type CanonicalChatAttachments = {
+  refs: ChatAttachmentRef[];
+  convertedBytes: number;
 };
 
 // Sentinel gatekeeperId used on ActionRecords that originated from built-in agent tools
@@ -2521,11 +2547,97 @@ class OverseerImpl implements AgentHooks {
       },
     });
 
-    // Explicitly construct at RpcStub around the proxy to work around a workerd bug where
+    // Explicitly construct an RpcStub around the proxy to work around a workerd bug where
     // returning an RpcTarget proxy as the top-level return value from an RPC isn't detected
     // correctly.
     // @ts-expect-error NativeRpcStub still has infinite recursion problems, fixed in Cap'n Web.
     return new NativeRpcStub(proxy) as RpcStub<any>;
+  }
+
+  getGadgetUiBundle(gadgetId: WorkpieceId, chatId?: number): UiBundle | null {
+    this.checkChatExistsAndMaterializeDrafts(chatId);
+
+    let {ydoc} = this.buildYDoc("current");
+    if (chatId !== undefined) {
+      this.getProposedChanges(chatId).forEach(({update}) => {
+        if (update !== undefined) Y.applyUpdateV2(ydoc, update);
+      });
+    }
+
+    let file = ydoc.getMap<Y.Text>(this.gadgetRootName(gadgetId)).get("client.js");
+    return file ? {jsCode: file.toString()} : null;
+  }
+
+  async getGadgetExportFormats(gadgetId: WorkpieceId, chatId?: number)
+      : Promise<GadgetExportFormat[]> {
+    this.checkChatExistsAndMaterializeDrafts(chatId);
+    let resolved = await this.#resolveGadgetExportFormats(gadgetId, chatId);
+    resolved.gadget?.[Symbol.dispose]();
+    return resolved.formats;
+  }
+
+  async exportGadget(gadgetId: WorkpieceId, formatId: string, chatId?: number)
+      : Promise<ReadableStream<Uint8Array>> {
+    this.checkChatExistsAndMaterializeDrafts(chatId);
+    let {formats, handler, gadget} = await this.#resolveGadgetExportFormats(gadgetId, chatId);
+    if (!gadget) throw new Error("The Gadget server stub is unavailable.");
+    using exportGadget = gadget;
+    let format = formats.find(candidate => candidate.id === formatId);
+    if (!format) throw new Error(`This Gadget does not support export format: ${formatId}`);
+
+    if (format.mode === "server") {
+      if (!handler) throw new Error("The Gadget export handler is unavailable.");
+      return await exportServerFormat(() =>
+        handler.export(exportGadget, format.id));
+    } else {
+      let browser = this.env.BROWSER;
+      if (!browser) throw new Error("Gadget export is not configured for this deployment.");
+      let bundle = this.getGadgetUiBundle(gadgetId, chatId);
+      if (!bundle) throw new Error("This Gadget does not have a UI to export.");
+      let title = this.getGadgetRecord(gadgetId).title;
+      return renderGadgetInBrowser(browser, bundle.jsCode, title, exportGadget.dup(), format);
+    }
+  }
+
+  checkChatExistsAndMaterializeDrafts(chatId?: number): void {
+    if (chatId !== undefined) {
+      let meta = this.getChatMetaOrThrow(chatId);
+      if (!meta.activeAgent) this.materializeChatDraft(chatId, meta);
+    }
+  }
+
+  async #resolveGadgetExportFormats(gadgetId: WorkpieceId, chatId?: number): Promise<{
+    formats: GadgetExportFormat[];
+    handler: Fetcher<GadgetExportEntrypoint> | null;
+    gadget: NativeRpcStub<any> | null;
+  }> {
+    let {ydoc} = this.buildYDoc("current");
+    if (chatId !== undefined) {
+      this.getProposedChanges(chatId).forEach(({update}) => {
+        if (update !== undefined) Y.applyUpdateV2(ydoc, update);
+      });
+    }
+    let files = ydoc.getMap<Y.Text>(this.gadgetRootName(gadgetId));
+    if (!files.has("server.js")) return {formats: [], handler: null, gadget: null};
+
+    let handler = this.loadGadgetWorker(gadgetId, chatId)
+      .getEntrypoint<GadgetExportEntrypoint>(GADGET_EXPORT_ENTRYPOINT);
+    // getGadgetFacet() wraps this native stub for Cap'n Web's type system, but this path invokes
+    // native Worker RPC and needs its actual runtime type.
+    let gadget = await this.getGadgetFacet(gadgetId, chatId) as unknown as NativeRpcStub<any>;
+    try {
+      let formats = await readCustomExportFormats(handler, gadget);
+      return formats === null
+        ? {
+          formats: files.has("client.js") ? defaultExportFormats() : [],
+          handler: null,
+          gadget,
+        }
+        : {formats, handler, gadget};
+    } catch (error) {
+      gadget[Symbol.dispose]();
+      throw error;
+    }
   }
 
   // Load a WorkerEntrypoint exported by the gadget, used to implement a hook.
@@ -2810,17 +2922,20 @@ class OverseerImpl implements AgentHooks {
   // Look up the attachments that the client wants to send.
   //
   // The send message request only contains staged attachment IDs. This fills in metadata from
-  // upload records before the message is stored in chat history.
+  // upload records before the message is stored in chat history. The converted byte total comes
+  // back with the refs because it is only knowable here, while the attachment bytes are in hand,
+  // and the caller needs it to weigh the attachments against the message text.
   canonicalizeChatAttachmentRefs(
     attachments?: ChatAttachmentHandle[],
     provider?: AiModelConfig["provider"],
-  ): ChatAttachmentRef[] | undefined {
+  ): CanonicalChatAttachments | undefined {
     if (!attachments || attachments.length === 0) return undefined;
     if (attachments.length > MAX_CHAT_ATTACHMENTS_PER_MESSAGE) {
       throw new Error(`You can attach up to ${MAX_CHAT_ATTACHMENTS_PER_MESSAGE} attachments.`);
     }
 
     let total = 0;
+    let convertedTotal = 0;
     let result: ChatAttachmentRef[] = [];
     let seenIds = new Set<string>();
     for (let attachment of attachments) {
@@ -2831,8 +2946,18 @@ class OverseerImpl implements AgentHooks {
       if (!content || content.state.type !== "staged") {
         throw new Error("Chat attachment not found.");
       }
+      if (!isChatAttachmentSupportedByProvider(provider, content.state.mimeType)) {
+        // The upload was validated against the model selected at the time, and the chat has since
+        // switched to one that cannot take this file. Say that, rather than repeating the
+        // upload-time "unsupported file type" error, which reads as a bug on a file the user
+        // already attached successfully.
+        let label = content.state.name ? `"${content.state.name}"` : "An attached file";
+        throw new Error(
+            `${label} was prepared for a different model. Remove it and attach it again.`);
+      }
       assertChatAttachmentSupportedByProvider(provider, content.state.mimeType, content.data.byteLength);
       total += content.data.byteLength;
+      if (content.state.convertedFrom !== undefined) convertedTotal += content.data.byteLength;
       result.push({
         id,
         mimeType: content.state.mimeType,
@@ -2843,7 +2968,7 @@ class OverseerImpl implements AgentHooks {
     if (total > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
       throw new Error("Attached files are too large.");
     }
-    return result;
+    return { refs: result, convertedBytes: convertedTotal };
   }
 
   commitChatAttachments(chatId: number, attachments?: ChatAttachmentRef[]): void {
@@ -2905,8 +3030,16 @@ class OverseerImpl implements AgentHooks {
     }
   }
 
-  // Provides web-fetch with the Workers AI binding and AI Gateway config it needs to call
-  // `env.WORKERS_AI.toMarkdown()`. The initiator is needed for AI Gateway metadata.
+  // The Workers AI binding and AI Gateway config that `env.WORKERS_AI.toMarkdown()` needs. The
+  // initiator is needed for AI Gateway metadata.
+  #toMarkdownEnv(): DocToMarkdownEnv {
+    return {
+      ai: this.env.WORKERS_AI,
+      gateway: getAiGatewayConfig(this.env),
+    };
+  }
+
+  // Provides web-fetch with the binding it needs to convert fetched documents.
   getWebFetchEnv(): WebFetchEnv {
     if (this.storage.prohibitAllSharing.get()) {
       // TODO: Disallwing fetches is a bit draconian. Ideally, we would have some way to detect
@@ -2918,10 +3051,20 @@ class OverseerImpl implements AgentHooks {
           "from fetching from public web sites.");
     }
 
-    return {
-      ai: this.env.WORKERS_AI,
-      gateway: getAiGatewayConfig(this.env),
-    };
+    return this.#toMarkdownEnv();
+  }
+
+  // Provides attachment upload with the binding it needs to convert uploaded documents. Converting
+  // sends the document's bytes to Workers AI, so a workspace under sharing lockdown is refused for
+  // the same reason web-fetch is.
+  getDocumentConversionEnv(): DocToMarkdownEnv {
+    if (this.storage.prohibitAllSharing.get()) {
+      throw new Error(
+          "This workspace has observed sensitive data. To prevent leaks, the workspace is prohibited " +
+          "from converting uploaded documents. Paste the text you need into the message instead.");
+    }
+
+    return this.#toMarkdownEnv();
   }
 
   // Record an observation that originated from a built-in agent tool (not a gatekeeper).
@@ -3535,8 +3678,15 @@ class OverseerImpl implements AgentHooks {
     if (typeof initialMessage !== "string" && (capsules?.length || attachments?.length)) {
       throw new Error("Slash commands cannot include resources or attachments.");
     }
-    let canonicalAttachments = this.canonicalizeChatAttachmentRefs(
+    let canonical = this.canonicalizeChatAttachmentRefs(
         attachments, userMeta.aiModel?.config.provider);
+    let canonicalAttachments = canonical?.refs;
+    // Rejected up front, before anything is written, so a message that cannot be sent leaves no
+    // chat, no committed attachment and no half-created state behind. Slash commands are refused
+    // above when they carry attachments, and carry no document text of their own.
+    if (typeof initialMessage === "string") {
+      assertChatMessageWithinBudget(initialMessage, canonical?.convertedBytes ?? 0);
+    }
     let prepared = await this.#prepareChatMessage(
         initialMessage, (canonicalAttachments?.length ?? 0) > 0);
 
@@ -3613,8 +3763,13 @@ class OverseerImpl implements AgentHooks {
     if (typeof message !== "string" && (capsules?.length || attachments?.length)) {
       throw new Error("Slash commands cannot include resources or attachments.");
     }
-    let canonicalAttachments = this.canonicalizeChatAttachmentRefs(
+    let canonical = this.canonicalizeChatAttachmentRefs(
         attachments, userMeta.aiModel?.config.provider);
+    let canonicalAttachments = canonical?.refs;
+    // Same up-front rejection as newChat: before the draft is materialized or anything is stored.
+    if (typeof message === "string") {
+      assertChatMessageWithinBudget(message, canonical?.convertedBytes ?? 0);
+    }
     this.assertChatNotActive(chatId);
     using _chatMessageReservation = this.reserveChatMessagePreparation(chatId);
     let prepared = await this.#prepareChatMessage(
@@ -4864,7 +5019,6 @@ class OverseerImpl implements AgentHooks {
             // native stub forwards transparently at runtime.
             let facet = this.getGatekeeperFacet(gatekeeperId) as unknown as CatalogGatekeeperFacet;
             let catalog = await facet.getAgentCatalog(
-                {limit: AGENT_CATALOG_MAX_ENTRIES},
                 authorizer as unknown as ObservationAuthorizer);
             return catalog ? normalizeAgentCatalog(catalog) : null;
           } catch (error) {
@@ -8149,10 +8303,12 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
     if (modelId !== null) {
       provider = (await this.#clientUser.getChatContext(modelId)).aiModel?.config.provider;
     }
-    attachment = validateChatAttachmentUpload(
+    let validated = await validateChatAttachmentUpload(
       attachment,
       provider,
+      () => this.impl.getDocumentConversionEnv(),
     );
+    attachment = validated.attachment;
 
     this.impl.sweepStagedChatAttachments();
 
@@ -8165,6 +8321,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
         uploadedAt: Date.now(),
         mimeType: attachment.mimeType,
         name: attachment.name,
+        convertedFrom: validated.convertedFrom,
       },
     });
     return {id};
@@ -9231,30 +9388,7 @@ class GadgetClientImpl extends RpcTarget implements GadgetClient {
   }
 
   async getUiBundle(chatId?: number): Promise<UiBundle | null> {
-    // TODO: Bundle the UI? For now we just return client.js.
-    if (chatId !== undefined) {
-      let meta = this.impl.getChatMetaOrThrow(chatId);
-      if (!meta.activeAgent) {
-        this.impl.materializeChatDraft(chatId, meta);
-      }
-    }
-
-    let {ydoc} = this.impl.buildYDoc("current");
-
-    if (chatId !== undefined) {
-      this.impl.getProposedChanges(chatId).forEach(({update}) => {
-        if (update !== undefined) {
-          Y.applyUpdateV2(ydoc, update);
-        }
-      });
-    }
-
-    let file = ydoc.getMap<Y.Text>(this.impl.gadgetRootName(this.id)).get("client.js");
-    if (file) {
-      return { jsCode: file.toString() };
-    } else {
-      return null;
-    }
+    return this.impl.getGadgetUiBundle(this.id, chatId);
   }
 
   async connectToGadget(chatId?: number): Promise<RpcStub<any>> {
@@ -9267,15 +9401,12 @@ class GadgetClientImpl extends RpcTarget implements GadgetClient {
     return this.impl.getGadgetFacet(this.id, chatId);
   }
 
-  async exportPdf(chatId?: number): Promise<ReadableStream<Uint8Array>> {
-    // Read as possibly-undefined: self-hosted deployments may omit the binding (see env.d.ts).
-    let browser: BrowserRun | undefined = this.impl.env.BROWSER;
-    if (!browser) throw new Error("Gadget export is not configured for this deployment.");
-    let bundle = await this.getUiBundle(chatId);
-    if (!bundle) throw new Error("This Gadget does not have a UI to export.");
-    let gadget = await this.impl.getGadgetFacet(this.id, chatId);
-    let title = this.impl.getGadgetRecord(this.id).title;
-    return renderGadgetPdf(browser, bundle.jsCode, title, gadget);
+  async getExportFormats(chatId?: number): Promise<GadgetExportFormat[]> {
+    return this.impl.getGadgetExportFormats(this.id, chatId);
+  }
+
+  async export(formatId: string, chatId?: number): Promise<ReadableStream<Uint8Array>> {
+    return this.impl.exportGadget(this.id, formatId, chatId);
   }
 
   async listBindings(chatId?: number): Promise<GadgetBindingInfo[]> {
@@ -9503,10 +9634,7 @@ class UseGadgetClientInterface extends RpcTarget implements GadgetClient {
     if (chatId !== undefined) {
       this.#deny();
     }
-
-    let {ydoc} = this.impl.buildYDoc("current");
-    let file = ydoc.getMap<Y.Text>(this.impl.gadgetRootName(this.id)).get("client.js");
-    return file ? { jsCode: file.toString() } : null;
+    return this.impl.getGadgetUiBundle(this.id);
   }
 
   async connectToGadget(chatId?: number): Promise<RpcStub<any>> {
@@ -9522,16 +9650,14 @@ class UseGadgetClientInterface extends RpcTarget implements GadgetClient {
     return this.impl.getGadgetFacet(this.id, undefined);
   }
 
-  async exportPdf(chatId?: number): Promise<ReadableStream<Uint8Array>> {
+  async getExportFormats(chatId?: number): Promise<GadgetExportFormat[]> {
     if (chatId !== undefined) this.#deny();
-    // Read as possibly-undefined: self-hosted deployments may omit the binding (see env.d.ts).
-    let browser: BrowserRun | undefined = this.impl.env.BROWSER;
-    if (!browser) throw new Error("Gadget export is not configured for this deployment.");
-    let bundle = await this.getUiBundle();
-    if (!bundle) throw new Error("This Gadget does not have a UI to export.");
-    let gadget = await this.impl.getGadgetFacet(this.id);
-    let title = this.impl.getGadgetRecord(this.id).title;
-    return renderGadgetPdf(browser, bundle.jsCode, title, gadget);
+    return this.impl.getGadgetExportFormats(this.id);
+  }
+
+  async export(id: string, chatId?: number): Promise<ReadableStream<Uint8Array>> {
+    if (chatId !== undefined) this.#deny();
+    return this.impl.exportGadget(this.id, id);
   }
 
   // --- Denied methods (build-only) ---

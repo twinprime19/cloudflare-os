@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CloudflareUsageInfo, CloudflareAccountOption } from '@gadgets/workshop-shared/api'
 import { Dialog, Button, Loader, Radio, useKumoToastManager } from '@cloudflare/kumo'
 import { Warning } from '@phosphor-icons/react'
+import { Trans } from '@lingui/react/macro'
 import { useOptionalAuthenticatedApi } from '../../AuthContext'
 import { useCloudflareLimitsEnabled } from '../../ServerConfigContext'
 
@@ -73,19 +74,19 @@ export default function AccountSelectionModal() {
       <Dialog className="p-6 sm:w-[480px]" size="base">
         <Dialog.Title className="text-lg font-semibold mb-2 flex items-center gap-2">
           <Warning size={22} weight="bold" className="text-kumo-warning" />
-          Choose a Cloudflare account
+          <Trans>Choose a Cloudflare account</Trans>
         </Dialog.Title>
 
         <div className="space-y-4">
           <p className="text-sm text-kumo-subtle">
-            Your Cloudflare connection has access to multiple accounts. Select the one whose credits
-            should be billed for usage beyond the free tier.
+            <Trans>Your Cloudflare connection has access to multiple accounts. Select the one whose credits
+            should be billed for usage beyond the free tier.</Trans>
           </p>
 
           {accounts === null ? (
             <div className="flex justify-center py-6"><Loader size="base" /></div>
           ) : accounts.length === 0 ? (
-            <p className="text-sm text-kumo-subtle">No accounts available on this connection.</p>
+            <p className="text-sm text-kumo-subtle"><Trans>No accounts available on this connection.</Trans></p>
           ) : (
             <Radio.Group
               appearance="card"
@@ -93,7 +94,7 @@ export default function AccountSelectionModal() {
               onValueChange={setChosen}
               disabled={saving}
             >
-              <Radio.Legend className="sr-only">Cloudflare account</Radio.Legend>
+              <Radio.Legend className="sr-only"><Trans>Cloudflare account</Trans></Radio.Legend>
               {accounts.map((a) => (
                 <Radio.Item key={a.accountId} value={a.accountId} label={a.accountName} />
               ))}
@@ -107,10 +108,10 @@ export default function AccountSelectionModal() {
               // un-actionable modal — let them retry or dismiss (it re-checks on focus).
               <>
                 <Button variant="ghost" onClick={() => setNeedsSelection(false)}>
-                  Dismiss
+                  <Trans>Dismiss</Trans>
                 </Button>
                 <Button variant="secondary" onClick={() => setAccounts(null)}>
-                  Try again
+                  <Trans>Try again</Trans>
                 </Button>
               </>
             ) : (
@@ -120,7 +121,7 @@ export default function AccountSelectionModal() {
                 loading={saving}
                 disabled={!chosen || saving}
               >
-                Save
+                <Trans>Save</Trans>
               </Button>
             )}
           </div>

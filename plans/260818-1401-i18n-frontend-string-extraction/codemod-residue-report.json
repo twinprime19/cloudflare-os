@@ -1,0 +1,988 @@
+{
+  "generatedBy": "scripts/i18n-codemod/run.ts",
+  "mode": "dry-run",
+  "scanRoot": "packages/workshop-frontend/src",
+  "totals": {
+    "filesScanned": 123,
+    "filesChanged": 0,
+    "candidates": 91,
+    "edits": 0,
+    "editsByKind": {},
+    "residue": 91,
+    "residueByReason": {
+      "attribute-unsafe-value": 3,
+      "interpolated": 67,
+      "split-by-markup": 21
+    },
+    "residueFiles": 25,
+    "residueGroups": 67
+  },
+  "files": [
+    {
+      "file": "packages/workshop-frontend/src/AdminPage.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Shown next to the logo in the top bar. Leave empty to use the default (&ldquo;",
+          "line": 447,
+          "column": 13,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/AdminPage.tsx:16943"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "&rdquo;). Applies on each user&rsquo;s next connection.",
+          "line": 448,
+          "column": 40,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/AdminPage.tsx:16943"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "hidden while disabled.",
+          "line": 947,
+          "column": 98,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/AdminPage.tsx:39121"
+        },
+        {
+          "kind": "jsx-attribute",
+          "attribute": "placeholder",
+          "text": "e.g. 🎉 New: blueprints now support imports — [learn more](https://example.com).",
+          "line": 618,
+          "column": 26,
+          "reason": "attribute-unsafe-value"
+        },
+        {
+          "kind": "jsx-attribute",
+          "attribute": "placeholder",
+          "text": "e.g. Heads up: scheduled maintenance Saturday — see [status](https://status.example.com).",
+          "line": 698,
+          "column": 26,
+          "reason": "attribute-unsafe-value"
+        },
+        {
+          "kind": "jsx-attribute",
+          "attribute": "placeholder",
+          "text": "e.g. ACME Corp is a logistics company that helps small businesses ship internationally. Our team builds internal tools and dashboards to track shipments.",
+          "line": 753,
+          "column": 24,
+          "reason": "attribute-unsafe-value"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/BlueprintLandingPage.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "Updated",
+          "line": 817,
+          "column": 21,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/BlueprintLandingPage.tsx:29363"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "Dialog.Title",
+          "text": "Configure",
+          "line": 1017,
+          "column": 21,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/BlueprintLandingPage.tsx:39253"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "Dialog.Description",
+          "text": "Delete \"",
+          "line": 1086,
+          "column": 13,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/BlueprintLandingPage.tsx:42380"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "Dialog.Title",
+          "text": "Screenshot of",
+          "line": 1143,
+          "column": 43,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/BlueprintLandingPage.tsx:44764"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "The \"",
+          "line": 1632,
+          "column": 12,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/BlueprintLandingPage.tsx:62760"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "\" gatekeeper is not available on this workshop, so this connection can't be configured.",
+          "line": 1632,
+          "column": 41,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/BlueprintLandingPage.tsx:62760"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "The required resource type for this binding isn't offered by",
+          "line": 1640,
+          "column": 12,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/BlueprintLandingPage.tsx:63124"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Blueprint recommends:",
+          "line": 1664,
+          "column": 15,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/BlueprintLandingPage.tsx:63930"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/BlueprintModal.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Optional image shown on Explore and the blueprint detail page.",
+          "line": 349,
+          "column": 29,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/BlueprintModal.tsx:13039"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Delete \"",
+          "line": 597,
+          "column": 15,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/BlueprintModal.tsx:24909"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/ChatInterface.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "Send",
+          "line": 3264,
+          "column": 19,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:124694"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "to chat",
+          "line": 3265,
+          "column": 61,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:124694"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Use the",
+          "line": 3874,
+          "column": 13,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:153112"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "under any agent response to discard from that turn onward.",
+          "line": 3874,
+          "column": 170,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:153112"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "Connect",
+          "line": 6348,
+          "column": 19,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:243254"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "No conversations started by",
+          "line": 6749,
+          "column": 19,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:260950"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "Agent ·",
+          "line": 6828,
+          "column": 56,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:265766"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "The agent reads this in place of everything earlier in the chat.",
+          "line": 7112,
+          "column": 33,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:279478"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "compacted the context",
+          "line": 7140,
+          "column": 60,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:281729"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "Switched to",
+          "line": 7186,
+          "column": 33,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:284617"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "This removes",
+          "line": 7977,
+          "column": 24,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:334652"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": ". You can&apos;t undo this.",
+          "line": 7977,
+          "column": 113,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/ChatInterface.tsx:334652"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/Connections.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Delete",
+          "line": 257,
+          "column": 29,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/Connections.tsx:10687"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "The binding",
+          "line": 260,
+          "column": 29,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/Connections.tsx:10899"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "will be removed from this gadget.",
+          "line": 260,
+          "column": 86,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/Connections.tsx:10899"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Referenced in code as:",
+          "line": 323,
+          "column": 29,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/Connections.tsx:14250"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Delete hook \"",
+          "line": 389,
+          "column": 29,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/Connections.tsx:17537"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/FileSidebar.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "This removes",
+          "line": 261,
+          "column": 24,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/FileSidebar.tsx:8558"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "from the gadget. You can&apos;t undo this.",
+          "line": 261,
+          "column": 105,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/FileSidebar.tsx:8558"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/GadgetEditor.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "div",
+          "text": "Press",
+          "line": 1679,
+          "column": 21,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/GadgetEditor.tsx:67236"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "div",
+          "text": "to exit full screen",
+          "line": 1679,
+          "column": 141,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/GadgetEditor.tsx:67236"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "This removes",
+          "line": 1787,
+          "column": 24,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/GadgetEditor.tsx:71461"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": ". You can&apos;t undo this.",
+          "line": 1787,
+          "column": 108,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/GadgetEditor.tsx:71461"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/LoginPage.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Don't have an account?",
+          "line": 155,
+          "column": 15,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/LoginPage.tsx:5752"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/OnboardingWizard.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Here&apos;s a taste of what you can do with",
+          "line": 788,
+          "column": 11,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/OnboardingWizard.tsx:30804"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/ShareModal.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "People with",
+          "line": 256,
+          "column": 15,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/ShareModal.tsx:8944"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "access must",
+          "line": 256,
+          "column": 100,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/ShareModal.tsx:8944"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "prove their own account can reach:",
+          "line": 257,
+          "column": 34,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ShareModal.tsx:8846"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "Dialog.Title",
+          "text": "Share “",
+          "line": 760,
+          "column": 15,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ShareModal.tsx:28718"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Added",
+          "line": 852,
+          "column": 21,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ShareModal.tsx:33659"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "access through",
+          "line": 1001,
+          "column": 132,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ShareModal.tsx:42843"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": ". Keep anyone?",
+          "line": 1001,
+          "column": 161,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ShareModal.tsx:42843"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Created by",
+          "line": 1056,
+          "column": 114,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ShareModal.tsx:46410"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "access through this link. Keep anyone?",
+          "line": 1108,
+          "column": 134,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/ShareModal.tsx:49466"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/SignupPage.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Already have an account?",
+          "line": 219,
+          "column": 13,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/SignupPage.tsx:7485"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/AutoApproveConfirmDialog.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "Dialog.Description",
+          "text": "Future",
+          "line": 47,
+          "column": 15,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/AutoApproveConfirmDialog.tsx:1622"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "Dialog.Description",
+          "text": "actions on",
+          "line": 47,
+          "column": 91,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/AutoApproveConfirmDialog.tsx:1622"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "Dialog.Description",
+          "text": "will be applied automatically, without asking for approval. This action will be applied now too.",
+          "line": 48,
+          "column": 86,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/AutoApproveConfirmDialog.tsx:1622"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/BlueprintBindingCard.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Referenced in code as:",
+          "line": 75,
+          "column": 13,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/components/BlueprintBindingCard.tsx:3221"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/ConnectConnectorModal.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "Gatekeeper sits between",
+          "line": 322,
+          "column": 21,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/ConnectConnectorModal.tsx:11452"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "and your Gadgets.",
+          "line": 322,
+          "column": 77,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/ConnectConnectorModal.tsx:11452"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Disconnect",
+          "line": 345,
+          "column": 15,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/ConnectConnectorModal.tsx:12630"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "? Gadgets using this will lose access.",
+          "line": 345,
+          "column": 57,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/ConnectConnectorModal.tsx:12630"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "to add",
+          "line": 349,
+          "column": 90,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/ConnectConnectorModal.tsx:12900"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/GadgetList.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Shared by",
+          "line": 116,
+          "column": 13,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/GadgetList.tsx:4401"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/RecentApps.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Shared by",
+          "line": 57,
+          "column": 13,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/RecentApps.tsx:1897"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/auth/OAuthButtons.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "Button",
+          "text": "Continue with",
+          "line": 116,
+          "column": 11,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/auth/OAuthButtons.tsx:4526"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "You've used all",
+          "line": 105,
+          "column": 17,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:3839"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "of your free",
+          "line": 105,
+          "column": 52,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:3839"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "for today. Connect your Cloudflare account to keep building now — usage beyond the free tier is billed to your own Cloudflare AI Gateway credits",
+          "line": 105,
+          "column": 115,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:3839"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "— or wait: your free",
+          "line": 110,
+          "column": 26,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:4220"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "at 00:00 UTC, in",
+          "line": 110,
+          "column": 110,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:4220"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Your Cloudflare account is connected",
+          "line": 122,
+          "column": 17,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:4838"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "with a balance of",
+          "line": 124,
+          "column": 22,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:4991"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": ", but it's below the minimum needed to continue. Add credits to your AI Gateway to keep building now",
+          "line": 126,
+          "column": 17,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:4838"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "or wait — your free",
+          "line": 130,
+          "column": 26,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:5265"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "at 00:00 UTC, in",
+          "line": 130,
+          "column": 109,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:5265"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Learn more about",
+          "line": 161,
+          "column": 15,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/OutOfCreditsModal.tsx:6536"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/billing/UsageSettings.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "remaining today",
+          "line": 103,
+          "column": 65,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/UsageSettings.tsx:4173"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Resets at 00:00 UTC, in",
+          "line": 107,
+          "column": 17,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/UsageSettings.tsx:4402"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "Connected",
+          "line": 174,
+          "column": 21,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/UsageSettings.tsx:7724"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Account balance:",
+          "line": 179,
+          "column": 19,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/UsageSettings.tsx:7897"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Learn more about",
+          "line": 202,
+          "column": 13,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/billing/UsageSettings.tsx:8736"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/chat/DataTab.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "rows in channels",
+          "line": 100,
+          "column": 35,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/chat/DataTab.tsx:3759"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "total messages",
+          "line": 103,
+          "column": 85,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/chat/DataTab.tsx:3888"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/chat/PermissionToast.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "Text",
+          "text": "Workshop wants to access",
+          "line": 35,
+          "column": 15,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/components/chat/PermissionToast.tsx:1270"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "access granted",
+          "line": 155,
+          "column": 45,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/components/chat/PermissionToast.tsx:5845"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/components/format/AdminFormatsPanel.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "” — a standard format on this deployment",
+          "line": 384,
+          "column": 46,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/components/format/AdminFormatsPanel.tsx:16530"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/routes/__root.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "p",
+          "text": "Authentication error:",
+          "line": 68,
+          "column": 49,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/routes/__root.tsx:2890"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/routes/outputs.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "Workspace active",
+          "line": 206,
+          "column": 11,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/routes/outputs.tsx:8149"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "Dialog.Description",
+          "text": "Renames the output for everyone with access to “",
+          "line": 355,
+          "column": 17,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/routes/outputs.tsx:13261"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": "This permanently removes the output from “",
+          "line": 703,
+          "column": 13,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/routes/outputs.tsx:28353"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "",
+          "text": ". Other outputs in that workspace stay available. This can’t be undone.",
+          "line": 704,
+          "column": 88,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/routes/outputs.tsx:28353"
+        }
+      ]
+    },
+    {
+      "file": "packages/workshop-frontend/src/routes/providers.tsx",
+      "edits": [],
+      "residue": [
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "built-in models are managed by your deployment. You can still add custom models with your own API tokens.",
+          "line": 256,
+          "column": 110,
+          "reason": "split-by-markup",
+          "group": "packages/workshop-frontend/src/routes/providers.tsx:9883"
+        },
+        {
+          "kind": "jsx-text",
+          "parentTag": "span",
+          "text": "Used for fast tasks like generating chat titles. Click a model to set it.",
+          "line": 271,
+          "column": 19,
+          "reason": "interpolated",
+          "group": "packages/workshop-frontend/src/routes/providers.tsx:10379"
+        }
+      ]
+    }
+  ]
+}
