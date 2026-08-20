@@ -18,7 +18,7 @@ const APP_SOURCE = '<rootDir>/../workshop-frontend/src'
 
 export default defineConfig({
   sourceLocale: 'en',
-  locales: ['en'],
+  locales: ['en', 'vi'],
   catalogs: [
     {
       path: '<rootDir>/locales/{locale}',

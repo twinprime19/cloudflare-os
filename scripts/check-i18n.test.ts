@@ -145,7 +145,7 @@ describe("configuredLocales", () => {
   it("reads the repository's own config", () => {
     const config = readFileSync(
       join(import.meta.dirname, "..", "packages", "i18n", "lingui.config.ts"), "utf8");
-    assert.deepEqual(configuredLocales(config), ["en"]);
+    assert.deepEqual(configuredLocales(config), ["en", "vi"]);
   });
 });
 
