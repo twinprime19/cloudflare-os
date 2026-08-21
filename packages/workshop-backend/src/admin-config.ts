@@ -63,6 +63,15 @@ export type AdminConfig = {
    * with it the provider API token, stays in the AdminSettings durable object.
    */
   defaultModelId: string | null;
+
+  /**
+   * Model ids hidden from every user's catalog and rejected at chat time. Applies to gateway
+   * built-ins and shared models alike.
+   *
+   * A denylist, so a model that appears in the gateway catalog later is offered until an admin
+   * turns it off. Ids only, like `defaultModelId`, because this object is mirrored to KV.
+   */
+  disabledModelIds: string[];
 };
 
 /**
@@ -101,6 +110,7 @@ export const DEFAULT_ADMIN_CONFIG: AdminConfig = {
   ambientGatekeeperModes: {},
   formats: [],
   defaultModelId: null,
+  disabledModelIds: [],
 };
 
 /**
@@ -324,6 +334,7 @@ export function parseAdminConfig(raw: string | null): AdminConfig {
       ambientGatekeeperModes,
       formats: parseFormats(p.formats),
       defaultModelId: typeof p.defaultModelId === "string" ? p.defaultModelId : null,
+      disabledModelIds: strings(p.disabledModelIds),
     };
   } catch {
     return { ...DEFAULT_ADMIN_CONFIG };

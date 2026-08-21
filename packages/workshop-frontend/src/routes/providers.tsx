@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { DropdownMenu, useKumoToastManager } from '@cloudflare/kumo'
+import { DropdownMenu, Switch, useKumoToastManager } from '@cloudflare/kumo'
 import { RpcStub } from 'capnweb'
 import { useAuthenticatedApi } from '../AuthContext'
 import {
@@ -39,25 +39,40 @@ const PRIMARY_BTN =
 // Rows mirror the Blueprints list: a clickable row (here, clicking sets/clears the model every
 // user's new chats start on) plus a kebab for the rest. The whole row is the primary affordance,
 // so it shows a pointer.
+//
+// The availability switch sits outside that affordance: it stops click and key events from reaching
+// the row, so toggling a model off never also changes the default.
 function ModelRow({
   model,
   isDefault,
   isBuiltIn,
+  isDisabled,
+  isToggling,
   onDelete,
   onSetDefault,
+  onToggleEnabled,
 }: {
   model: AiChatAuthorInfo
   isDefault: boolean
   isBuiltIn: boolean
+  isDisabled: boolean
+  isToggling: boolean
   onDelete: () => void
   onSetDefault: () => void
+  onToggleEnabled: (enabled: boolean) => void
 }) {
+  // A disabled row keeps every badge it had — a dimmed Default badge says "still the default, just
+  // turned off right now" rather than hiding the setting.
+  const dimmed = isDisabled ? 'opacity-40' : ''
+  const availabilityLabel = isDisabled ? t`Enable for all users` : t`Disable for all users`
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onSetDefault}
       onKeyDown={(e) => {
+        // Only the row itself: a key press on the switch or the kebab is theirs to handle.
+        if (e.currentTarget !== e.target) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onSetDefault()
@@ -67,19 +82,19 @@ function ModelRow({
       className="group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 ease-out hover:bg-kumo-tint"
     >
       {/* Neutral monogram — matches the sidebar/workspaces treatment */}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-kumo-fill text-[12px] font-medium text-kumo-subtle">
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-kumo-fill text-[12px] font-medium text-kumo-subtle transition-opacity ${dimmed}`}>
         {model.name[0]?.toUpperCase()}
       </div>
 
       {/* Info */}
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 transition-opacity ${dimmed}`}>
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium tracking-[-0.25px] text-kumo-default">
             {model.name}
           </span>
           {isBuiltIn && (
             <span className="shrink-0 rounded-full bg-kumo-tint px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.4px] text-kumo-subtle">
-              built-in
+              <Trans>built-in</Trans>
             </span>
           )}
           {isDefault && (
@@ -95,7 +110,15 @@ function ModelRow({
       </div>
 
       {/* Actions */}
-      <div onClick={(e) => { e.stopPropagation() }}>
+      <div className="flex shrink-0 items-center gap-1" onClick={(e) => { e.stopPropagation() }}>
+        <span title={availabilityLabel}>
+          <Switch
+            checked={!isDisabled}
+            disabled={isToggling}
+            aria-label={availabilityLabel}
+            onCheckedChange={onToggleEnabled}
+          />
+        </span>
         <DropdownMenu>
           <DropdownMenu.Trigger
             render={
@@ -147,6 +170,12 @@ function ProvidersPage() {
   const [admin, setAdmin] = useState<{ api: RpcStub<AdminApi> } | null>(null)
   const [sharedModels, setSharedModels] = useState<AiChatAuthorInfo[]>([])
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null)
+  // Models turned off for everyone. May name a model that is no longer listed, so it is only ever
+  // consulted by id.
+  const [disabledModelIds, setDisabledModelIds] = useState<string[]>([])
+  // Ids with a setModelEnabled call in flight, which is both the per-row guard and what greys the
+  // switch out.
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set())
   const [aiConfig, setAiConfig] = useState<AiGatewayInfo | null>(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -179,6 +208,7 @@ function ProvidersPage() {
         if (cancelled) return
         setSharedModels(settings.sharedModels)
         setDefaultModelId(settings.defaultModelId)
+        setDisabledModelIds(settings.disabledModelIds)
         setAiConfig(cfg)
       } catch (err) {
         if (!cancelled) {
@@ -201,9 +231,12 @@ function ProvidersPage() {
     const settings = await admin.api.getSettings()
     setSharedModels(settings.sharedModels)
     setDefaultModelId(settings.defaultModelId)
+    setDisabledModelIds(settings.disabledModelIds)
   }
 
   const gatewayMode = aiConfig?.enabled === true
+
+  const disabledIds = useMemo(() => new Set(disabledModelIds), [disabledModelIds])
 
   // The gateway's built-in models, which every user already has and no admin can remove.
   const builtInModels = useMemo<AiChatAuthorInfo[]>(() => {
@@ -263,6 +296,39 @@ function ProvidersPage() {
       toasts.add({ title: 'Failed to update default model', variant: 'error' })
     } finally {
       defaultInFlight.current = false
+    }
+  }
+
+  // Move one id in or out of the denylist. Written as an edit to that id rather than a whole new
+  // list, so a toggle landing while another row is mid-flight doesn't undo the other row.
+  const applyDisabled = (modelId: string, disabled: boolean) => {
+    setDisabledModelIds((prev) =>
+      disabled
+        ? prev.includes(modelId)
+          ? prev
+          : [...prev, modelId]
+        : prev.filter((id) => id !== modelId)
+    )
+  }
+
+  // Overlapping setModelEnabled calls for one model have no ordering guarantee, so ignore clicks on
+  // a row while its own call is in flight. Other rows stay live.
+  const handleToggleEnabled = async (modelId: string, enabled: boolean) => {
+    if (!admin || togglingIds.has(modelId)) return
+    setTogglingIds((prev) => new Set(prev).add(modelId))
+    applyDisabled(modelId, !enabled) // optimistic
+    try {
+      await admin.api.setModelEnabled(modelId, enabled)
+    } catch (err) {
+      console.error('Failed to update model availability:', err)
+      applyDisabled(modelId, enabled) // revert
+      toasts.add({ title: 'Failed to update model availability', variant: 'error' })
+    } finally {
+      setTogglingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(modelId)
+        return next
+      })
     }
   }
 
@@ -371,8 +437,11 @@ function ProvidersPage() {
                 model={model}
                 isDefault={defaultModelId === model.id}
                 isBuiltIn={builtIn}
+                isDisabled={disabledIds.has(model.id)}
+                isToggling={togglingIds.has(model.id)}
                 onDelete={() => handleDelete(model)}
                 onSetDefault={() => handleSetDefault(model.id)}
+                onToggleEnabled={(enabled) => handleToggleEnabled(model.id, enabled)}
               />
             </div>
           ))

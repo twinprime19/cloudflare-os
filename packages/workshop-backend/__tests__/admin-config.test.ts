@@ -135,3 +135,29 @@ describe("admin config default model", () => {
     expect(parseAdminConfig(serializeAdminConfig(config))).toEqual(config);
   });
 });
+
+describe("admin config disabled models", () => {
+  it("offers every model when a config predates the denylist", () => {
+    expect(parseAdminConfig("{}").disabledModelIds).toEqual([]);
+    expect(parseAdminConfig(null).disabledModelIds).toEqual([]);
+  });
+
+  it("keeps only the string ids of a malformed list", () => {
+    expect(parseAdminConfig('{"disabledModelIds":"acme/model-1"}').disabledModelIds).toEqual([]);
+    expect(parseAdminConfig('{"disabledModelIds":42}').disabledModelIds).toEqual([]);
+    expect(parseAdminConfig('{"disabledModelIds":["acme/model-1",7,null]}').disabledModelIds)
+        .toEqual(["acme/model-1"]);
+  });
+
+  // Same trap as defaultModelId, with a worse failure: a field this parser forgets is dropped on
+  // every read of the KV mirror, so the admin panel would show models turned off while every
+  // user's catalog kept listing them.
+  it("round-trips the disabled ids through the KV mirror", () => {
+    let stored = serializeAdminConfig(
+        {...DEFAULT_ADMIN_CONFIG, disabledModelIds: ["acme/model-1", "openai/gpt-x"]});
+    let config = parseAdminConfig(stored);
+
+    expect(config.disabledModelIds).toEqual(["acme/model-1", "openai/gpt-x"]);
+    expect(parseAdminConfig(serializeAdminConfig(config))).toEqual(config);
+  });
+});

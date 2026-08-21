@@ -566,10 +566,13 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
 
   /**
    * The models this user can chat with: the AI Gateway built-ins, then the models an admin offers
-   * to everyone on this deployment. The deployment's default model is moved to the front, because
-   * callers take the first entry as the one a new chat starts on.
+   * to everyone on this deployment, minus the ones the admin has turned off. The deployment's
+   * default model is moved to the front, because callers take the first entry as the one a new chat
+   * starts on.
    */
   async listModels(): Promise<AiChatAuthorInfo[]> {
+    // One read of the KV mirror serves both the denylist and the default ordering below.
+    let {defaultModelId, disabledModelIds} = await readAdminConfig(this.env);
     let result: AiChatAuthorInfo[] = [];
 
     // When AI Gateway mode is active, include all suggested models for enabled providers.
@@ -598,8 +601,14 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       });
     }
 
-    // An unset default, or one naming a model that has since gone away, leaves the natural order.
-    let {defaultModelId} = await readAdminConfig(this.env);
+    // Models the admin has turned off leave every user's catalog, built-ins included.
+    if (disabledModelIds.length > 0) {
+      let disabled = new Set(disabledModelIds);
+      result = result.filter(entry => !disabled.has(entry.id));
+    }
+
+    // An unset default, one naming a model that has since gone away, or one that is currently
+    // disabled, leaves the natural order.
     if (defaultModelId) {
       let index = result.findIndex(entry => entry.id === defaultModelId);
       if (index > 0) {
@@ -762,6 +771,11 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       profile: this.storage.profile.get()
     };
     if (modelId) {
+      // A model the admin turned off doesn't resolve at all, so a chat still pinned to one fails
+      // here rather than quietly continuing on a model that left every catalog.
+      if ((await readAdminConfig(this.env)).disabledModelIds.includes(modelId)) {
+        throw new Error(`Model disabled by administrator: ${modelId}`);
+      }
       // In AI Gateway mode, resolve gateway models first.
       if (gwConfig) {
         result.aiModel = gwConfig.resolveModel(modelId);

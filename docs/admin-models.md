@@ -34,6 +34,24 @@ on the first model listed.
 Leaving the default unset is fine — the catalog is then listed in its natural order and a new chat
 starts on whatever is first.
 
+## Availability toggles
+
+Each row on `Providers` carries a switch. Turning it off takes that model out of every user's
+catalog — and it is the only control that reaches a gateway built-in, which no admin can delete.
+
+It is a hard off, not a hint:
+
+- The model leaves `listModels()`, so it is gone from every picker and every binding dialog.
+- It stops resolving. A chat still pinned to it fails its next turn with "Model disabled by
+  administrator", and the user picks again from what is left.
+- The default setting is left alone: while the default is off the catalog is listed in its natural
+  order, and turning it back on restores default-first ordering with nothing to re-pick. Deleting
+  the default still clears the setting — deletion is permanent, this is not.
+- A workspace that already bound the model keeps working, exactly as after a deletion: the binding
+  holds its own snapshot. **To actually revoke access, rotate the key at the provider.**
+- The switch reaches users through the same KV mirror as the default model, so a production
+  deployment can take up to a minute to catch up. Locally it is immediate.
+
 ## Per-user models are gone
 
 This is a breaking change. Models a user added for themselves before this change are no longer listed

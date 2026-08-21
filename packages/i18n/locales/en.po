@@ -396,6 +396,9 @@ msgstr "Browse all blueprints"
 msgid "Build gadgets or just chat"
 msgstr "Build gadgets or just chat"
 
+msgid "built-in"
+msgstr "built-in"
+
 msgid "Bundled"
 msgstr "Bundled"
 
@@ -830,6 +833,9 @@ msgstr "Direct invite verification"
 msgid "Disable auto-approval for {0}"
 msgstr "Disable auto-approval for {0}"
 
+msgid "Disable for all users"
+msgstr "Disable for all users"
+
 msgid "Disable hook"
 msgstr "Disable hook"
 
@@ -971,6 +977,9 @@ msgstr "Enable auto-approval for {0}"
 
 msgid "Enable Email mailboxes"
 msgstr "Enable Email mailboxes"
+
+msgid "Enable for all users"
+msgstr "Enable for all users"
 
 msgid "Enable hook"
 msgstr "Enable hook"

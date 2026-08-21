@@ -341,6 +341,7 @@ export class AdminSettings extends DurableObject<Cloudflare.Env> {
       resourceVendors: await this.#listResourceConfig(config, adminUserId),
       formats: await this.#listFormatConfig(config),
       defaultModelId: config.defaultModelId,
+      disabledModelIds: config.disabledModelIds,
       // Profiles only: the panel manages the catalog, and never needs a model's configuration back.
       sharedModels: this.listSharedModels(),
     };
@@ -494,8 +495,14 @@ export class AdminSettings extends DurableObject<Cloudflare.Env> {
    */
   async deleteSharedModel(id: string): Promise<void> {
     this.storage.sharedAiModels.delete(id);
-    await this.#mutateAdminConfig(config =>
-        config.defaultModelId === id ? {...config, defaultModelId: null} : config);
+    // Also drop the id from the availability denylist: deletion is permanent, so leaving it there
+    // would silently resurrect the disabled state if an admin later re-adds a model under the same
+    // id.
+    await this.#mutateAdminConfig(config => ({
+      ...config,
+      defaultModelId: config.defaultModelId === id ? null : config.defaultModelId,
+      disabledModelIds: config.disabledModelIds.filter(disabled => disabled !== id),
+    }));
   }
 
   /**
@@ -508,6 +515,26 @@ export class AdminSettings extends DurableObject<Cloudflare.Env> {
       throw new Error(`No such model: ${id}`);
     }
     await this.updateAdminConfig({defaultModelId: id});
+  }
+
+  /**
+   * Show or hide one model for every user of this deployment. A disabled model leaves every user's
+   * catalog and stops resolving for chat turns, so a chat pinned to it errors until it is enabled
+   * again. Accepts any id users can actually reach: a shared model or a gateway built-in.
+   *
+   * `defaultModelId` is left alone: disabling is temporary, and listModels() already falls back to
+   * natural order while the default is hidden, so re-enabling restores default-first ordering.
+   */
+  async setModelEnabled(id: string, enabled: boolean): Promise<void> {
+    // Checked in both directions, so an enable can't quietly file away a typo either.
+    if (!this.storage.sharedAiModels.get(id) && !getAiGatewayConfig(this.env)?.resolveModel(id)) {
+      throw new Error(`No such model: ${id}`);
+    }
+    await this.#mutateAdminConfig(config => {
+      let disabled = new Set(config.disabledModelIds);
+      if (enabled) disabled.delete(id); else disabled.add(id);
+      return {...config, disabledModelIds: [...disabled]};
+    });
   }
 
   /** Enable/disable a single gatekeeper resource type atomically (read-modify-write within the DO). */
@@ -757,5 +784,9 @@ export class AdminApiImpl extends RpcTarget implements AdminApi {
 
   setDefaultModel(id: string | null): Promise<void> {
     return this.admin.setDefaultModel(id);
+  }
+
+  setModelEnabled(id: string, enabled: boolean): Promise<void> {
+    return this.admin.setModelEnabled(id, enabled);
   }
 }

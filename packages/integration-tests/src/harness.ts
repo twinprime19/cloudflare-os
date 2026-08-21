@@ -26,8 +26,17 @@ export const TEST_GATEKEEPER_WORKER = "gatekeeper-test";
 export const TEST_GATEKEEPER_BINDING = "TEST";
 export const TEST_VENDOR_ID = TEST_GATEKEEPER_BINDING.toLowerCase();
 
-/** Username that `vars.ADMINS` grants deployment-admin rights to, mirroring run-dev-server.ts. */
+/** Username that `ADMINS` grants deployment-admin rights to, mirroring run-dev-server.ts. */
 export const ADMIN_USERNAME = "admin";
+
+/**
+ * The `ADMINS` value every harness boots with.
+ *
+ * JSON-encoded rather than an array because this is delivered as a harness-level var, and those are
+ * strings; the Worker accepts a string that parses as a JSON array for exactly this reason
+ * (workshop-backend/src/server.ts).
+ */
+const ADMINS_VAR = JSON.stringify([ADMIN_USERNAME]);
 
 // The slice of wrangler.jsonc the harness reads or rewrites. Loose on purpose: everything else a
 // config declares flows through untouched, and wrangler re-validates the whole file when the worker
@@ -94,7 +103,11 @@ function workshopConfig(
   }));
 
   // No CF_ACCESS_AUD, so /api takes the unauthenticated path and password signup is available.
-  config.vars = { ...config.vars, ADMINS: [ADMIN_USERNAME] };
+  //
+  // ADMINS is deliberately not set here: a config `vars` entry loses to whatever the developer has
+  // in the repo's root .dev.vars, and a machine set up to run the dev server sets a real ADMINS
+  // there -- so ADMIN_USERNAME would get no admin rights and every suite that needs one would fail.
+  // startHarness() delivers it as a harness-level var instead, which wins over both.
 
   // Gadget code is never executed here (a gatekeeper is in observer scope purely by having a
   // vendorId), so drop the Worker Loader rather than requiring it to start.
@@ -131,6 +144,8 @@ export async function startHarness(opts: {
    * whatever the developer happens to have in the repo's `.dev.vars`, so a suite that patched the
    * config would pass on CI and fail (or worse, pass for the wrong reason) on a machine set up to run
    * the dev server. A harness-level override wins over both.
+   *
+   * `ADMINS` is delivered this way for every harness already; entries here are merged over it.
    */
   workshopVars?: Record<string, string>;
   /** Defaults to this repo's root. Override when a gatekeeper lives outside it. */
@@ -148,7 +163,11 @@ export async function startHarness(opts: {
     root: opts.root ?? REPO_ROOT,
     // workshop-backend is primary, so unrouted requests (e.g. /api) go to it.
     workers: [
-      { config: workshopConfig(gatekeepers, opts.patchWorkshop), vars: opts.workshopVars },
+      {
+        config: workshopConfig(gatekeepers, opts.patchWorkshop),
+        // ADMINS first, so a suite that wants a deployment without admins can still override it.
+        vars: { ADMINS: ADMINS_VAR, ...opts.workshopVars },
+      },
       ...gatekeepers.map(({ config }) => ({ config })),
     ],
   });

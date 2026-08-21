@@ -879,6 +879,11 @@ export type AdminSettingsView = {
    */
   defaultModelId: string | null;
   /**
+   * Models turned off for every user: hidden from their catalogs and unusable in chat. Covers
+   * gateway built-ins and shared models alike, and may name a model that has since gone away.
+   */
+  disabledModelIds: string[];
+  /**
    * The AI models this deployment offers to everyone. Profiles only: a model's configuration, and
    * with it its API token, never leaves the server.
    */
@@ -1057,6 +1062,19 @@ export interface AdminApi {
    * natural order. Throws unless the id names a shared model or a gateway built-in.
    */
   setDefaultModel(id: string | null): Promise<void>;
+
+  /**
+   * Show or hide one model for every user. Works the same for a gateway built-in and a shared
+   * model. Throws unless the id names one of them.
+   *
+   * Turning a model off takes it out of every user's catalog *and* stops it resolving: a chat
+   * pinned to it fails on its next turn until the model is enabled again. `defaultModelId` is kept,
+   * so re-enabling restores default-first ordering by itself.
+   *
+   * A workspace that already bound the model is unaffected — it holds its own snapshot of the
+   * configuration, so cutting one off means rotating the key at the provider.
+   */
+  setModelEnabled(id: string, enabled: boolean): Promise<void>;
 }
 
 /** A partial edit to one promoted format. Absent fields are left alone. */

@@ -150,4 +150,80 @@ describe("shared AI models", () => {
         expect.objectContaining({ id: profile.id }));
     });
   });
+
+  it("takes a model the admin turns off out of every user's catalog", async () => {
+    const { profile, config } = freshModel();
+    await adminApi.addSharedModel(profile, config);
+
+    await adminApi.setModelEnabled(profile.id, false);
+
+    await withNewUser("shutout", async api => {
+      await expect(api.listModels()).resolves.not.toContainEqual(
+        expect.objectContaining({ id: profile.id }));
+
+      // Turned off, not merely hidden. A workspace binding re-resolves the model when it is
+      // instantiated, which is the one place a user can still name an id the list no longer
+      // offers -- and it fails there rather than quietly binding a model nobody may use.
+      using gadget = await api.newGadget();
+      await expect(gadget.newAiModelGatekeeper(profile.id))
+        .rejects.toThrow(/disabled by administrator/i);
+    });
+  });
+
+  it("offers a model again once the admin turns it back on", async () => {
+    const { profile, config } = freshModel();
+    await adminApi.addSharedModel(profile, config);
+    await adminApi.setModelEnabled(profile.id, false);
+
+    await adminApi.setModelEnabled(profile.id, true);
+
+    await withNewUser("returning", async api => {
+      await expect(api.listModels()).resolves.toContainEqual(
+        { type: "agent", id: profile.id, name: profile.name });
+    });
+  });
+
+  it("keeps the deployment's default while the default model is turned off", async () => {
+    const { profile, config } = freshModel();
+    await adminApi.addSharedModel(profile, config);
+    await adminApi.setDefaultModel(profile.id);
+
+    await adminApi.setModelEnabled(profile.id, false);
+
+    // Unlike deleting it, turning the default off is temporary, so the setting stays.
+    await expect(adminApi.getSettings()).resolves.toMatchObject({ defaultModelId: profile.id });
+    await withNewUser("displaced", async api => {
+      // A default nobody can see just leaves the catalog in its natural order: no error, no gap.
+      const models = await api.listModels();
+      expect(models).not.toContainEqual(expect.objectContaining({ id: profile.id }));
+      expect(models.length).toBeGreaterThan(0);
+    });
+
+    await adminApi.setModelEnabled(profile.id, true);
+
+    // ...and default-first ordering comes back on its own, with no second setDefaultModel call.
+    await withNewUser("restored", async api => {
+      const models = await api.listModels();
+      expect(models[0]).toEqual({ type: "agent", id: profile.id, name: profile.name });
+    });
+  });
+
+  it("refuses a non-admin's attempt to turn a model back on", async () => {
+    const { profile, config } = freshModel();
+    await adminApi.addSharedModel(profile, config);
+    await adminApi.setModelEnabled(profile.id, false);
+
+    await withNewUser("nonadmin", async api => {
+      // setModelEnabled is only reachable through the admin capability, and a non-admin is never
+      // handed one -- so a user cannot undo the admin's decision from their own session.
+      await expect(api.getAdminApi()).resolves.toBeNull();
+      await expect(api.listModels()).resolves.not.toContainEqual(
+        expect.objectContaining({ id: profile.id }));
+    });
+  });
+
+  it("refuses to disable a model no user could reach anyway", async () => {
+    await expect(adminApi.setModelEnabled("integration-test/never-added", false))
+      .rejects.toThrow(/no such model/i);
+  });
 });

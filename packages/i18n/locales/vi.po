@@ -396,6 +396,9 @@ msgstr "Duyệt tất cả blueprint"
 msgid "Build gadgets or just chat"
 msgstr "Tạo gadget hoặc chỉ trò chuyện"
 
+msgid "built-in"
+msgstr "Tích hợp sẵn"
+
 msgid "Bundled"
 msgstr "Tích hợp sẵn"
 
@@ -830,6 +833,9 @@ msgstr "Xác minh lời mời trực tiếp"
 msgid "Disable auto-approval for {0}"
 msgstr "Tắt duyệt tự động cho {0}"
 
+msgid "Disable for all users"
+msgstr "Tắt cho tất cả người dùng"
+
 msgid "Disable hook"
 msgstr "Tắt hook"
 
@@ -971,6 +977,9 @@ msgstr "Bật duyệt tự động cho {0}"
 
 msgid "Enable Email mailboxes"
 msgstr "Bật hộp thư Email"
+
+msgid "Enable for all users"
+msgstr "Bật cho tất cả người dùng"
 
 msgid "Enable hook"
 msgstr "Bật hook"
