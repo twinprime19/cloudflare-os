@@ -1,4 +1,4 @@
-import { AdminApi, AdminFormat, AdminFormatPatch, AdminResourceVendor, AdminSettingsView, AmbientGatekeeperMode, BannerColor, BlueprintPublicInfo, MAX_ANNOUNCEMENT_LENGTH, MAX_INSTANCE_INSTRUCTIONS_LENGTH, MAX_SITE_NAME_LENGTH, isAmbientGatekeeperMode, isBannerColor, isHexColor } from '@gadgets/workshop-shared/api';
+import { AdminApi, AdminFormat, AdminFormatPatch, AdminResourceVendor, AdminSettingsView, AiChatAuthorInfo, AiModelConfig, AmbientGatekeeperMode, BannerColor, BlueprintPublicInfo, MAX_ANNOUNCEMENT_LENGTH, MAX_INSTANCE_INSTRUCTIONS_LENGTH, MAX_SITE_NAME_LENGTH, SUGGESTED_MODELS, isAmbientGatekeeperMode, isBannerColor, isHexColor } from '@gadgets/workshop-shared/api';
 import { GatekeeperVendor } from '@gadgets/workshop-shared/gatekeeper';
 import { DurableObject } from 'cloudflare:workers';
 import { RpcTarget } from 'capnweb';
@@ -7,6 +7,7 @@ import { collection, createTypedStorage } from '@gadgets/typed-storage';
 import { createWorkshopLogger } from "./observability";
 import { ADMIN_CONFIG_KEY, FEATURED_BLUEPRINTS_KEY, isReservedBlueprintKey, parseBlueprintKvRecord, readBlueprintKvRecord, sanitizeBlueprintOutput, serializeFeaturedBlueprints } from './blueprint-archive.js';
 import { AdminConfig, DEFAULT_ADMIN_CONFIG, FormatCuration, MAX_AGENT_HINT, defaultOutputFormatId, listPromotedFormats, reorderFormats, sanitizeOutputOverrides, serializeAdminConfig } from './admin-config.js';
+import { getAiGatewayConfig } from './ai-gateway.js';
 import { SITE_LOGO_R2_KEY, siteLogoImage, validateSiteLogo } from './site-logo.js';
 import { ambientGatekeeperMode, DEFAULT_AMBIENT_GATEKEEPER_MODE } from './provisioning-policy.js';
 import { buildGatekeeperVendorMap } from './auth/auth-vendors.js';
@@ -16,6 +17,18 @@ import { FORMAT_BLUEPRINTS } from './generated/format-blueprints.js';
 
 const logger = createWorkshopLogger("workshop.admin.settings");
 
+/**
+ * One AI model the deployment offers to every user: the profile users see, plus the provider
+ * configuration (including the API token) that only the backend reads.
+ *
+ * The deployment-wide twin of the user DO's own UserAiModelRecord, declared here rather than shared
+ * with it so the two stores stay independent.
+ */
+export type SharedAiModelRecord = {
+  profile: AiChatAuthorInfo;
+  config: AiModelConfig;
+};
+
 function makeAdminSettingsStorage(storage: DurableObjectStorage) {
   return createTypedStorage(storage, {
     collections: {
@@ -23,6 +36,14 @@ function makeAdminSettingsStorage(storage: DurableObjectStorage) {
       // authoritative featured bit; this DO keeps the publishable deployment-wide copy.
       featuredBlueprints: collection<BlueprintPublicInfo>()({
         primaryKey: 'id',
+      }),
+
+      // The AI models this deployment offers to everyone. The only place a shared model's
+      // configuration -- and so its provider API token -- is stored: unlike adminConfig this
+      // collection is never mirrored to KV, and no method that returns a record is reachable from a
+      // client (see getSharedModelRecord).
+      sharedAiModels: collection<SharedAiModelRecord>()({
+        primaryKey: record => record.profile.id,
       }),
     },
     singletons: {
@@ -319,6 +340,10 @@ export class AdminSettings extends DurableObject<Cloudflare.Env> {
       accentColor: config.accentColor,
       resourceVendors: await this.#listResourceConfig(config, adminUserId),
       formats: await this.#listFormatConfig(config),
+      defaultModelId: config.defaultModelId,
+      disabledModelIds: config.disabledModelIds,
+      // Profiles only: the panel manages the catalog, and never needs a model's configuration back.
+      sharedModels: this.listSharedModels(),
     };
   }
 
@@ -419,6 +444,97 @@ export class AdminSettings extends DurableObject<Cloudflare.Env> {
 
   async setFormatOrder(blueprintIds: string[]): Promise<void> {
     await this.#mutateFormats(formats => reorderFormats(formats, blueprintIds));
+  }
+
+  // --- Shared AI models ---
+  //
+  // The deployment's model catalog: added once by an admin, offered to every user. Only the
+  // profiles are publishable; the configurations carry provider API tokens and stay in this DO.
+
+  /** The shared models' profiles. Safe to publish: no configuration, and so no API token. */
+  listSharedModels(): AiChatAuthorInfo[] {
+    return [...this.storage.sharedAiModels.list()].map(record => record.profile);
+  }
+
+  /** DO NOT expose via any client-reachable stub -- returns API keys. */
+  getSharedModelRecord(id: string): SharedAiModelRecord | undefined {
+    return this.storage.sharedAiModels.get(id);
+  }
+
+  /**
+   * Offer a model to every user of this deployment, replacing any shared model with the same id.
+   */
+  async addSharedModel(profile: AiChatAuthorInfo, config: AiModelConfig): Promise<void> {
+    let gwConfig = getAiGatewayConfig(this.env);
+    if (gwConfig) {
+      if (!gwConfig.providers.has(config.provider)) {
+        throw new Error(`Provider "${config.provider}" is not available in AI Gateway mode.`);
+      }
+      // A built-in's id is resolved from the gateway catalog first, so a shared entry reusing one
+      // would be listed under the built-in's name and never actually be used.
+      for (let [provider, models] of Object.entries(SUGGESTED_MODELS)) {
+        if (gwConfig.providers.has(provider) && profile.id in models) {
+          throw new Error(
+              `Model id "${profile.id}" belongs to built-in model "${models[profile.id].name}".`);
+        }
+      }
+    }
+
+    profile.type = "agent";
+    this.storage.sharedAiModels.put({profile, config});
+  }
+
+  /**
+   * Stop offering a shared model, clearing the deployment default when it pointed here. The row
+   * delete lands before the config mutation, so a failed mutation can leave a default naming a
+   * model that is gone -- harmless, because listModels() ignores a default id it cannot find.
+   *
+   * This removes the catalog entry only. A workspace that already bound the model holds its own
+   * snapshot of the configuration, API token included, so revoking access really means rotating the
+   * key at the provider.
+   */
+  async deleteSharedModel(id: string): Promise<void> {
+    this.storage.sharedAiModels.delete(id);
+    // Also drop the id from the availability denylist: deletion is permanent, so leaving it there
+    // would silently resurrect the disabled state if an admin later re-adds a model under the same
+    // id.
+    await this.#mutateAdminConfig(config => ({
+      ...config,
+      defaultModelId: config.defaultModelId === id ? null : config.defaultModelId,
+      disabledModelIds: config.disabledModelIds.filter(disabled => disabled !== id),
+    }));
+  }
+
+  /**
+   * Choose the model listed first for every user, which is what a new chat starts on. Pass null for
+   * natural order. Accepts any id users can actually reach: a shared model or a gateway built-in.
+   */
+  async setDefaultModel(id: string | null): Promise<void> {
+    if (id !== null && !this.storage.sharedAiModels.get(id)
+        && !getAiGatewayConfig(this.env)?.resolveModel(id)) {
+      throw new Error(`No such model: ${id}`);
+    }
+    await this.updateAdminConfig({defaultModelId: id});
+  }
+
+  /**
+   * Show or hide one model for every user of this deployment. A disabled model leaves every user's
+   * catalog and stops resolving for chat turns, so a chat pinned to it errors until it is enabled
+   * again. Accepts any id users can actually reach: a shared model or a gateway built-in.
+   *
+   * `defaultModelId` is left alone: disabling is temporary, and listModels() already falls back to
+   * natural order while the default is hidden, so re-enabling restores default-first ordering.
+   */
+  async setModelEnabled(id: string, enabled: boolean): Promise<void> {
+    // Checked in both directions, so an enable can't quietly file away a typo either.
+    if (!this.storage.sharedAiModels.get(id) && !getAiGatewayConfig(this.env)?.resolveModel(id)) {
+      throw new Error(`No such model: ${id}`);
+    }
+    await this.#mutateAdminConfig(config => {
+      let disabled = new Set(config.disabledModelIds);
+      if (enabled) disabled.delete(id); else disabled.add(id);
+      return {...config, disabledModelIds: [...disabled]};
+    });
   }
 
   /** Enable/disable a single gatekeeper resource type atomically (read-modify-write within the DO). */
@@ -558,8 +674,10 @@ export class AdminSettings extends DurableObject<Cloudflare.Env> {
 // when the capability is minted in server.ts, so these methods don't re-check. This is a thin
 // validation+forwarding facade over the AdminSettings DO — fully user-independent — so a disabled
 // gatekeeper/resource can't be re-enabled via a crafted request, and the client never receives a
-// stub to the DO's internal methods. Covers branding, agent instructions, signups, and gatekeeper
-// connector/resource availability; authentication config stays env-var driven.
+// stub to the DO's internal methods. Covers branding, agent instructions, signups, the shared AI
+// model catalog, and gatekeeper connector/resource availability; authentication config stays
+// env-var driven. Model API tokens are write-only here: they go in through addSharedModel and no
+// method returns them.
 @validateRpc()
 export class AdminApiImpl extends RpcTarget implements AdminApi {
   /**
@@ -654,5 +772,21 @@ export class AdminApiImpl extends RpcTarget implements AdminApi {
 
   setFormatOrder(blueprintIds: string[]): Promise<void> {
     return this.admin.setFormatOrder(blueprintIds);
+  }
+
+  addSharedModel(profile: AiChatAuthorInfo, config: AiModelConfig): Promise<void> {
+    return this.admin.addSharedModel(profile, config);
+  }
+
+  deleteSharedModel(id: string): Promise<void> {
+    return this.admin.deleteSharedModel(id);
+  }
+
+  setDefaultModel(id: string | null): Promise<void> {
+    return this.admin.setDefaultModel(id);
+  }
+
+  setModelEnabled(id: string, enabled: boolean): Promise<void> {
+    return this.admin.setModelEnabled(id, enabled);
   }
 }

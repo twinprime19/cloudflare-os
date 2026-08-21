@@ -1,8 +1,10 @@
 import { logRpcFailure } from './rpcErrors'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { RpcStub } from 'capnweb'
 import { useKumoToastManager } from '@cloudflare/kumo'
 import { useAuthenticatedApi } from './AuthContext'
 import {
+  AdminApi,
   AiChatAuthorInfo,
   AiGatewayInfo,
 } from '@gadgets/workshop-shared/api'
@@ -12,7 +14,6 @@ import {
 import {
   Camera,
   ArrowRight,
-  Check,
   Plus,
   PlugsConnected,
   Sparkle,
@@ -24,7 +25,6 @@ import {
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 import AddModelModal from './AddModelModal'
-import { persistSelectedModel } from './modelSelection'
 import { logoComponents } from './components/ConnectionLogos'
 import { getVendorIconBackground } from './components/vendorColors'
 import { compressAvatar, avatarBlobUrl } from './avatarUtils'
@@ -64,7 +64,7 @@ export default function OnboardingWizard({
 }: {
   onComplete: () => void
 }) {
-  const { authenticatedApi, currentUser } = useAuthenticatedApi()
+  const { authenticatedApi, currentUser, isAdmin } = useAuthenticatedApi()
   const { resolvedThemeMode } = useTheme()
   const toasts = useKumoToastManager()
   const siteName = useSiteName()
@@ -91,10 +91,13 @@ export default function OnboardingWizard({
 
   // Model state
   const [models, setModels] = useState<AiChatAuthorInfo[]>([])
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [aiConfig, setAiConfig] = useState<AiGatewayInfo | null>(null)
   const [addModelOpen, setAddModelOpen] = useState(false)
   const [modelsLoading, setModelsLoading] = useState(true)
+  // The admin capability, for the one thing this wizard needs it for: a first-run admin adding a
+  // model that every user of the deployment then gets. Null until loaded, and for non-admins.
+  // Wrapped in an object so useState doesn't treat the (callable) RPC stub as a state updater.
+  const [admin, setAdmin] = useState<{ api: RpcStub<AdminApi> } | null>(null)
 
   // Connections state
   const [vendors, setVendors] = useState<VendorEntry[]>([])
@@ -131,10 +134,6 @@ export default function OnboardingWizard({
       ])
       setModels(modelList)
       setAiConfig(cfg)
-      // Default to the first model in the list
-      if (modelList.length > 0) {
-        setSelectedModelId((prev) => prev ?? modelList[0].id)
-      }
     } catch (err) {
       console.error('Failed to load models:', err)
     } finally {
@@ -145,6 +144,31 @@ export default function OnboardingWizard({
   useEffect(() => {
     fetchModels()
   }, [fetchModels])
+
+  // Mint the admin capability once (the access check happens server-side); non-admins never add
+  // models here, so they never ask for it.
+  useEffect(() => {
+    if (!isAdmin) return
+    let cancelled = false
+    let stub: RpcStub<AdminApi> | null = null
+    authenticatedApi
+      .getAdminApi()
+      .then((api) => {
+        if (cancelled || !api) {
+          api?.[Symbol.dispose]?.()
+          return
+        }
+        stub = api
+        setAdmin({ api })
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('Failed to load admin capability:', err)
+      })
+    return () => {
+      cancelled = true
+      stub?.[Symbol.dispose]?.()
+    }
+  }, [isAdmin, authenticatedApi])
 
   // Load vendors and subscribe to connected accounts.
   // We use a url→vendorId lookup map (built from listGatekeeperVendors) so the
@@ -297,9 +321,8 @@ export default function OnboardingWizard({
         await authenticatedApi.setAvatar(avatarData)
         if (currentUser?.id) invalidateAvatarCache(currentUser.id)
       }
-      // selectedModelId is null when the user chose "No agent" or didn't pick one
-      await authenticatedApi.setPreferredModel(selectedModelId)
-      persistSelectedModel(selectedModelId)
+      // Nothing stores a model preference: every new chat starts on the deployment's default model,
+      // and switching models is a per-chat choice from there.
       await authenticatedApi.completeOnboarding()
       onComplete()
     } catch (err) {
@@ -484,10 +507,13 @@ export default function OnboardingWizard({
             <div className="w-full flex-shrink-0 p-8 min-h-[420px]">
               <div>
                 <h2 className="text-lg font-medium text-kumo-default mb-1">
-                  <Trans>Choose your model</Trans>
+                  <Trans>Your AI models</Trans>
                 </h2>
                 <p className="text-sm text-kumo-subtle mb-6">
-                  <Trans>Pick the AI model you&apos;d like to use by default</Trans>
+                  <Trans>
+                    Your administrator picks which models are available and which one new chats
+                    start on
+                  </Trans>
                 </p>
 
                 {modelsLoading ? (
@@ -498,28 +524,11 @@ export default function OnboardingWizard({
                   <>
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                       {models.map((model) => (
-                        <button
+                        <div
                           key={model.id}
-                          onClick={() => setSelectedModelId(model.id)}
-                          className={`
-                            w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left
-                            transition-all duration-150
-                            ${selectedModelId === model.id
-                              ? 'border-kumo-brand bg-kumo-brand/5 ring-1 ring-kumo-brand/20'
-                              : 'border-kumo-line hover:border-kumo-fill hover:bg-kumo-tint'
-                            }
-                          `}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left border-kumo-line"
                         >
-                          <div
-                            className={`
-                              w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold
-                              transition-colors duration-150
-                              ${selectedModelId === model.id
-                                ? 'bg-kumo-brand text-kumo-inverse'
-                                : 'bg-kumo-tint text-kumo-subtle'
-                              }
-                            `}
-                          >
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold bg-kumo-tint text-kumo-subtle">
                             {model.name[0]?.toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -530,35 +539,40 @@ export default function OnboardingWizard({
                               {model.id}
                             </p>
                           </div>
-                          {selectedModelId === model.id && (
-                            <Check
-                              size={18}
-                              weight="bold"
-                              className="text-kumo-brand flex-shrink-0"
-                            />
-                          )}
-                        </button>
+                        </div>
                       ))}
 
                       {models.length === 0 && (
                         <div className="text-center py-8">
-                          <p className="text-sm text-kumo-subtle mb-1">
-                            <Trans>No models configured yet</Trans>
-                          </p>
-                          <p className="text-xs text-kumo-inactive">
-                            <Trans>Add a model to get started</Trans>
-                          </p>
+                          {isAdmin ? (
+                            <>
+                              <p className="text-sm text-kumo-subtle mb-1">
+                                <Trans>No models configured yet</Trans>
+                              </p>
+                              <p className="text-xs text-kumo-inactive">
+                                <Trans>Add a model to get started</Trans>
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-sm text-kumo-subtle">
+                              <Trans>No models are available yet. Ask your administrator.</Trans>
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
 
-                    <button
-                      onClick={() => setAddModelOpen(true)}
-                      className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-kumo-subtle border border-dashed border-kumo-line rounded-xl hover:border-kumo-fill hover:text-kumo-default hover:bg-kumo-tint transition-colors"
-                    >
-                      <Plus size={14} weight="bold" />
-                      <Trans>Add new model...</Trans>
-                    </button>
+                    {/* Gated on the capability, not just the role, so the button never opens a
+                        dialog that has nowhere to submit to. */}
+                    {admin && (
+                      <button
+                        onClick={() => setAddModelOpen(true)}
+                        className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-kumo-subtle border border-dashed border-kumo-line rounded-xl hover:border-kumo-fill hover:text-kumo-default hover:bg-kumo-tint transition-colors"
+                      >
+                        <Plus size={14} weight="bold" />
+                        <Trans>Add new model...</Trans>
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -712,17 +726,20 @@ export default function OnboardingWizard({
     </div>
 
     {/* Add Model Modal — outside the wizard's inner content so it's not
-        clipped by overflow-hidden on the sliding panel */}
-    <AddModelModal
-      visible={addModelOpen}
-      onCancel={() => setAddModelOpen(false)}
-      onSuccess={() => {
-        setAddModelOpen(false)
-        fetchModels()
-      }}
-      authenticatedApi={authenticatedApi}
-      aiConfig={aiConfig}
-    />
+        clipped by overflow-hidden on the sliding panel. A model added here joins the deployment's
+        shared catalog, so every user gets it. */}
+    {admin && (
+      <AddModelModal
+        visible={addModelOpen}
+        onCancel={() => setAddModelOpen(false)}
+        onSuccess={() => {
+          setAddModelOpen(false)
+          fetchModels()
+        }}
+        onSubmit={(profile, config) => admin.api.addSharedModel(profile, config)}
+        aiConfig={aiConfig}
+      />
+    )}
     </>
   )
 }
@@ -737,40 +754,40 @@ interface ShowcaseFeature {
   description: string
 }
 
-const SHOWCASE_FEATURES: ShowcaseFeature[] = [
-  {
-    icon: Sparkle,
-    iconColor: 'text-media-100',
-    iconBg: 'bg-media-200',
-    title: 'Build gadgets or just chat',
-    description:
-      'Create full web apps, or keep it simple with agent-only conversations. Your call.',
-  },
-  {
-    icon: UsersThree,
-    iconColor: 'text-compute-100',
-    iconBg: 'bg-compute-200',
-    title: 'Collaborate in real time',
-    description:
-      'Share a workspace with teammates and work on it together, live.',
-  },
-  {
-    icon: Key,
-    iconColor: 'text-kumo-warning',
-    iconBg: 'bg-kumo-warning-tint',
-    title: 'Bring your own models',
-    description:
-      'Plug in personal API tokens from any provider to use the models you love.',
-  },
-  {
-    icon: Plugs,
-    iconColor: 'text-storage-100',
-    iconBg: 'bg-storage-200',
-    title: 'AI meets your tools',
-    description:
-      'Have AI review a Google Doc, summarize Slack threads, triage Jira tickets, and more.',
-  },
-]
+// Built inside the render, so `t` resolves against the locale that is already active -- a
+// module-scope table would freeze the copy at the locale loaded when this module was imported.
+function showcaseFeatures(): ShowcaseFeature[] {
+  return [
+    {
+      icon: Sparkle,
+      iconColor: 'text-media-100',
+      iconBg: 'bg-media-200',
+      title: t`Build gadgets or just chat`,
+      description: t`Create full web apps, or keep it simple with agent-only conversations. Your call.`,
+    },
+    {
+      icon: UsersThree,
+      iconColor: 'text-compute-100',
+      iconBg: 'bg-compute-200',
+      title: t`Collaborate in real time`,
+      description: t`Share a workspace with teammates and work on it together, live.`,
+    },
+    {
+      icon: Key,
+      iconColor: 'text-kumo-warning',
+      iconBg: 'bg-kumo-warning-tint',
+      title: t`Models ready to go`,
+      description: t`Your administrator curates the AI models, so you can pick one and start right away.`,
+    },
+    {
+      icon: Plugs,
+      iconColor: 'text-storage-100',
+      iconBg: 'bg-storage-200',
+      title: t`AI meets your tools`,
+      description: t`Have AI review a Google Doc, summarize Slack threads, triage Jira tickets, and more.`,
+    },
+  ]
+}
 
 function ShowcaseStep({ active, siteName }: { active: boolean; siteName: string }) {
   // Mount-trigger for staggered fade-in when the step becomes visible
@@ -796,7 +813,7 @@ function ShowcaseStep({ active, siteName }: { active: boolean; siteName: string 
       </div>
 
       <div className="space-y-2.5">
-        {SHOWCASE_FEATURES.map((feature, i) => {
+        {showcaseFeatures().map((feature, i) => {
           const Icon = feature.icon
           return (
             <div

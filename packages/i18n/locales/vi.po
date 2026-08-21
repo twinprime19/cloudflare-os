@@ -101,13 +101,6 @@ msgstr "{readyCount} trong {0} đã sẵn sàng. Gợi ý được sử dụng t
 msgid "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
 msgstr "<0>Chế độ AI Gateway:</0> các mô hình tích hợp sẵn được quản lý bởi bản triển khai của bạn. Bạn vẫn có thể thêm mô hình tùy chỉnh bằng token API của riêng mình."
 
-#. placeholder {0}: models.find((m) => m.id === quickModel)?.name ?? quickModel
-msgid "<0>Quick model:</0> {0}."
-msgstr "<0>Mô hình nhanh:</0> {0}."
-
-msgid "<0>Quick model:</0> none set."
-msgstr "<0>Mô hình nhanh:</0> chưa thiết lập."
-
 msgid "A dismissible bar across the very top of the app (logged in or not). Markdown is supported, so you can include links. Leave empty to hide it. Applies on each user’s next connection."
 msgstr "Một thanh có thể đóng nằm ở trên cùng ứng dụng (dù đã đăng nhập hay chưa). Hỗ trợ Markdown, vì vậy bạn có thể thêm liên kết. Để trống để ẩn thanh này. Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
 
@@ -262,6 +255,9 @@ msgstr "Tác nhân đang chỉnh sửa tệp này"
 msgid "Agent model"
 msgstr "Mô hình tác nhân"
 
+msgid "AI meets your tools"
+msgstr "AI hòa vào công cụ của bạn"
+
 msgid "AI providers"
 msgstr "Nhà cung cấp AI"
 
@@ -397,6 +393,12 @@ msgstr "Blueprint"
 msgid "Browse all blueprints"
 msgstr "Duyệt tất cả blueprint"
 
+msgid "Build gadgets or just chat"
+msgstr "Tạo gadget hoặc chỉ trò chuyện"
+
+msgid "built-in"
+msgstr "Tích hợp sẵn"
+
 msgid "Bundled"
 msgstr "Tích hợp sẵn"
 
@@ -476,14 +478,11 @@ msgstr "Chọn những gì gadget này có thể sử dụng."
 msgid "Choose which Cloudflare account to bill"
 msgstr "Chọn tài khoản Cloudflare sẽ được tính phí"
 
-msgid "Choose your model"
-msgstr "Chọn mô hình của bạn"
-
 msgid "Clear"
 msgstr "Xóa"
 
-msgid "Clear quick model"
-msgstr "Xóa mô hình nhanh"
+msgid "Clear default model"
+msgstr "Xóa mô hình mặc định"
 
 msgid "Click the avatar to upload a new photo"
 msgstr "Nhấn vào ảnh đại diện để tải lên ảnh mới"
@@ -491,8 +490,8 @@ msgstr "Nhấn vào ảnh đại diện để tải lên ảnh mới"
 msgid "Click to re-authenticate this account"
 msgstr "Nhấn để xác thực lại tài khoản này"
 
-msgid "Click to set as quick model"
-msgstr "Nhấn để đặt làm mô hình nhanh"
+msgid "Click to set as default model"
+msgstr "Nhấn để đặt làm mô hình mặc định"
 
 msgid "Close"
 msgstr "Đóng"
@@ -521,6 +520,9 @@ msgstr "ID tài khoản Cloudflare"
 msgid "Code"
 msgstr "Mã"
 
+msgid "Collaborate in real time"
+msgstr "Cộng tác theo thời gian thực"
+
 msgid "Collapse outputs"
 msgstr "Thu gọn đầu ra"
 
@@ -539,9 +541,6 @@ msgstr "Đang nén…"
 #. placeholder {0}: activeBinding.title || activeBindingName
 msgid "Configure {0}"
 msgstr "Cấu hình {0}"
-
-msgid "Configure the AI models available to your workspaces."
-msgstr "Cấu hình các mô hình AI khả dụng cho không gian làm việc của bạn."
 
 msgid "Confirm new password"
 msgstr "Xác nhận mật khẩu mới"
@@ -702,6 +701,9 @@ msgstr "Tạo blueprint"
 msgid "Create file"
 msgstr "Tạo tệp"
 
+msgid "Create full web apps, or keep it simple with agent-only conversations. Your call."
+msgstr "Tạo ứng dụng web hoàn chỉnh, hoặc giữ mọi thứ đơn giản với các cuộc trò chuyện chỉ có tác nhân. Tùy bạn."
+
 msgid "Create link"
 msgstr "Tạo liên kết"
 
@@ -751,6 +753,12 @@ msgstr "Hiện đang bị ẩn khỏi các menu bên trên và khỏi danh mục
 
 msgid "Custom"
 msgstr "Tùy chỉnh"
+
+msgid "Default"
+msgstr "Mặc định"
+
+msgid "Default model. Click to clear"
+msgstr "Mô hình mặc định. Nhấn để xóa"
 
 msgid "Delete"
 msgstr "Xóa"
@@ -827,6 +835,9 @@ msgstr "Xác minh lời mời trực tiếp"
 #. placeholder {0}: entry.actionKind.label
 msgid "Disable auto-approval for {0}"
 msgstr "Tắt duyệt tự động cho {0}"
+
+msgid "Disable for all users"
+msgstr "Tắt cho tất cả người dùng"
 
 msgid "Disable hook"
 msgstr "Tắt hook"
@@ -969,6 +980,9 @@ msgstr "Bật duyệt tự động cho {0}"
 
 msgid "Enable Email mailboxes"
 msgstr "Bật hộp thư Email"
+
+msgid "Enable for all users"
+msgstr "Bật cho tất cả người dùng"
 
 msgid "Enable hook"
 msgstr "Bật hook"
@@ -1166,6 +1180,9 @@ msgstr "Cấp quyền truy cập"
 
 msgid "Grant the access needed to verify this resource"
 msgstr "Cấp quyền truy cập cần thiết để xác minh tài nguyên này"
+
+msgid "Have AI review a Google Doc, summarize Slack threads, triage Jira tickets, and more."
+msgstr "Để AI xem xét một Google Doc, tóm tắt các luồng Slack, phân loại ticket Jira và nhiều việc khác."
 
 msgid "Help text for {displayTitle}"
 msgstr "Văn bản trợ giúp cho {displayTitle}"
@@ -1376,6 +1393,9 @@ msgstr "Kích thước ảnh gốc của logo quá lớn."
 msgid "Logo source image is too large (max 5 MB)."
 msgstr "Ảnh gốc của logo quá lớn (tối đa 5 MB)."
 
+msgid "Manage the AI models everyone on this deployment can use."
+msgstr "Quản lý các mô hình AI mà mọi người trên bản triển khai này có thể sử dụng."
+
 msgid "Manage your account details, avatar, and security."
 msgstr "Quản lý thông tin tài khoản, ảnh đại diện và bảo mật của bạn."
 
@@ -1390,6 +1410,9 @@ msgstr "Mô hình"
 
 msgid "Model ID"
 msgstr "ID mô hình"
+
+msgid "Models ready to go"
+msgstr "Mô hình sẵn sàng sử dụng"
 
 msgid "Modified"
 msgstr "Đã sửa đổi"
@@ -1539,6 +1562,9 @@ msgstr "Không có sự kiện nào khớp"
 
 msgid "No matching resources."
 msgstr "Không có tài nguyên nào khớp."
+
+msgid "No models are available yet. Ask your administrator."
+msgstr "Chưa có mô hình nào khả dụng. Hãy hỏi quản trị viên của bạn."
 
 msgid "No models configured yet"
 msgstr "Chưa có mô hình nào được cấu hình"
@@ -1691,9 +1717,6 @@ msgstr "Người có quyền truy cập <0>{0}</0> phải chứng minh tài kho�
 msgid "People with access"
 msgstr "Người có quyền truy cập"
 
-msgid "Pick the AI model you'd like to use by default"
-msgstr "Chọn mô hình AI bạn muốn sử dụng theo mặc định"
-
 #. placeholder {0}: resourceTitle ?? t`connection`
 msgid "Pick which {vendorName} identity this {0} should use."
 msgstr "Chọn danh tính {vendorName} mà {0} này nên sử dụng."
@@ -1741,9 +1764,6 @@ msgstr "Xuất bản không gian làm việc dưới dạng blueprint, hoặc th
 
 msgid "Publish this gadget as a reusable template."
 msgstr "Xuất bản gadget này dưới dạng mẫu có thể tái sử dụng."
-
-msgid "Quick model. Click to clear"
-msgstr "Mô hình nhanh. Nhấn để xóa."
 
 msgid "Re-authenticating…"
 msgstr "Đang xác thực lại…"
@@ -1996,8 +2016,8 @@ msgstr "Gửi tin nhắn"
 msgid "Send them this link to open it"
 msgstr "Gửi liên kết này cho họ để mở"
 
-msgid "Set as quick model"
-msgstr "Đặt làm mô hình nhanh"
+msgid "Set as default"
+msgstr "Đặt làm mặc định"
 
 msgid "Set up"
 msgstr "Thiết lập"
@@ -2011,6 +2031,9 @@ msgstr "Chia sẻ"
 #. placeholder {0}: metadata.title
 msgid "Share “{0}”"
 msgstr "Chia sẻ “{0}”"
+
+msgid "Share a workspace with teammates and work on it together, live."
+msgstr "Chia sẻ không gian làm việc với đồng đội và cùng nhau làm việc trực tiếp."
 
 msgid "share link"
 msgstr "liên kết chia sẻ"
@@ -2391,9 +2414,6 @@ msgstr "Dùng bố cục diff dạng xếp chồng"
 msgid "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
 msgstr "Dùng <0/><1>mũi tên hoàn tác</1> bên dưới bất kỳ phản hồi nào của tác nhân để hủy bỏ từ lượt đó trở đi."
 
-msgid "Used for fast tasks like generating chat titles. Click a model to set it."
-msgstr "Dùng cho các tác vụ nhanh như tạo tiêu đề trò chuyện. Nhấn vào một mô hình để đặt mô hình đó."
-
 msgid "Used the gadget"
 msgstr "Đã dùng gadget"
 
@@ -2537,6 +2557,15 @@ msgstr "Bạn đã sử dụng hết {0, plural, other {# yêu cầu miễn phí
 #. placeholder {0}: PROVIDER_LABELS[selection.provider]
 msgid "Your {0} API token for billing"
 msgstr "Token API {0} của bạn để thanh toán"
+
+msgid "Your administrator curates the AI models, so you can pick one and start right away."
+msgstr "Quản trị viên của bạn tuyển chọn các mô hình AI, nên bạn chỉ cần chọn một mô hình và bắt đầu ngay."
+
+msgid "Your administrator picks which models are available and which one new chats start on"
+msgstr "Quản trị viên của bạn chọn những mô hình khả dụng và mô hình mà các cuộc trò chuyện mới sẽ bắt đầu"
+
+msgid "Your AI models"
+msgstr "Mô hình AI của bạn"
 
 #. placeholder {0}: usage.balance.toFixed(2)
 msgid "Your Cloudflare account is connected with a balance of <0>${0}</0>, but it's below the minimum needed to continue."

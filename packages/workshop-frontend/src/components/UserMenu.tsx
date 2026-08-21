@@ -40,12 +40,14 @@ export default function UserMenu() {
         >
           <Trans>Profile</Trans>
         </DropdownMenu.Item>
-        <DropdownMenu.Item
-          onClick={() => navigate({ to: '/providers' })}
-          className={MENU_ITEM}
-        >
-          <Trans>Providers</Trans>
-        </DropdownMenu.Item>
+        {isAdmin && (
+          <DropdownMenu.Item
+            onClick={() => navigate({ to: '/providers' })}
+            className={MENU_ITEM}
+          >
+            <Trans>Providers</Trans>
+          </DropdownMenu.Item>
+        )}
         {isAdmin && (
           <DropdownMenu.Item
             onClick={() => navigate({ to: '/admin' })}

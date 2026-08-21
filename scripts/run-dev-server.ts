@@ -433,9 +433,23 @@ for (const gk of gatekeepers) {
 
   config.services = config.services || [];
 
-  // For local testing, create an account named "admin" to test admin features.
+  // For local testing, create an account named "admin" to test admin features. A root .dev.vars
+  // ADMINS entry (JSON array of usernames, e.g. ["someone@example.com"]) extends the list, so
+  // gatekeeper sign-in accounts can be admins too.
   config.vars = config.vars || {};
-  config.vars.ADMINS = ["admin"];
+  let devAdmins = ["admin"];
+  if (process.env.ADMINS !== undefined) {
+    try {
+      const extra: unknown = JSON.parse(process.env.ADMINS);
+      if (!Array.isArray(extra) || extra.some(name => typeof name !== "string")) {
+        throw new Error("not an array of strings");
+      }
+      devAdmins = [...new Set([...devAdmins, ...extra])];
+    } catch {
+      console.warn(`Ignoring ADMINS from .dev.vars: expected a JSON array of usernames.`);
+    }
+  }
+  config.vars.ADMINS = devAdmins;
 
   // Pass through the optional OAuth sign-in / AI Gateway billing env vars from the shell
   // environment, so you can run e.g.

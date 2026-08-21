@@ -1,32 +1,19 @@
 import type { AiChatAuthorInfo } from "@gadgets/workshop-shared/api";
 
-const LAST_SELECTED_MODEL_KEY = "lastSelectedModel";
-
-/** Sentinel used for UI values and localStorage so an explicit null choice can persist. */
+/** Sentinel used for UI values so an explicit "no agent" choice has a select value of its own. */
 export const NO_AGENT_OPTION_VALUE = "__gadgets_no_agent__";
 
+/**
+ * The model a new chat starts on: the first the server lists, which is the model the deployment's
+ * admin made default.
+ *
+ * Nothing is remembered between chats. A user switching models in the picker changes that chat and
+ * only that chat, so the admin's default is what every new chat gets, in every browser.
+ */
 export function getStoredSelectedModel(
   models: AiChatAuthorInfo[],
 ): string | null {
-  const storedModel = localStorage.getItem(LAST_SELECTED_MODEL_KEY);
-
-  if (storedModel === NO_AGENT_OPTION_VALUE) {
-    return null;
-  }
-
-  if (storedModel && models.some((model) => model.id === storedModel)) {
-    return storedModel;
-  }
-
-  // Default: Return the first configured model, or null if none are configured.
   return models[0]?.id ?? null;
-}
-
-export function persistSelectedModel(modelId: string | null): void {
-  localStorage.setItem(
-    LAST_SELECTED_MODEL_KEY,
-    modelId ?? NO_AGENT_OPTION_VALUE,
-  );
 }
 
 export function toModelSelectValue(modelId: string | null): string {

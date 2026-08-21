@@ -59,7 +59,6 @@ import * as Y from "yjs";
 import styles from "./ChatInterface.module.css";
 import {
   getStoredSelectedModel,
-  persistSelectedModel,
 } from "./modelSelection";
 import {
   Overseer,
@@ -5705,10 +5704,10 @@ function ChatInterface({
     }
   };
 
-  // Handle model change
+  // Handle model change. The pick applies to this chat only — nothing carries it to the next one,
+  // which starts on the deployment's default model.
   const handleModelChange = (modelId: string | null) => {
     setSelectedModel(modelId);
-    persistSelectedModel(modelId);
   };
 
   // Handle stopping the agent
