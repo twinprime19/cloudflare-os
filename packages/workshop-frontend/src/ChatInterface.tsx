@@ -508,6 +508,25 @@ function mentionText(mention: Mention): string {
       : mention.format.noun;
 }
 
+// Stored message text holds placeholder indexes where capsules sit; the clipboard should carry
+// the capsule titles the user saw, not those placeholders.
+function messageCopyText(
+  message: string,
+  capsules: CapsuleSpecifier[] | undefined,
+): string {
+  if (!capsules || capsules.length === 0) return message;
+
+  let out = "";
+  let pos = 0;
+  for (const capsule of capsules.toSorted((a, b) => a.position - b.position)) {
+    // Same rewind guard as buildTokenizedCapsuleMessage: old stored messages may overlap.
+    if (capsule.position < pos) continue;
+    out += message.slice(pos, capsule.position) + capsule.description.title;
+    pos = capsule.position + capsule.length;
+  }
+  return out + message.slice(pos);
+}
+
 function buildTokenizedCapsuleMessage(
   message: string,
   capsules: CapsuleSpecifier[] | undefined,
@@ -6133,10 +6152,10 @@ function ChatInterface({
     }
   };
 
-  const handleCopyMessage = useCallback(async (message: string) => {
-    const ok = await copyToClipboard(message);
+  const handleCopyMessage = useCallback(async (message: string, capsules?: CapsuleSpecifier[]) => {
+    const ok = await copyToClipboard(messageCopyText(message, capsules));
     toasts.add({
-      title: ok ? "Copied message" : "Unable to copy message",
+      title: ok ? t`Copied message` : t`Unable to copy message`,
       variant: ok ? "success" : "error",
     });
   }, [toasts]);
@@ -7391,6 +7410,20 @@ function ChatInterface({
                                 {!(hideOwnUserName && msg.author.id === currentUser?.id) && (
                                   <span className="font-medium">{msg.author.name}</span>
                                 )}
+                                {/* Slash-command sends keep the expanded prompt in msg.message; that's
+                                    agent context, not something to hand back via copy. */}
+                                {!entry.slashCommand && msg.message.trim() && (
+                                  <Tooltip content={t`Copy message`} asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyMessage(msg.message, msg.capsules)}
+                                      className="flex cursor-pointer items-center rounded-md p-1 text-kumo-inactive transition-[color,transform] duration-150 ease-out hover:text-kumo-default focus-visible:text-kumo-default focus-visible:outline-none active:scale-[0.96]"
+                                      aria-label={t`Copy message`}
+                                    >
+                                      <Copy size={15} />
+                                    </button>
+                                  </Tooltip>
+                                )}
                                 <Tooltip content={formatFullTimestamp(msg.timestamp)} asChild>
                                   <span className="font-mono">
                                     {msg.timestamp.toLocaleTimeString([], {
@@ -7451,7 +7484,7 @@ function ChatInterface({
                                     <Tooltip content={t`Copy message`} asChild>
                                       <button
                                         type="button"
-                                        onClick={() => handleCopyMessage(msg.message)}
+                                        onClick={() => handleCopyMessage(msg.message, msg.capsules)}
                                         className="flex cursor-pointer items-center rounded-md p-1 text-kumo-inactive transition-[color,transform] duration-150 ease-out hover:text-kumo-default focus-visible:text-kumo-default focus-visible:outline-none active:scale-[0.96]"
                                         aria-label={t`Copy message`}
                                       >
