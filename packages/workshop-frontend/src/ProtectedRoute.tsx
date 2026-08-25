@@ -28,7 +28,7 @@ export default function ProtectedRoute({ children, rpcStub }: ProtectedRouteProp
     return (
       <div
         style={{
-          minHeight: '100vh',
+          minHeight: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -48,7 +48,7 @@ export default function ProtectedRoute({ children, rpcStub }: ProtectedRouteProp
     return (
       <div
         style={{
-          minHeight: '100vh',
+          minHeight: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -77,7 +77,7 @@ export default function ProtectedRoute({ children, rpcStub }: ProtectedRouteProp
       return (
         <div
           style={{
-            minHeight: '100vh',
+            minHeight: '100%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

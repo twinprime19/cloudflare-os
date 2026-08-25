@@ -53,6 +53,7 @@ within the explicit scan limits above; exceeding a limit fails rather than prete
 | `MCP_PORTAL_AUTH` | `oauth` (default), `none`, or `token`. |
 | `MCP_PORTAL_TOKEN` | Secret bearer token, for `MCP_PORTAL_AUTH: "token"`. |
 | `MCP_PORTAL_TRUST_ANNOTATIONS` | `true` to let upstream tool annotations drive auto-approval. Off by default; see below. |
+| `MCP_PORTAL_HIDDEN_SERVER_IDS` | Comma-separated upstream server IDs to hide from the configurator and refuse at the grant boundary. |
 | `MCP_ALLOW_INSECURE` | `"true"` to disable the endpoint checks entirely: permits `http://` **and** private, loopback, link-local, and cloud-metadata hosts, for the portal and every OAuth URL discovered from it. Local dev only. |
 
 The portal must expose upstream tools directly. Use a portal where Code Mode is off or opt-in, or

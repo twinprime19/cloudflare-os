@@ -7,7 +7,6 @@ import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
 import { Trans } from '@lingui/react/macro'
 import { t } from '@lingui/core/macro'
 import { useRpcStub, useConnectionLost } from '../RpcContext'
-import { markConnectionRestored } from '../main'
 import { useAuth, CF_ACCESS_MODE } from '../useAuth'
 import { AuthProvider } from '../AuthContext'
 import { FeatureFlagsProvider } from '../FeatureFlagsContext'
@@ -26,11 +25,6 @@ function RootComponent() {
   const connectionLost = useConnectionLost()
   const { isAuthenticated, authenticatedApi, isLoading, error, logout, login } = useAuth(rpcStub)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-
-  // When authenticatedApi becomes available, the connection is proven alive.
-  useEffect(() => {
-    if (authenticatedApi) markConnectionRestored()
-  }, [authenticatedApi])
 
   // Routes that don't require auth (public routes)
   const isSignup = pathname === '/signup'
@@ -55,7 +49,7 @@ function RootComponent() {
   // Loading state
   if (isLoading && !standalone) {
     return (
-      <div className="min-h-screen flex items-center justify-center flex-col gap-4 bg-kumo-base">
+      <div className="flex min-h-full items-center justify-center flex-col gap-4 bg-kumo-base">
         <div className="w-8 h-8 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-kumo-subtle">{connectionLost ? t`Waiting for server…` : t`Loading...`}</p>
       </div>
@@ -65,7 +59,7 @@ function RootComponent() {
   // Auth error
   if (error && !standalone) {
     return (
-      <div className="min-h-screen flex items-center justify-center flex-col gap-4 bg-kumo-base p-6">
+      <div className="flex min-h-full items-center justify-center flex-col gap-4 bg-kumo-base p-6">
         <p className="text-sm text-kumo-danger"><Trans>Authentication error: {error}</Trans></p>
         <button
           onClick={() => window.location.reload()}
@@ -80,7 +74,7 @@ function RootComponent() {
   // CF Access mode: show spinner while pipelined auth resolves
   if (!isAuthenticated && CF_ACCESS_MODE && !standalone) {
     return (
-      <div className="min-h-screen flex items-center justify-center flex-col gap-4 bg-kumo-base">
+      <div className="flex min-h-full items-center justify-center flex-col gap-4 bg-kumo-base">
         <div className="w-8 h-8 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-kumo-subtle"><Trans>Authenticating...</Trans></p>
       </div>
@@ -98,8 +92,12 @@ function RootComponent() {
     return (
       <TooltipProvider>
         <Toasty>
-          {showHeader && <Header />}
-          <Outlet />
+          <div className="flex h-full min-h-0 flex-col">
+            {showHeader && <Header />}
+            <main className="min-h-0 flex-1 overflow-y-auto">
+              <Outlet />
+            </main>
+          </div>
         </Toasty>
       </TooltipProvider>
     )
@@ -155,7 +153,7 @@ function AuthenticatedShell({
   // Still checking onboarding status
   if (onboardingNeeded === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center flex-col gap-4 bg-kumo-base">
+      <div className="flex min-h-full items-center justify-center flex-col gap-4 bg-kumo-base">
         <div className="w-8 h-8 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -174,7 +172,7 @@ function AuthenticatedShell({
     <>
       <AccountSelectionModal />
       {fullscreen ? (
-        <main>
+        <main className="h-full min-h-0">
           <Outlet />
         </main>
       ) : (

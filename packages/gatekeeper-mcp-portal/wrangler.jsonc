@@ -51,6 +51,10 @@
   //     a portal is an aggregator, and those annotations are written by whichever upstream server it
   //     proxies, not by the administrator who chose the portal. Only set it where the upstreams
   //     themselves are trusted.
+  //
+  //   MCP_PORTAL_HIDDEN_SERVER_IDS
+  //     Comma-separated upstream server IDs to omit from the resource configurator and reject if a
+  //     caller supplies one directly in a resource URL.
   "vars": {
     // Set to "true" to permit http:// and private-network endpoints. Local development only.
     "MCP_ALLOW_INSECURE": "false"

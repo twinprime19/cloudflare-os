@@ -42,6 +42,8 @@ export const SHARED_GATEKEEPER_CREDS: Record<string, { id: string; secret: strin
   "gatekeeper-zoominfo": { id: "ZOOMINFO_CLIENT_ID", secret: "ZOOMINFO_CLIENT_SECRET" },
   "gatekeeper-confluence": { id: "CONFLUENCE_CLIENT_ID", secret: "CONFLUENCE_CLIENT_SECRET" },
   "gatekeeper-slack": { id: "SLACK_CLIENT_ID", secret: "SLACK_CLIENT_SECRET" },
+  "gatekeeper-linear": { id: "LINEAR_CLIENT_ID", secret: "LINEAR_CLIENT_SECRET" },
+  "gatekeeper-spotify": { id: "SPOTIFY_CLIENT_ID", secret: "SPOTIFY_CLIENT_SECRET" },
   "gatekeeper-microsoft": { id: "MICROSOFT_CLIENT_ID", secret: "MICROSOFT_CLIENT_SECRET" },
 };
 
@@ -72,7 +74,7 @@ export interface PassthroughVar {
 export const PASSTHROUGH_GATEKEEPER_VARS: Record<string, (string | PassthroughVar)[]> = {
   "gatekeeper-mcp-portal": [
     "MCP_PORTAL_URL", "MCP_PORTAL_NAME", "MCP_PORTAL_AUTH", "MCP_PORTAL_TOKEN",
-    "MCP_PORTAL_TRUST_ANNOTATIONS", "MCP_ALLOW_INSECURE",
+    "MCP_PORTAL_TRUST_ANNOTATIONS", "MCP_PORTAL_HIDDEN_SERVER_IDS", "MCP_ALLOW_INSECURE",
   ],
   "gatekeeper-mcp": ["MCP_ALLOW_INSECURE"],
   // Entra pins every OAuth endpoint to one tenant, so the Microsoft gatekeeper cannot build an

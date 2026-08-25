@@ -13,6 +13,7 @@ import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 import { FormatGlyph } from '../format/FormatVisuals'
 import { createFromFormat } from '../format/useOutputFormats'
+import { isImeComposing } from '../../keyboardEvent'
 
 // A ⌘K command palette: jump to a workspace or a primary destination. Because it's keyboard-driven
 // and opened many times a day, it deliberately has *no* open/close animation (instant feels faster
@@ -313,6 +314,7 @@ export default function CommandPalette({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (isImeComposing(e)) return
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         setActiveIndex((i) => (flat.length ? (i + 1) % flat.length : 0))

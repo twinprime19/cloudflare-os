@@ -33,6 +33,10 @@ msgstr "{0, plural, one {# resource hidden while disabled.} other {# resources h
 msgid "{0, plural, one {# resource to add} other {# resources to add}}"
 msgstr "{0, plural, one {# resource to add} other {# resources to add}}"
 
+#. placeholder {0}: row.hidden
+msgid "{0, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
+msgstr "{0, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
+
 #. placeholder {0}: formatOf(gadget.output).noun
 msgid "{0} · Click to open"
 msgstr "{0} · Click to open"
@@ -46,6 +50,14 @@ msgstr "{0} · shown under {1} on Outputs"
 msgid "{0} accepted changes"
 msgstr "{0} accepted changes"
 
+#. placeholder {0}: entry.message.author.name
+msgid "{0} brought the gadget's latest changes into this draft"
+msgstr "{0} brought the gadget's latest changes into this draft"
+
+#. placeholder {0}: entry.message.author.name
+msgid "{0} brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
+msgstr "{0} brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
+
 #. placeholder {0}: entry.requestedBy.name
 msgid "{0} compacted the context"
 msgstr "{0} compacted the context"
@@ -58,10 +70,6 @@ msgstr "{0} created {1, plural, one {gadget} other {gadgets}} {createdTitles}"
 #. placeholder {0}: msg.author.name
 msgid "{0} discarded changes"
 msgstr "{0} discarded changes"
-
-#. placeholder {0}: latestAuthor?.name ?? t`The agent`
-msgid "{0} is editing changes for this gadget."
-msgstr "{0} is editing changes for this gadget."
 
 #. placeholder {0}: usage.remaining
 #. placeholder {1}: usage.dailyLimit
@@ -78,15 +86,8 @@ msgstr "{badgeCount} pending"
 msgid "{DEFAULT_ACCENT_COLOR} (default)"
 msgstr "{DEFAULT_ACCENT_COLOR} (default)"
 
-#. placeholder {0}: formatFullTimestamp(lastDraftEntry.timestamp)
-msgid "{description} Last edited {0}"
-msgstr "{description} Last edited {0}"
-
 msgid "{filename} is being edited"
 msgstr "{filename} is being edited"
-
-msgid "{hidden, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
-msgstr "{hidden, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
 
 msgid "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
 msgstr "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
@@ -390,6 +391,9 @@ msgstr "Blueprint title"
 msgid "Blueprints"
 msgstr "Blueprints"
 
+msgid "Bring in latest changes"
+msgstr "Bring in latest changes"
+
 msgid "Browse all blueprints"
 msgstr "Browse all blueprints"
 
@@ -498,6 +502,9 @@ msgstr "Close"
 
 msgid "Close activity"
 msgstr "Close activity"
+
+msgid "Close files"
+msgstr "Close files"
 
 msgid "Close gadget pane"
 msgstr "Close gadget pane"
@@ -651,6 +658,9 @@ msgstr "Copy"
 #. placeholder {0}: sk.note || t`share link`
 msgid "Copy {0}"
 msgstr "Copy {0}"
+
+msgid "Copy code"
+msgstr "Copy code"
 
 msgid "Copy failed"
 msgstr "Copy failed"
@@ -924,9 +934,6 @@ msgstr "Downloading..."
 msgid "Draft"
 msgstr "Draft"
 
-msgid "Draft changes in progress"
-msgstr "Draft changes in progress"
-
 msgid "Draft changes pending"
 msgstr "Draft changes pending"
 
@@ -1093,6 +1100,12 @@ msgstr "Failed to encode the logo as PNG."
 msgid "Failed to load blueprint."
 msgstr "Failed to load blueprint."
 
+msgid "Failed to load this conversation's code changes. Try reloading the page."
+msgstr "Failed to load this conversation's code changes. Try reloading the page."
+
+msgid "Failed to load this gadget's code."
+msgstr "Failed to load this gadget's code."
+
 msgid "Failed to prepare the logo image."
 msgstr "Failed to prepare the logo image."
 
@@ -1135,6 +1148,9 @@ msgstr "Full screen"
 #. placeholder {0}: formatOf(selectedGadgetSummary?.output).noun
 msgid "Full screen is available in {0} view"
 msgstr "Full screen is available in {0} view"
+
+msgid "Full-screen preview"
+msgstr "Full-screen preview"
 
 msgid "Future <0>{actionLabel}</0> actions on <1>{resourceTitle}</1> will be applied automatically, without asking for approval. This action will be applied now too."
 msgstr "Future <0>{actionLabel}</0> actions on <1>{resourceTitle}</1> will be applied automatically, without asking for approval. This action will be applied now too."
@@ -1426,6 +1442,9 @@ msgstr "Modified"
 msgid "More blueprint actions"
 msgstr "More blueprint actions"
 
+msgid "More workspace views and actions"
+msgstr "More workspace views and actions"
+
 msgid "Move down"
 msgstr "Move down"
 
@@ -1608,6 +1627,9 @@ msgstr "No workspaces yet. Create your first one above!"
 msgid "Not connected"
 msgstr "Not connected"
 
+msgid "Not now"
+msgstr "Not now"
+
 msgid "Nothing after it was kept."
 msgstr "Nothing after it was kept."
 
@@ -1647,6 +1669,9 @@ msgstr "On Outputs"
 msgid "Open"
 msgstr "Open"
 
+msgid "Open a conversation and build with the agent, and its accepted files will appear here."
+msgstr "Open a conversation and build with the agent, and its accepted files will appear here."
+
 #. placeholder {0}: blueprint.metadata.title
 #. placeholder {0}: metadata.title
 msgid "Open blueprint {0}"
@@ -1658,6 +1683,9 @@ msgstr "Open chat options"
 #. placeholder {0}: blueprint.metadata.title
 msgid "Open featured blueprint {0}"
 msgstr "Open featured blueprint {0}"
+
+msgid "Open files"
+msgstr "Open files"
 
 msgid "Open larger screenshot of {title}"
 msgstr "Open larger screenshot of {title}"
@@ -1733,6 +1761,9 @@ msgstr "Plural"
 msgid "Press <0>Esc</0> to exit full screen"
 msgstr "Press <0>Esc</0> to exit full screen"
 
+msgid "Preview"
+msgstr "Preview"
+
 #. placeholder {0}: attachment.name ?? t`attached file`
 msgid "Preview {0}"
 msgstr "Preview {0}"
@@ -1742,6 +1773,9 @@ msgstr "Preview {title}"
 
 msgid "Primary"
 msgstr "Primary"
+
+msgid "Primary navigation"
+msgstr "Primary navigation"
 
 msgid "Processing..."
 msgstr "Processing..."
@@ -2116,6 +2150,9 @@ msgstr "Slash commands"
 msgid "Some auto-approval options could not be loaded."
 msgstr "Some auto-approval options could not be loaded."
 
+msgid "Someone else's changes were accepted in the meantime, so this draft's changes can't be applied as-is. Bring the latest changes into this draft first; any conflicts will be marked in the code for you (or the agent) to resolve before accepting again."
+msgstr "Someone else's changes were accepted in the meantime, so this draft's changes can't be applied as-is. Bring the latest changes into this draft first; any conflicts will be marked in the code for you (or the agent) to resolve before accepting again."
+
 msgid "Something went wrong"
 msgstr "Something went wrong"
 
@@ -2187,9 +2224,6 @@ msgstr "Switched to {0}"
 msgid "The \"{0}\" gatekeeper is not available on this workshop, so this connection can't be configured."
 msgstr "The \"{0}\" gatekeeper is not available on this workshop, so this connection can't be configured."
 
-msgid "The agent"
-msgstr "The agent"
-
 msgid "The agent reads this in place of everything earlier in the chat."
 msgstr "The agent reads this in place of everything earlier in the chat."
 
@@ -2208,6 +2242,9 @@ msgstr "The current rules may be incomplete. Try loading them again."
 
 msgid "The current screenshot will stay unless you upload a new one."
 msgstr "The current screenshot will stay unless you upload a new one."
+
+msgid "The gadget changed since this draft started"
+msgstr "The gadget changed since this draft started"
 
 #. placeholder {0}: example!.modelId
 msgid "The model identifier as specified by the provider (e.g., '{0}')"
@@ -2286,6 +2323,9 @@ msgstr "This removes <0>{0}</0>. You can't undo this."
 
 msgid "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
 msgstr "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
+
+msgid "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
+msgstr "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
 
 msgid "This workspace can’t be shared"
 msgstr "This workspace can’t be shared"
@@ -2534,6 +2574,12 @@ msgstr "Workspaces"
 msgid "Yes, disconnect"
 msgstr "Yes, disconnect"
 
+msgid "You brought the gadget's latest changes into this draft"
+msgstr "You brought the gadget's latest changes into this draft"
+
+msgid "You brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
+msgstr "You brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
+
 msgid "You can copy it again anytime from Share links"
 msgstr "You can copy it again anytime from Share links"
 
@@ -2591,6 +2637,10 @@ msgstr "Your connection has access to multiple Cloudflare accounts. Select the o
 
 msgid "Your edits are still a live draft."
 msgstr "Your edits are still a live draft."
+
+#. placeholder {0}: formatFullTimestamp(lastEditedAt)
+msgid "Your edits are still a live draft. Last edited {0}"
+msgstr "Your edits are still a live draft. Last edited {0}"
 
 msgid "Your workspaces"
 msgstr "Your workspaces"

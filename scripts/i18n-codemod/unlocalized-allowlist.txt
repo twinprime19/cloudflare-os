@@ -56,14 +56,18 @@ packages/workshop-frontend/src/components/chat/ChatMessage.tsx
 # that is iterated later, which no syntactic rule can follow.
 packages/workshop-frontend/src/rpcErrors.ts
 
+# Backend failure text matched with `.includes()` to decide a submit is retryable, held in `const`s.
+packages/workshop-frontend/src/otClient.ts|Agent is running
+packages/workshop-frontend/src/otClient.ts|The chat is changing too quickly
+
 # Tailwind class lists held as shared constants.
 packages/workshop-frontend/src/components/menuStyles.ts
 packages/workshop-frontend/src/diff/diffRenderer.ts|gadgets-deleted-num-row gadgets-replacement-num-row
 
-# A CSS font stack and a CSS media query, both passed to APIs that parse them as CSS.
-packages/workshop-frontend/src/components/monacoTheme.ts
+# CSS passed to APIs that parse it as CSS: a media query in theme.ts; a font stack plus padding and
+# border values in the CodeMirror theme.
 packages/workshop-frontend/src/theme.ts
-
+packages/workshop-frontend/src/components/codeTheme.ts
 # Telemetry facts reported to the error backend: `family` and `platform` discriminants, never shown.
 # The browser and OS names are covered by PROPER_NOUNS; 'Other' is the fallback value.
 packages/workshop-frontend/src/errorReporting.ts

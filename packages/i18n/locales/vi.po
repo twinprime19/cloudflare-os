@@ -33,6 +33,10 @@ msgstr "{0, plural, other {# tài nguyên bị ẩn khi tắt.}}"
 msgid "{0, plural, one {# resource to add} other {# resources to add}}"
 msgstr "{0, plural, other {# tài nguyên cần thêm}}"
 
+#. placeholder {0}: row.hidden
+msgid "{0, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
+msgstr ""
+
 #. placeholder {0}: formatOf(gadget.output).noun
 msgid "{0} · Click to open"
 msgstr "{0} · Nhấn để mở"
@@ -46,6 +50,14 @@ msgstr "{0} · hiển thị trong {1} tại Đầu ra"
 msgid "{0} accepted changes"
 msgstr "{0} đã chấp nhận thay đổi"
 
+#. placeholder {0}: entry.message.author.name
+msgid "{0} brought the gadget's latest changes into this draft"
+msgstr ""
+
+#. placeholder {0}: entry.message.author.name
+msgid "{0} brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
+msgstr ""
+
 #. placeholder {0}: entry.requestedBy.name
 msgid "{0} compacted the context"
 msgstr "{0} đã nén ngữ cảnh"
@@ -58,10 +70,6 @@ msgstr "{0} đã tạo {1, plural, other {gadget}} {createdTitles}"
 #. placeholder {0}: msg.author.name
 msgid "{0} discarded changes"
 msgstr "{0} đã loại bỏ thay đổi"
-
-#. placeholder {0}: latestAuthor?.name ?? t`The agent`
-msgid "{0} is editing changes for this gadget."
-msgstr "{0} đang chỉnh sửa thay đổi cho gadget này."
 
 #. placeholder {0}: usage.remaining
 #. placeholder {1}: usage.dailyLimit
@@ -78,15 +86,8 @@ msgstr "{badgeCount} đang chờ"
 msgid "{DEFAULT_ACCENT_COLOR} (default)"
 msgstr "{DEFAULT_ACCENT_COLOR} (mặc định)"
 
-#. placeholder {0}: formatFullTimestamp(lastDraftEntry.timestamp)
-msgid "{description} Last edited {0}"
-msgstr "{description} Chỉnh sửa lần cuối {0}"
-
 msgid "{filename} is being edited"
 msgstr "{filename} đang được chỉnh sửa"
-
-msgid "{hidden, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
-msgstr "{hidden, plural, other {Hiện # dòng đã xóa bị ẩn}}"
 
 msgid "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
 msgstr "{kept, plural, other {# tin nhắn sau điểm cắt được giữ lại đầy đủ.}}"
@@ -390,6 +391,9 @@ msgstr "Tiêu đề blueprint"
 msgid "Blueprints"
 msgstr "Blueprint"
 
+msgid "Bring in latest changes"
+msgstr ""
+
 msgid "Browse all blueprints"
 msgstr "Duyệt tất cả blueprint"
 
@@ -498,6 +502,9 @@ msgstr "Đóng"
 
 msgid "Close activity"
 msgstr "Đóng hoạt động"
+
+msgid "Close files"
+msgstr ""
 
 msgid "Close gadget pane"
 msgstr "Đóng ngăn gadget"
@@ -651,6 +658,9 @@ msgstr "Sao chép"
 #. placeholder {0}: sk.note || t`share link`
 msgid "Copy {0}"
 msgstr "Sao chép {0}"
+
+msgid "Copy code"
+msgstr ""
 
 msgid "Copy failed"
 msgstr "Sao chép thất bại"
@@ -924,9 +934,6 @@ msgstr "Đang tải xuống..."
 msgid "Draft"
 msgstr "Nháp"
 
-msgid "Draft changes in progress"
-msgstr "Thay đổi nháp đang diễn ra"
-
 msgid "Draft changes pending"
 msgstr "Thay đổi nháp đang chờ"
 
@@ -1093,6 +1100,12 @@ msgstr "Không thể mã hóa logo thành PNG."
 msgid "Failed to load blueprint."
 msgstr "Không thể tải blueprint."
 
+msgid "Failed to load this conversation's code changes. Try reloading the page."
+msgstr ""
+
+msgid "Failed to load this gadget's code."
+msgstr ""
+
 msgid "Failed to prepare the logo image."
 msgstr "Không thể chuẩn bị hình ảnh logo."
 
@@ -1135,6 +1148,9 @@ msgstr "Toàn màn hình"
 #. placeholder {0}: formatOf(selectedGadgetSummary?.output).noun
 msgid "Full screen is available in {0} view"
 msgstr "Chế độ toàn màn hình khả dụng trong chế độ xem {0}"
+
+msgid "Full-screen preview"
+msgstr ""
 
 msgid "Future <0>{actionLabel}</0> actions on <1>{resourceTitle}</1> will be applied automatically, without asking for approval. This action will be applied now too."
 msgstr "Các hành động <0>{actionLabel}</0> trong tương lai trên <1>{resourceTitle}</1> sẽ được áp dụng tự động, không cần yêu cầu duyệt. Hành động này cũng sẽ được áp dụng ngay bây giờ."
@@ -1426,6 +1442,9 @@ msgstr "Đã sửa đổi"
 msgid "More blueprint actions"
 msgstr "Hành động khác cho blueprint"
 
+msgid "More workspace views and actions"
+msgstr ""
+
 msgid "Move down"
 msgstr "Di chuyển xuống"
 
@@ -1608,6 +1627,9 @@ msgstr "Chưa có không gian làm việc nào. Tạo không gian làm việc đ
 msgid "Not connected"
 msgstr "Chưa kết nối"
 
+msgid "Not now"
+msgstr ""
+
 msgid "Nothing after it was kept."
 msgstr "Không có gì sau đó được giữ lại."
 
@@ -1647,6 +1669,9 @@ msgstr "Trên Đầu ra"
 msgid "Open"
 msgstr "Mở"
 
+msgid "Open a conversation and build with the agent, and its accepted files will appear here."
+msgstr ""
+
 #. placeholder {0}: blueprint.metadata.title
 #. placeholder {0}: metadata.title
 msgid "Open blueprint {0}"
@@ -1658,6 +1683,9 @@ msgstr "Mở tùy chọn trò chuyện"
 #. placeholder {0}: blueprint.metadata.title
 msgid "Open featured blueprint {0}"
 msgstr "Mở blueprint nổi bật {0}"
+
+msgid "Open files"
+msgstr ""
 
 msgid "Open larger screenshot of {title}"
 msgstr "Mở ảnh chụp màn hình lớn hơn của {title}"
@@ -1733,6 +1761,9 @@ msgstr "Số nhiều"
 msgid "Press <0>Esc</0> to exit full screen"
 msgstr "Nhấn <0>Esc</0> để thoát chế độ toàn màn hình"
 
+msgid "Preview"
+msgstr ""
+
 #. placeholder {0}: attachment.name ?? t`attached file`
 msgid "Preview {0}"
 msgstr "Xem trước {0}"
@@ -1742,6 +1773,9 @@ msgstr "Xem trước {title}"
 
 msgid "Primary"
 msgstr "Chính"
+
+msgid "Primary navigation"
+msgstr ""
 
 msgid "Processing..."
 msgstr "Đang xử lý..."
@@ -2116,6 +2150,9 @@ msgstr "Lệnh gạch chéo"
 msgid "Some auto-approval options could not be loaded."
 msgstr "Không thể tải một số tùy chọn duyệt tự động."
 
+msgid "Someone else's changes were accepted in the meantime, so this draft's changes can't be applied as-is. Bring the latest changes into this draft first; any conflicts will be marked in the code for you (or the agent) to resolve before accepting again."
+msgstr ""
+
 msgid "Something went wrong"
 msgstr "Đã xảy ra lỗi"
 
@@ -2187,9 +2224,6 @@ msgstr "Đã chuyển sang {0}"
 msgid "The \"{0}\" gatekeeper is not available on this workshop, so this connection can't be configured."
 msgstr "Gatekeeper \"{0}\" không khả dụng trên Workshop này, nên kết nối này không thể được cấu hình."
 
-msgid "The agent"
-msgstr "Tác nhân"
-
 msgid "The agent reads this in place of everything earlier in the chat."
 msgstr "Tác nhân đọc nội dung này thay cho mọi thứ trước đó trong cuộc trò chuyện."
 
@@ -2208,6 +2242,9 @@ msgstr "Các quy tắc hiện tại có thể chưa đầy đủ. Thử tải l�
 
 msgid "The current screenshot will stay unless you upload a new one."
 msgstr "Ảnh chụp màn hình hiện tại sẽ được giữ nguyên trừ khi bạn tải lên ảnh mới."
+
+msgid "The gadget changed since this draft started"
+msgstr ""
 
 #. placeholder {0}: example!.modelId
 msgid "The model identifier as specified by the provider (e.g., '{0}')"
@@ -2286,6 +2323,9 @@ msgstr "Thao tác này sẽ xóa <0>{0}</0>. Bạn không thể hoàn tác việ
 
 msgid "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
 msgstr "Thao tác này sẽ xóa <0>{deletingFile}</0> khỏi gadget. Bạn không thể hoàn tác việc này."
+
+msgid "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
+msgstr ""
 
 msgid "This workspace can’t be shared"
 msgstr "Không thể chia sẻ không gian làm việc này"
@@ -2534,6 +2574,12 @@ msgstr "Không gian làm việc"
 msgid "Yes, disconnect"
 msgstr "Có, ngắt kết nối"
 
+msgid "You brought the gadget's latest changes into this draft"
+msgstr ""
+
+msgid "You brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
+msgstr ""
+
 msgid "You can copy it again anytime from Share links"
 msgstr "Bạn có thể sao chép lại bất cứ lúc nào từ Liên kết chia sẻ"
 
@@ -2591,6 +2637,10 @@ msgstr "Kết nối của bạn có quyền truy cập nhiều tài khoản Clou
 
 msgid "Your edits are still a live draft."
 msgstr "Các chỉnh sửa của bạn vẫn đang là bản nháp."
+
+#. placeholder {0}: formatFullTimestamp(lastEditedAt)
+msgid "Your edits are still a live draft. Last edited {0}"
+msgstr ""
 
 msgid "Your workspaces"
 msgstr "Không gian làm việc của bạn"

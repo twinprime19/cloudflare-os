@@ -5,9 +5,10 @@ import { act, type ComponentProps, type ReactElement, type ReactNode } from 'rea
 import { type Root } from 'react-dom/client'
 import { createI18nRoot } from './testI18nRoot'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import * as Y from 'yjs'
 import type { RpcStub } from 'capnweb'
-import type { CodeSubscriber, Overseer } from '@gadgets/workshop-shared/api'
+import type { CodeChangeSubmission, Overseer, WorkpieceId } from '@gadgets/workshop-shared/api'
+import type { CodeChange, FileChange } from '@gadgets/workshop-shared/code-change'
+import type { ChatCodeChanges } from './ChatInterface'
 
 const testGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
 const previousActEnvironment = testGlobal.IS_REACT_ACT_ENVIRONMENT
@@ -54,6 +55,7 @@ vi.mock('@phosphor-icons/react', () => {
     DotsThree: icon('actions'),
     DownloadSimple: icon('download'),
     FileZip: icon('archive'),
+    List: icon('files'),
     Pencil: icon('rename'),
     Plus: icon('new'),
     Trash: icon('delete'),
@@ -82,7 +84,11 @@ vi.mock('./fileTransfers', () => ({
 
 import GadgetCodeInterface from './GadgetCodeInterface'
 
-const FILES_ROOT = 'files'
+const GADGET_ID = 1 as WorkpieceId
+const CHAT_ID = 1
+
+// Mints the fresh commit id each mount needs (see fakeOverseer).
+let commitCounter = 1
 
 let container: HTMLDivElement
 let root: Root
@@ -102,97 +108,89 @@ afterEach(async () => {
 })
 
 /**
- * The server side of the code subscription: hands back the subscriber the component registers, so
- * a test can push the committed files in exactly as the backend would.
+ * The server side of the code view: hands back the committed trees the component asks for by oid.
+ *
+ * Commit trees are immutable, so the component caches them per oid for the page's lifetime -- a
+ * cache this test file shares across its cases. Every mount therefore mints a fresh commit id (see
+ * `mountEditor`) so a case really reads its own files.
  */
-function fakeOverseer(): { stub: RpcStub<Overseer>; subscriber: () => CodeSubscriber } {
-  let registered: CodeSubscriber | null = null
+function fakeOverseer(commits: Record<string, Record<string, string>>): RpcStub<Overseer> {
   const stub = {
-    subscribeToCode: vi.fn<(subscriber: CodeSubscriber) => Promise<Disposable>>(
-      async (subscriber) => {
-        registered = subscriber
-        return { [Symbol.dispose]() {} }
+    getCodeAtCommit: vi.fn<(commitId: string) => Promise<{ files: [string, string][] }>>(
+      async (commitId) => {
+        const files = commits[commitId]
+        if (!files) throw new Error(`no such commit: ${commitId}`)
+        return { files: Object.entries(files) }
       },
     ),
-    updateCode: vi.fn<(update: Uint8Array, chatId?: number) => Promise<void>>(async () => {}),
+    submitCodeChange: vi.fn<
+      (chatId: number, submission: CodeChangeSubmission) =>
+        Promise<{ generation: number; revision: number }>
+    >(async () => ({ generation: 0, revision: 0 })),
   }
-  return {
-    stub: stub as unknown as RpcStub<Overseer>,
-    subscriber: () => {
-      if (!registered) throw new Error('the component never subscribed to code updates')
-      return registered
-    },
-  }
-}
-
-/** A Yjs update that puts `files` into the committed map, as the server's first update does. */
-function committedFilesUpdate(files: Record<string, string>): Uint8Array {
-  const doc = new Y.Doc()
-  const map = doc.getMap<Y.Text>(FILES_ROOT)
-  for (const [filename, content] of Object.entries(files)) {
-    map.set(filename, new Y.Text(content))
-  }
-  return Y.encodeStateAsUpdateV2(doc)
+  return stub as unknown as RpcStub<Overseer>
 }
 
 /**
- * The `proposedChanges` update a chat's branch would carry: `edits` applied on top of the committed
- * state, where a `null` content deletes the file. Built from the very bytes the server sends as the
- * committed update, so the two share struct ids and a deletion in here actually deletes over there.
+ * The chat's uncommitted changes to the gadget, as its durable code state carries them: the
+ * gadget pinned at the committed tree the test mounted, plus one recorded change per entry, where
+ * a `null` content deletes the file.
  */
-function proposedChangesUpdate(
-  committed: Uint8Array,
-  edits: Record<string, string | null>,
-): Uint8Array {
-  const doc = new Y.Doc()
-  Y.applyUpdateV2(doc, committed)
-  const map = doc.getMap<Y.Text>(FILES_ROOT)
-  for (const [filename, content] of Object.entries(edits)) {
-    if (content === null) map.delete(filename)
-    else map.set(filename, new Y.Text(content))
+function chatCodeChanges(
+  baseCommit: string, changes: Record<string, string | null>,
+): ChatCodeChanges {
+  const fileChanges: [string, FileChange][] = Object.entries(changes).map(
+    ([filename, content]) => [filename, content === null ? { remove: true } : { set: content }],
+  )
+  const epochChange: CodeChange = { [GADGET_ID]: fileChanges }
+  return {
+    chatId: CHAT_ID,
+    codeBase: {
+      pins: [{ gadgetId: GADGET_ID, baseCommit, mergedCommit: baseCommit }],
+      generation: 0,
+      revision: 0,
+    },
+    epochChange,
+    rowsThrough: 0,
   }
-  return Y.encodeStateAsUpdateV2(doc)
+}
+
+/** Lets the committed-tree fetch, the OT client's queue, and the coalesced re-renders land. */
+async function settle() {
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
 }
 
 /**
- * Mounts the editor over `files` and syncs them in as the server would.
+ * Mounts the code view over `files` as the gadget's committed head.
  *
- * Pass `proposal` to mount in branch mode instead: it receives the committed update and returns the
- * branch's proposed changes, which the component then shows as the unaccepted diff.
+ * Pass `changes` to mount inside a chat instead: they become the chat's uncommitted changes on top
+ * of those committed files, which the view then shows as the unaccepted diff.
  */
 async function mountEditor(
   files: Record<string, string>,
-  gadgetTitle = 'Gadget',
-  proposal?: (committed: Uint8Array) => Uint8Array,
+  { gadgetTitle = 'Gadget', changes }: {
+    gadgetTitle?: string
+    changes?: Record<string, string | null>
+  } = {},
 ) {
-  const overseer = fakeOverseer()
-  const committed = Object.keys(files).length > 0 ? committedFilesUpdate(files) : null
-  const proposedChanges = committed && proposal ? proposal(committed) : undefined
+  const headCommitId = `head-${commitCounter++}`
+  const overseer = fakeOverseer({ [headCommitId]: files })
+  const chatChanges = changes && chatCodeChanges(headCommitId, changes)
 
   await act(async () => {
     root.render(
       <GadgetCodeInterface
-        overseer={overseer.stub}
-        filesRoot={FILES_ROOT}
+        overseer={overseer}
+        workpieceId={GADGET_ID}
+        headCommitId={headCommitId}
         gadgetTitle={gadgetTitle}
         isAgentActive={false}
-        selectedChatId={proposedChanges ? 1 : null}
-        proposedChanges={proposedChanges}
+        selectedChatId={chatChanges ? CHAT_ID : null}
+        chatChanges={chatChanges}
       />,
     )
   })
-
-  await act(async () => {
-    const subscriber = overseer.subscriber()
-    if (committed) {
-      subscriber.update({
-        version: 1,
-        timestamp: new Date(),
-        update: committed,
-      })
-    }
-    subscriber.ready()
-  })
+  await settle()
 
   return overseer
 }
@@ -214,7 +212,7 @@ describe('GadgetCodeInterface source download', () => {
       'server.js': 'export default {}',
       'README.md': '# Gadget',
       'docs/notes.md': 'Ghi chú',
-    }, 'Báo cáo tuần')
+    }, { gadgetTitle: 'Báo cáo tuần' })
 
     await act(async () => { downloadSourceButton()?.click() })
 
@@ -229,19 +227,20 @@ describe('GadgetCodeInterface source download', () => {
     )
   })
 
-  it('downloads the proposed files on screen, without the one the proposal deletes', async () => {
+  it('downloads the files on screen, without the one the chat deletes', async () => {
     await mountEditor(
       {
         'README.md': '# Gadget',
         'server.js': 'export default {}',
         'legacy.js': 'superseded',
       },
-      'Gadget',
-      committed => proposedChangesUpdate(committed, {
-        'server.js': 'export default { proposed: true }',
-        'client.js': 'added on the branch',
-        'legacy.js': null,
-      }),
+      {
+        changes: {
+          'server.js': 'export default { proposed: true }',
+          'client.js': 'added on the branch',
+          'legacy.js': null,
+        },
+      },
     )
 
     await act(async () => { downloadSourceButton()?.click() })
@@ -257,11 +256,10 @@ describe('GadgetCodeInterface source download', () => {
     )
   })
 
-  it('offers no source download when the proposal deletes every file', async () => {
+  it('offers no source download when the chat deletes every file', async () => {
     await mountEditor(
       { 'server.js': 'export default {}' },
-      'Gadget',
-      committed => proposedChangesUpdate(committed, { 'server.js': null }),
+      { changes: { 'server.js': null } },
     )
 
     // The name is still listed, struck through, so the user can see the deletion -- but there is
