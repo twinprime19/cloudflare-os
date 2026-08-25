@@ -35,7 +35,7 @@ msgstr "{0, plural, other {# tài nguyên cần thêm}}"
 
 #. placeholder {0}: row.hidden
 msgid "{0, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
-msgstr ""
+msgstr "{0, plural, other {Hiện # dòng đã xóa bị ẩn}}"
 
 #. placeholder {0}: formatOf(gadget.output).noun
 msgid "{0} · Click to open"
@@ -52,11 +52,11 @@ msgstr "{0} đã chấp nhận thay đổi"
 
 #. placeholder {0}: entry.message.author.name
 msgid "{0} brought the gadget's latest changes into this draft"
-msgstr ""
+msgstr "{0} đã đưa các thay đổi mới nhất của gadget vào bản nháp này"
 
 #. placeholder {0}: entry.message.author.name
 msgid "{0} brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
-msgstr ""
+msgstr "{0} đã đưa các thay đổi mới nhất của gadget vào bản nháp này — {conflictCount} {conflictCount, plural, other {tệp có}} xung đột được đánh dấu trong mã"
 
 #. placeholder {0}: entry.requestedBy.name
 msgid "{0} compacted the context"
@@ -392,7 +392,7 @@ msgid "Blueprints"
 msgstr "Blueprint"
 
 msgid "Bring in latest changes"
-msgstr ""
+msgstr "Đưa vào thay đổi mới nhất"
 
 msgid "Browse all blueprints"
 msgstr "Duyệt tất cả blueprint"
@@ -504,7 +504,7 @@ msgid "Close activity"
 msgstr "Đóng hoạt động"
 
 msgid "Close files"
-msgstr ""
+msgstr "Đóng ngăn tệp"
 
 msgid "Close gadget pane"
 msgstr "Đóng ngăn gadget"
@@ -660,7 +660,7 @@ msgid "Copy {0}"
 msgstr "Sao chép {0}"
 
 msgid "Copy code"
-msgstr ""
+msgstr "Sao chép mã"
 
 msgid "Copy failed"
 msgstr "Sao chép thất bại"
@@ -1101,10 +1101,10 @@ msgid "Failed to load blueprint."
 msgstr "Không thể tải blueprint."
 
 msgid "Failed to load this conversation's code changes. Try reloading the page."
-msgstr ""
+msgstr "Không thể tải các thay đổi mã của cuộc trò chuyện này. Thử tải lại trang."
 
 msgid "Failed to load this gadget's code."
-msgstr ""
+msgstr "Không thể tải mã của gadget này."
 
 msgid "Failed to prepare the logo image."
 msgstr "Không thể chuẩn bị hình ảnh logo."
@@ -1150,7 +1150,7 @@ msgid "Full screen is available in {0} view"
 msgstr "Chế độ toàn màn hình khả dụng trong chế độ xem {0}"
 
 msgid "Full-screen preview"
-msgstr ""
+msgstr "Xem trước toàn màn hình"
 
 msgid "Future <0>{actionLabel}</0> actions on <1>{resourceTitle}</1> will be applied automatically, without asking for approval. This action will be applied now too."
 msgstr "Các hành động <0>{actionLabel}</0> trong tương lai trên <1>{resourceTitle}</1> sẽ được áp dụng tự động, không cần yêu cầu duyệt. Hành động này cũng sẽ được áp dụng ngay bây giờ."
@@ -1443,7 +1443,7 @@ msgid "More blueprint actions"
 msgstr "Hành động khác cho blueprint"
 
 msgid "More workspace views and actions"
-msgstr ""
+msgstr "Chế độ xem và hành động khác cho không gian làm việc"
 
 msgid "Move down"
 msgstr "Di chuyển xuống"
@@ -1628,7 +1628,7 @@ msgid "Not connected"
 msgstr "Chưa kết nối"
 
 msgid "Not now"
-msgstr ""
+msgstr "Không phải bây giờ"
 
 msgid "Nothing after it was kept."
 msgstr "Không có gì sau đó được giữ lại."
@@ -1670,7 +1670,7 @@ msgid "Open"
 msgstr "Mở"
 
 msgid "Open a conversation and build with the agent, and its accepted files will appear here."
-msgstr ""
+msgstr "Mở một cuộc trò chuyện và xây dựng cùng tác nhân, các tệp đã được chấp nhận của cuộc trò chuyện đó sẽ xuất hiện ở đây."
 
 #. placeholder {0}: blueprint.metadata.title
 #. placeholder {0}: metadata.title
@@ -1685,7 +1685,7 @@ msgid "Open featured blueprint {0}"
 msgstr "Mở blueprint nổi bật {0}"
 
 msgid "Open files"
-msgstr ""
+msgstr "Mở ngăn tệp"
 
 msgid "Open larger screenshot of {title}"
 msgstr "Mở ảnh chụp màn hình lớn hơn của {title}"
@@ -1762,7 +1762,7 @@ msgid "Press <0>Esc</0> to exit full screen"
 msgstr "Nhấn <0>Esc</0> để thoát chế độ toàn màn hình"
 
 msgid "Preview"
-msgstr ""
+msgstr "Xem trước"
 
 #. placeholder {0}: attachment.name ?? t`attached file`
 msgid "Preview {0}"
@@ -1775,7 +1775,7 @@ msgid "Primary"
 msgstr "Chính"
 
 msgid "Primary navigation"
-msgstr ""
+msgstr "Điều hướng chính"
 
 msgid "Processing..."
 msgstr "Đang xử lý..."
@@ -2151,7 +2151,7 @@ msgid "Some auto-approval options could not be loaded."
 msgstr "Không thể tải một số tùy chọn duyệt tự động."
 
 msgid "Someone else's changes were accepted in the meantime, so this draft's changes can't be applied as-is. Bring the latest changes into this draft first; any conflicts will be marked in the code for you (or the agent) to resolve before accepting again."
-msgstr ""
+msgstr "Thay đổi của người khác đã được chấp nhận trong lúc đó, nên không thể áp dụng nguyên trạng các thay đổi của bản nháp này. Trước tiên, đưa các thay đổi mới nhất vào bản nháp này; mọi xung đột sẽ được đánh dấu trong mã để bạn (hoặc tác nhân) giải quyết trước khi chấp nhận lại."
 
 msgid "Something went wrong"
 msgstr "Đã xảy ra lỗi"
@@ -2244,7 +2244,7 @@ msgid "The current screenshot will stay unless you upload a new one."
 msgstr "Ảnh chụp màn hình hiện tại sẽ được giữ nguyên trừ khi bạn tải lên ảnh mới."
 
 msgid "The gadget changed since this draft started"
-msgstr ""
+msgstr "Gadget đã thay đổi kể từ khi bắt đầu bản nháp này"
 
 #. placeholder {0}: example!.modelId
 msgid "The model identifier as specified by the provider (e.g., '{0}')"
@@ -2325,7 +2325,7 @@ msgid "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
 msgstr "Thao tác này sẽ xóa <0>{deletingFile}</0> khỏi gadget. Bạn không thể hoàn tác việc này."
 
 msgid "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
-msgstr ""
+msgstr "Không thể hủy bỏ bản cập nhật này: nó đã đưa vào các thay đổi vốn đã được chấp nhận ở nơi khác. Thay vào đó, chỉnh sửa các tệp."
 
 msgid "This workspace can’t be shared"
 msgstr "Không thể chia sẻ không gian làm việc này"
@@ -2575,10 +2575,10 @@ msgid "Yes, disconnect"
 msgstr "Có, ngắt kết nối"
 
 msgid "You brought the gadget's latest changes into this draft"
-msgstr ""
+msgstr "Bạn đã đưa các thay đổi mới nhất của gadget vào bản nháp này"
 
 msgid "You brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
-msgstr ""
+msgstr "Bạn đã đưa các thay đổi mới nhất của gadget vào bản nháp này — {conflictCount} {conflictCount, plural, other {tệp có}} xung đột được đánh dấu trong mã"
 
 msgid "You can copy it again anytime from Share links"
 msgstr "Bạn có thể sao chép lại bất cứ lúc nào từ Liên kết chia sẻ"
@@ -2640,7 +2640,7 @@ msgstr "Các chỉnh sửa của bạn vẫn đang là bản nháp."
 
 #. placeholder {0}: formatFullTimestamp(lastEditedAt)
 msgid "Your edits are still a live draft. Last edited {0}"
-msgstr ""
+msgstr "Các chỉnh sửa của bạn vẫn đang là bản nháp. Chỉnh sửa lần cuối {0}"
 
 msgid "Your workspaces"
 msgstr "Không gian làm việc của bạn"
