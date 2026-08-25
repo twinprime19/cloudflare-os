@@ -12,7 +12,7 @@ import { WorkshopButton, WorkshopIconButton } from './components/WorkshopControl
 import CodeEditor from './CodeEditor'
 import CodeDiffEditor from './CodeDiffEditor'
 import type { StreamingProposedChanges } from './ChatInterface'
-import { saveTextToFile } from './fileTransfers'
+import { downloadSourceZip, saveTextToFile } from './fileTransfers'
 
 // RpcTarget implementation for receiving code updates from the server
 class CodeSubscriberImpl extends RpcTarget implements CodeSubscriber {
@@ -56,6 +56,8 @@ interface GadgetCodeInterfaceProps {
   // WorkpieceSummary.filesRoot). The Yjs doc is shared by the whole workspace; this selects which
   // workpiece's files the editor shows.
   filesRoot: string
+  // Names the source archive the download action produces.
+  gadgetTitle: string
   height?: string | number
   onCodeChange?: () => void
   selectedChatId?: number | null
@@ -135,7 +137,7 @@ type QueuedCodeUpdate = {
   update: Uint8Array
 }
 
-export default function GadgetCodeInterface({ overseer, filesRoot, height = '100%', onCodeChange, selectedChatId = null, proposedChanges, draftProposedChanges, streamingProposedChanges, streamingActiveFile, isAgentActive, isVisible = true, onHasCodeChange }: GadgetCodeInterfaceProps) {
+export default function GadgetCodeInterface({ overseer, filesRoot, gadgetTitle, height = '100%', onCodeChange, selectedChatId = null, proposedChanges, draftProposedChanges, streamingProposedChanges, streamingActiveFile, isAgentActive, isVisible = true, onHasCodeChange }: GadgetCodeInterfaceProps) {
   const toasts = useKumoToastManager()
   const branchMode = selectedChatId !== null
 
@@ -817,6 +819,29 @@ export default function GadgetCodeInterface({ overseer, filesRoot, height = '100
     saveTextToFile(filename, ytext.toString())
   }, [getDownloadYText, toasts])
 
+  // Always the committed mainline files, never a branch or a streaming preview: those hold changes
+  // the user has not accepted yet, and this downloads the gadget's source as it stands.
+  const handleDownloadSource = useCallback(() => {
+    const filesMap = ydocRef.current.getMap<Y.Text>(filesRoot)
+    const files: Array<[string, string]> = []
+    for (const filename of Array.from(filesMap.keys()).toSorted()) {
+      const ytext = filesMap.get(filename)
+      if (!ytext) continue
+      files.push([filename, ytext.toString()])
+    }
+
+    // The control is hidden while the map is empty, so this only catches a click that raced a
+    // deletion of the last file; there is nothing to archive and nothing to report.
+    if (files.length === 0) return
+
+    try {
+      downloadSourceZip(files, gadgetTitle)
+    } catch (error) {
+      console.error('Failed to build the source archive:', error)
+      toasts.add({ title: 'Could not download the source files', variant: 'error' })
+    }
+  }, [filesRoot, gadgetTitle, toasts])
+
   // Determine if we're in diff mode
   const isDiffMode = branchMode || (streamingProposedChanges !== undefined && streamingYdocRef.current !== null)
 
@@ -877,6 +902,7 @@ export default function GadgetCodeInterface({ overseer, filesRoot, height = '100
           onFileDelete={handleFileDelete}
           onFileRename={handleFileRename}
           onFileDownload={handleFileDownload}
+          onDownloadSource={fileNames.length > 0 ? handleDownloadSource : undefined}
         />
         <div className="flex flex-col bg-kumo-base" style={{ flex: 1, minWidth: 0 }}>
           {activeFile && (

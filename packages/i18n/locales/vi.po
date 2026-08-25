@@ -912,6 +912,9 @@ msgstr "Tải xuống tệp lưu trữ"
 msgid "Download file"
 msgstr "Tải xuống tệp"
 
+msgid "Download source"
+msgstr "Tải xuống mã nguồn"
+
 msgid "Downloading..."
 msgstr "Đang tải xuống..."
 
