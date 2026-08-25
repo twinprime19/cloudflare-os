@@ -206,6 +206,68 @@ describe('source zip download', () => {
     })
   })
 
+  it('drops a backslash traversal, which a Windows extractor would follow out of the folder', async () => {
+    const { blob } = await captureDownload(() => downloadSourceZip([
+      ['..\\..\\evil.bat', 'traversal'],
+      ['docs\\..\\escape.js', 'traversal'],
+      ['client.js', 'kept'],
+    ], 'Gadget'))
+
+    expect(await unzipDownload(blob)).toEqual({ 'client.js': 'kept' })
+  })
+
+  it('archives a backslash path as the folder its name means', async () => {
+    const { blob } = await captureDownload(
+      () => downloadSourceZip([['docs\\a.md', 'Ghi chú']], 'Gadget'),
+    )
+
+    expect(await unzipDownload(blob)).toEqual({ 'docs/a.md': 'Ghi chú' })
+  })
+
+  it('drops a drive-lettered absolute path, however it is dressed up', async () => {
+    const { blob } = await captureDownload(() => downloadSourceZip([
+      ['C:\\abs.txt', 'absolute'],
+      // All three reduce to the same `C:/evil.bat`, which is why the drive check has to run on the
+      // reduced segments rather than on the name as it arrived.
+      ['./C:/evil.bat', 'absolute'],
+      ['.\\C:\\evil.bat', 'absolute'],
+      ['/C:/evil.bat', 'absolute'],
+      ['client.js', 'kept'],
+    ], 'Gadget'))
+
+    expect(await unzipDownload(blob)).toEqual({ 'client.js': 'kept' })
+  })
+
+  it('drops `__proto__` rather than letting it corrupt the whole archive', async () => {
+    const { blob } = await captureDownload(() => downloadSourceZip([
+      ['README.md', 'keep'],
+      ['__proto__', 'pwn'],
+    ], 'Gadget'))
+
+    // An exact match, not a `README.md` lookup: as an entry key `__proto__` sets the entry object's
+    // prototype, and the archive that comes out carries thousands of junk entries, not one.
+    expect(await unzipDownload(blob)).toEqual({ 'README.md': 'keep' })
+  })
+
+  it('collapses the separator noise an extractor would collapse anyway, last name wins', async () => {
+    const { blob } = await captureDownload(() => downloadSourceZip([
+      ['a//b.md', 'first'],
+      ['a/./b.md', 'second'],
+    ], 'Gadget'))
+
+    // Both names extract to `a/b.md`, so keeping them apart in the archive would only decide which
+    // one survives at extraction time. They collapse here instead, and the later file wins.
+    expect(await unzipDownload(blob)).toEqual({ 'a/b.md': 'second' })
+  })
+
+  it('keeps a name that ends in a separator as a file, with its content', async () => {
+    const { blob } = await captureDownload(
+      () => downloadSourceZip([['trailing./', 'content']], 'Gadget'),
+    )
+
+    expect(await unzipDownload(blob)).toEqual({ 'trailing.': 'content' })
+  })
+
   it('saves the archive as one blob without opening the file picker', async () => {
     const picker = vi.fn<() => Promise<never>>()
     Object.assign(window, { showSaveFilePicker: picker })

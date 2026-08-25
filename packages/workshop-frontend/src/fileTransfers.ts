@@ -114,16 +114,30 @@ export function saveTextToFile(filename: string, content: string): void {
 /**
  * The archive path a gadget file name gets, or `null` when the file cannot be archived at all.
  *
- * Names are kept verbatim otherwise -- they are the gadget's own file names, so a path-like name
- * (`docs/notes.md`) has to extract as a folder. Only the two shapes no archive may carry are
- * rejected: a name that is empty once leading separators are gone, and one that walks out of the
- * archive root, which some extractors follow.
+ * A path-like name (`docs/notes.md`) keeps its shape -- these are the gadget's own file names, so
+ * it has to extract as a folder. The name is first reduced to the segments an extractor would
+ * actually create: `\` counts as a separator because Windows extractors follow it as one, and empty
+ * and `.` segments are dropped because `unzip` collapses them anyway (`a//b.md` and `a/./b.md` both
+ * land on `a/b.md`, and a name ending in a separator would otherwise extract as an empty directory,
+ * losing its content). What survives is then rejected outright when it is:
+ *
+ * - nothing at all,
+ * - a `..` segment, which walks out of the archive root on extractors that follow it,
+ * - a drive-lettered first segment, which an extractor resolving the entry name against its
+ *   destination folder sends to the drive root instead of into that folder,
+ * - a `__proto__` segment: as a key on the plain entry object it would set that object's prototype
+ *   instead of adding a file, and the archive built from it is garbage rather than short one entry.
+ *
+ * Each of those is judged on the reduced segments, never on the name as it arrived: `./C:/x` and
+ * `.\C:\x` reduce to exactly the `C:/x` that a bare `C:\x` does, and all three have to go.
  */
 function sourceEntryPath(filename: string): string | null {
-  const path = filename.replace(/^\/+/, '')
-  if (!path) return null
-  if (path.split('/').includes('..')) return null
-  return path
+  const segments = filename.split(/[/\\]/).filter(segment => segment !== '' && segment !== '.')
+  if (segments.length === 0) return null
+  if (segments.some(segment => segment === '..' || segment === '__proto__')) return null
+  if (/^[A-Za-z]:/.test(segments[0])) return null
+
+  return segments.join('/')
 }
 
 /**
