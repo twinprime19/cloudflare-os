@@ -12,7 +12,7 @@ import { WorkshopButton, WorkshopIconButton } from './components/WorkshopControl
 import CodeEditor from './CodeEditor'
 import CodeDiffEditor from './CodeDiffEditor'
 import type { StreamingProposedChanges } from './ChatInterface'
-import { saveTextToFile } from './fileTransfers'
+import { downloadSourceZip, saveTextToFile } from './fileTransfers'
 
 // RpcTarget implementation for receiving code updates from the server
 class CodeSubscriberImpl extends RpcTarget implements CodeSubscriber {
@@ -56,6 +56,8 @@ interface GadgetCodeInterfaceProps {
   // WorkpieceSummary.filesRoot). The Yjs doc is shared by the whole workspace; this selects which
   // workpiece's files the editor shows.
   filesRoot: string
+  // Names the source archive the download action produces.
+  gadgetTitle: string
   height?: string | number
   onCodeChange?: () => void
   selectedChatId?: number | null
@@ -135,7 +137,7 @@ type QueuedCodeUpdate = {
   update: Uint8Array
 }
 
-export default function GadgetCodeInterface({ overseer, filesRoot, height = '100%', onCodeChange, selectedChatId = null, proposedChanges, draftProposedChanges, streamingProposedChanges, streamingActiveFile, isAgentActive, isVisible = true, onHasCodeChange }: GadgetCodeInterfaceProps) {
+export default function GadgetCodeInterface({ overseer, filesRoot, gadgetTitle, height = '100%', onCodeChange, selectedChatId = null, proposedChanges, draftProposedChanges, streamingProposedChanges, streamingActiveFile, isAgentActive, isVisible = true, onHasCodeChange }: GadgetCodeInterfaceProps) {
   const toasts = useKumoToastManager()
   const branchMode = selectedChatId !== null
 
@@ -831,6 +833,41 @@ export default function GadgetCodeInterface({ overseer, filesRoot, height = '100
       ? computeFileChangeStatuses(filesMapRef.current, previewFilesMap, displayedFiles, changedFiles)
       : undefined
   }, [changedFiles, displayedFiles, isDiffMode, previewFilesMap])
+
+  // The files on the list that still have content behind them, which is what an archive can hold.
+  // A file the displayed proposal deletes keeps its row so the user can see the deletion, but it is
+  // no longer a file they are looking at -- and a proposal that deletes every one of them would
+  // otherwise leave a download control that is visible, enabled, and able to produce nothing.
+  const downloadableFiles = useMemo(() => {
+    if (!fileChangeStatuses) return displayedFiles
+    return displayedFiles.filter(filename => fileChangeStatuses.get(filename) !== 'deleted')
+  }, [displayedFiles, fileChangeStatuses])
+
+  // The archive holds what the code view is showing, down to the file: a proposal the user is
+  // looking at but has not accepted is part of what they see, so it is part of what they get, and
+  // refusing or reverting the proposal puts the download back on the committed files. Content comes
+  // from `getDownloadYText`, the same resolution the per-file download uses, so the two can never
+  // disagree about a file's contents.
+  const handleDownloadSource = useCallback(() => {
+    const files: Array<[string, string]> = []
+    for (const filename of downloadableFiles) {
+      const ytext = getDownloadYText(filename)
+      if (!ytext) continue
+      files.push([filename, ytext.toString()])
+    }
+
+    // Not reachable from a visible control, which is hidden while nothing is downloadable: this
+    // catches a click that raced the last file out of the map. Nothing to archive, nothing to say.
+    if (files.length === 0) return
+
+    try {
+      downloadSourceZip(files, gadgetTitle)
+    } catch (error) {
+      console.error('Failed to build the source archive:', error)
+      toasts.add({ title: 'Could not download the source files', variant: 'error' })
+    }
+  }, [downloadableFiles, gadgetTitle, getDownloadYText, toasts])
+
   const activeFileDownloadable = activeFile ? displayedFiles.includes(activeFile) : false
   const activeFileModeLabel = isEditingLocked
     ? 'Reviewing changes in'
@@ -877,6 +914,7 @@ export default function GadgetCodeInterface({ overseer, filesRoot, height = '100
           onFileDelete={handleFileDelete}
           onFileRename={handleFileRename}
           onFileDownload={handleFileDownload}
+          onDownloadSource={downloadableFiles.length > 0 ? handleDownloadSource : undefined}
         />
         <div className="flex flex-col bg-kumo-base" style={{ flex: 1, minWidth: 0 }}>
           {activeFile && (

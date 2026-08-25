@@ -912,6 +912,12 @@ msgstr "Download archive"
 msgid "Download file"
 msgstr "Download file"
 
+msgid "Download source"
+msgstr "Download source"
+
+msgid "Download source as shown here, including changes you have not accepted"
+msgstr "Download source as shown here, including changes you have not accepted"
+
 msgid "Downloading..."
 msgstr "Downloading..."
 

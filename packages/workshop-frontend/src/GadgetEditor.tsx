@@ -1686,6 +1686,7 @@ export default function GadgetEditor() {
                 <GadgetCodeInterface
                   overseer={overseer.stub}
                   filesRoot={selectedFilesRoot}
+                  gadgetTitle={selectedGadgetSummary?.title ?? 'Gadget'}
                   height={RIGHT_CONTENT_H}
                   onCodeChange={() => setUiReloadTrigger(count => count + 1)}
                   selectedChatId={effectiveSelectedChatId}
