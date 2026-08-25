@@ -135,8 +135,39 @@ function committedFilesUpdate(files: Record<string, string>): Uint8Array {
   return Y.encodeStateAsUpdateV2(doc)
 }
 
-async function mountEditor(files: Record<string, string>, gadgetTitle = 'Gadget') {
+/**
+ * The `proposedChanges` update a chat's branch would carry: `edits` applied on top of the committed
+ * state, where a `null` content deletes the file. Built from the very bytes the server sends as the
+ * committed update, so the two share struct ids and a deletion in here actually deletes over there.
+ */
+function proposedChangesUpdate(
+  committed: Uint8Array,
+  edits: Record<string, string | null>,
+): Uint8Array {
+  const doc = new Y.Doc()
+  Y.applyUpdateV2(doc, committed)
+  const map = doc.getMap<Y.Text>(FILES_ROOT)
+  for (const [filename, content] of Object.entries(edits)) {
+    if (content === null) map.delete(filename)
+    else map.set(filename, new Y.Text(content))
+  }
+  return Y.encodeStateAsUpdateV2(doc)
+}
+
+/**
+ * Mounts the editor over `files` and syncs them in as the server would.
+ *
+ * Pass `proposal` to mount in branch mode instead: it receives the committed update and returns the
+ * branch's proposed changes, which the component then shows as the unaccepted diff.
+ */
+async function mountEditor(
+  files: Record<string, string>,
+  gadgetTitle = 'Gadget',
+  proposal?: (committed: Uint8Array) => Uint8Array,
+) {
   const overseer = fakeOverseer()
+  const committed = Object.keys(files).length > 0 ? committedFilesUpdate(files) : null
+  const proposedChanges = committed && proposal ? proposal(committed) : undefined
 
   await act(async () => {
     root.render(
@@ -145,17 +176,19 @@ async function mountEditor(files: Record<string, string>, gadgetTitle = 'Gadget'
         filesRoot={FILES_ROOT}
         gadgetTitle={gadgetTitle}
         isAgentActive={false}
+        selectedChatId={proposedChanges ? 1 : null}
+        proposedChanges={proposedChanges}
       />,
     )
   })
 
   await act(async () => {
     const subscriber = overseer.subscriber()
-    if (Object.keys(files).length > 0) {
+    if (committed) {
       subscriber.update({
         version: 1,
         timestamp: new Date(),
-        update: committedFilesUpdate(files),
+        update: committed,
       })
     }
     subscriber.ready()
@@ -194,6 +227,47 @@ describe('GadgetCodeInterface source download', () => {
       ],
       'Báo cáo tuần',
     )
+  })
+
+  it('downloads the proposed files on screen, without the one the proposal deletes', async () => {
+    await mountEditor(
+      {
+        'README.md': '# Gadget',
+        'server.js': 'export default {}',
+        'legacy.js': 'superseded',
+      },
+      'Gadget',
+      committed => proposedChangesUpdate(committed, {
+        'server.js': 'export default { proposed: true }',
+        'client.js': 'added on the branch',
+        'legacy.js': null,
+      }),
+    )
+
+    await act(async () => { downloadSourceButton()?.click() })
+
+    expect(mocks.downloadSourceZip).toHaveBeenCalledTimes(1)
+    expect(mocks.downloadSourceZip).toHaveBeenCalledWith(
+      [
+        ['README.md', '# Gadget'],
+        ['client.js', 'added on the branch'],
+        ['server.js', 'export default { proposed: true }'],
+      ],
+      'Gadget',
+    )
+  })
+
+  it('offers no source download when the proposal deletes every file', async () => {
+    await mountEditor(
+      { 'server.js': 'export default {}' },
+      'Gadget',
+      committed => proposedChangesUpdate(committed, { 'server.js': null }),
+    )
+
+    // The name is still listed, struck through, so the user can see the deletion -- but there is
+    // nothing left to archive, and a control that can only produce an empty file is worse than none.
+    expect(container.textContent).toContain('server.js')
+    expect(downloadSourceButton()).toBeNull()
   })
 
   it('reports a failed archive instead of throwing at the click', async () => {

@@ -20,7 +20,8 @@ interface FileSidebarProps {
   onFileDelete: (filename: string) => void
   onFileRename: (oldName: string, newName: string) => void
   onFileDownload: (filename: string) => void
-  // Downloads the whole source tree. Omitted when there is no source to download, which is what
+  // Downloads the whole source tree as it is listed here, unaccepted changes included -- what the
+  // user sees is what the archive holds. Omitted when there is no source to download, which is what
   // hides the control -- the caller decides that, since the files it would archive are its own.
   onDownloadSource?: () => void
   ref?: Ref<FileSidebarHandle>
@@ -130,7 +131,7 @@ export default function FileSidebar({
             <WorkshopIconButton
               onClick={onDownloadSource}
               aria-label={t`Download source`}
-              title={t`Download source`}
+              title={t`Download source as shown here, including changes you have not accepted`}
               className="!h-6 !w-6 text-kumo-subtle hover:bg-kumo-tint hover:text-kumo-default"
             >
               <FileZip size={14} weight="bold" />
