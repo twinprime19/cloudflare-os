@@ -1,10 +1,11 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { Dialog, DropdownMenu, useKumoToastManager } from '@cloudflare/kumo'
-import { DotsThree, DownloadSimple, Pencil, Plus, Trash, X } from '@phosphor-icons/react'
+import { DotsThree, DownloadSimple, FileZip, Pencil, Plus, Trash, X } from '@phosphor-icons/react'
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 import DeleteConfirmationDialog from './components/DeleteConfirmationDialog'
 import { WorkshopButton, WorkshopIconButton, WorkshopInput } from './components/WorkshopControls'
+import { isImeComposing } from './keyboardEvent'
 
 interface FileSidebarProps {
   files: string[]
@@ -20,6 +21,12 @@ interface FileSidebarProps {
   onFileDelete: (filename: string) => void
   onFileRename: (oldName: string, newName: string) => void
   onFileDownload: (filename: string) => void
+  // Downloads the whole source tree as it is listed here, unaccepted changes included -- what the
+  // user sees is what the archive holds. Omitted when there is no source to download, which is what
+  // hides the control -- the caller decides that, since the files it would archive are its own.
+  onDownloadSource?: () => void
+  className?: string
+  onRequestClose?: () => void
   ref?: Ref<FileSidebarHandle>
 }
 
@@ -43,6 +50,9 @@ export default function FileSidebar({
   onFileDelete,
   onFileRename,
   onFileDownload,
+  onDownloadSource,
+  className = '',
+  onRequestClose,
   ref,
 }: FileSidebarProps) {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -116,20 +126,41 @@ export default function FileSidebar({
   }
 
   return (
-    <div className="flex h-full w-[244px] flex-col border-r border-kumo-line bg-kumo-base">
+    <div className={`flex h-full w-[244px] flex-col border-r border-kumo-line bg-kumo-base ${className}`}>
       <div className="flex h-9 shrink-0 items-center justify-between gap-2 px-3 pt-3 pb-2">
         <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-kumo-inactive">
           <Trans>Files</Trans>
         </span>
-        <WorkshopIconButton
-          onClick={() => setIsCreateModalOpen(true)}
-          disabled={editLocked}
-          aria-label={t`New file`}
-          title={t`New file`}
-          className="!h-6 !w-6 text-kumo-subtle hover:bg-kumo-tint hover:text-kumo-default"
-        >
-          <Plus size={14} weight="bold" />
-        </WorkshopIconButton>
+        <div className="flex items-center gap-1">
+          {onDownloadSource && (
+            <WorkshopIconButton
+              onClick={onDownloadSource}
+              aria-label={t`Download source`}
+              title={t`Download source as shown here, including changes you have not accepted`}
+              className="!h-8 !w-8 text-kumo-subtle hover:bg-kumo-tint hover:text-kumo-default md:!h-6 md:!w-6"
+            >
+              <FileZip size={14} weight="bold" />
+            </WorkshopIconButton>
+          )}
+          <WorkshopIconButton
+            onClick={() => setIsCreateModalOpen(true)}
+            disabled={editLocked}
+            aria-label={t`New file`}
+            title={t`New file`}
+            className="!h-8 !w-8 text-kumo-subtle hover:bg-kumo-tint hover:text-kumo-default md:!h-6 md:!w-6"
+          >
+            <Plus size={14} weight="bold" />
+          </WorkshopIconButton>
+          {onRequestClose && (
+            <WorkshopIconButton
+              onClick={onRequestClose}
+              aria-label={t`Close files`}
+              className="!h-8 !w-8 md:!hidden"
+            >
+              <X size={16} />
+            </WorkshopIconButton>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto px-2 pb-3">
@@ -181,7 +212,7 @@ export default function FileSidebar({
         }}
       >
         <Dialog
-          className="!z-[1000] !w-[min(420px,calc(100vw-32px))] overflow-hidden bg-kumo-base p-0 !top-[18%] !-translate-y-0"
+          className="responsive-dialog !z-[1000] !w-[min(420px,calc(100vw-32px))] overflow-hidden bg-kumo-base p-0 !top-[18%] !-translate-y-0"
           size="sm"
         >
           <div className="flex items-start justify-between gap-4 border-b border-kumo-line px-5 py-4">
@@ -215,6 +246,7 @@ export default function FileSidebar({
               value={newFileName}
               onChange={(e) => setNewFileName(e.target.value)}
               onKeyDown={(e) => {
+                if (isImeComposing(e)) return
                 if (e.key === 'Enter') {
                   e.preventDefault()
                   handleCreateFile()
@@ -324,7 +356,7 @@ function FileRow({
   return (
     <div
       className={[
-        'group relative mb-[2px] flex h-7 items-center gap-2 rounded-md px-2 text-[13px] leading-[18px] tracking-[-0.2px] transition-[background-color,box-shadow,color,opacity] duration-150 ease-out',
+        'group relative mb-[2px] flex h-10 items-center gap-2 rounded-md px-2 text-[14px] leading-5 transition-[background-color,box-shadow,color,opacity] duration-150 ease-out md:h-7 md:text-[13px] md:leading-[18px]',
         isRenaming
           ? 'bg-kumo-base ring-1 ring-kumo-ring/40'
           : isActive
@@ -349,6 +381,7 @@ function FileRow({
           onChange={(event) => setRenameValue(event.target.value)}
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => {
+            if (isImeComposing(event)) return
             if (event.key === 'Enter') {
               event.preventDefault()
               onRenameSubmit(renameValue)
@@ -368,7 +401,7 @@ function FileRow({
           autoCapitalize="off"
           autoCorrect="off"
           aria-label={t`Rename ${filename}`}
-          className="min-w-0 flex-1 bg-transparent text-[13px] leading-[18px] tracking-[-0.2px] text-kumo-default outline-none placeholder:text-kumo-inactive"
+          className="min-w-0 flex-1 bg-transparent text-[16px] leading-5 text-kumo-default outline-none placeholder:text-kumo-inactive md:text-[13px] md:leading-[18px]"
         />
       ) : (
         <button
@@ -398,7 +431,7 @@ function FileRow({
               <WorkshopIconButton
                 aria-label={t`Actions for ${filename}`}
                 onClick={(event) => event.stopPropagation()}
-                className="!h-5 !w-5 text-kumo-inactive opacity-0 hover:bg-kumo-tint hover:text-kumo-default focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100"
+                className="!h-8 !w-8 text-kumo-inactive opacity-100 hover:bg-kumo-tint hover:text-kumo-default focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100 md:!h-5 md:!w-5 md:opacity-0"
               >
                 <DotsThree size={14} weight="bold" />
               </WorkshopIconButton>

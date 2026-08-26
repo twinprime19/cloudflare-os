@@ -63,8 +63,8 @@ function ContextPage() {
   useDocumentTitle(t`Context & Skills`)
   const siteName = useSiteName()
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col px-6 sm:px-10">
-      <header className="px-3 pb-4 pt-10">
+    <div className="mx-auto flex h-full w-full max-w-4xl flex-col px-3 sm:px-10">
+      <header className="px-3 pb-4 pt-6 sm:pt-10">
         <h1 className="text-2xl font-semibold tracking-tight text-kumo-default"><Trans>Context &amp; Skills</Trans></h1>
         <p className="mt-1 text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
           <Trans>Curated collections of knowledge your agents read, plus reusable skills they can apply.</Trans>

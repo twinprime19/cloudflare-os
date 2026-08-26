@@ -104,6 +104,18 @@ describe("seedGatekeeperVars", () => {
         { vars: {}, warnings: [] });
   });
 
+  it("seeds the Linear gatekeeper's credentials", () => {
+    assert.deepEqual(
+        seed("gatekeeper-linear", { LINEAR_CLIENT_ID: "id", LINEAR_CLIENT_SECRET: "secret" }),
+        { vars: { CLIENT_ID: "id", CLIENT_SECRET: "secret" }, warnings: [] });
+  });
+
+  it("seeds the Spotify gatekeeper's credentials", () => {
+    assert.deepEqual(
+        seed("gatekeeper-spotify", { SPOTIFY_CLIENT_ID: "id", SPOTIFY_CLIENT_SECRET: "secret" }),
+        { vars: { CLIENT_ID: "id", CLIENT_SECRET: "secret" }, warnings: [] });
+  });
+
   it("leaves a gatekeeper with no shared creds and no passthrough vars untouched", () => {
     assert.deepEqual(
         seed("gatekeeper-email", { GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret" }),
@@ -114,6 +126,21 @@ describe("seedGatekeeperVars", () => {
     assert.deepEqual(
         seed("gatekeeper-mcp", { MCP_ALLOW_INSECURE: "true" }, { MCP_ALLOW_INSECURE: "false" }),
         { vars: { MCP_ALLOW_INSECURE: "true" }, warnings: [] });
+  });
+
+  it("passes the portal's hidden server ids through, without needing credentials", () => {
+    assert.deepEqual(
+        seed("gatekeeper-mcp-portal", {
+          MCP_PORTAL_URL: "https://portal.example.com/mcp",
+          MCP_PORTAL_HIDDEN_SERVER_IDS: "jira-mcp-server,wiki-mcp-server",
+        }),
+        {
+          vars: {
+            MCP_PORTAL_URL: "https://portal.example.com/mcp",
+            MCP_PORTAL_HIDDEN_SERVER_IDS: "jira-mcp-server,wiki-mcp-server",
+          },
+          warnings: [],
+        });
   });
 
   it("seeds the Microsoft gatekeeper's credentials and renames the tenant id", () => {

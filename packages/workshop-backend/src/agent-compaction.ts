@@ -1,7 +1,7 @@
 import {SUGGESTED_MODELS, WORKERS_AI_OUTPUT_LIMIT, type AiChatMessage, type AiModelConfig}
   from "@gadgets/workshop-shared/api";
+import {composeCodeChange, type CodeChange} from "@gadgets/workshop-shared/code-change";
 import type {Api, Message, Model} from "@earendil-works/pi-ai";
-import * as Y from "yjs";
 import type {ChatBindingEntry, CompactionCheckpoint} from "./agent";
 import {zeroUsage} from "./ai-invoke";
 
@@ -89,30 +89,34 @@ export function startsAgentTurn(message: AiChatMessage): boolean {
 }
 
 /**
- * One batch of code changes, addressed by the chat sequence that recorded it. `update` is absent for
- * a batch that records only gadget creations or binding additions.
+ * One batch of code changes, addressed by the chat sequence that recorded it. `change` is absent
+ * for a batch that records only gadget creations or binding additions.
  */
-export type ChangeBatch = {sequence: number, update?: Uint8Array};
+export type ChangeBatch = {sequence: number, change?: CodeChange};
 
 /**
  * Folds `merge` and `revert` over a chat log. A merge accepts through `mergeThrough` inclusively; a
  * revert discards from `revertFrom` onward. `seed` carries batches already proposed before the log
- * begins, as a checkpoint records. Returns the batches still proposed, oldest first, plus the
- * updates the merges accepted -- the single rule both the proposed-changes view and a new checkpoint
- * are derived from.
+ * begins, as a checkpoint records. Returns the batches still proposed, oldest first -- the single
+ * rule both the proposed-changes view and a new checkpoint are derived from. (Accepted batches are
+ * simply dropped: every accepted batch's content lives in commits from its epoch-closing merge on,
+ * so nothing replays it.)
  */
 export function foldProposedChanges(
-    messages: Iterable<AiChatMessage>, seed: readonly ChangeBatch[] = [])
-    : {proposed: ChangeBatch[], accepted: Uint8Array[]} {
+    messages: Iterable<AiChatMessage>, seed: readonly ChangeBatch[] = []): ChangeBatch[] {
   let proposed = [...seed];
-  let accepted: Uint8Array[] = [];
   for (let message of messages) {
     if (message.type === "changes") {
-      proposed.push({sequence: message.sequence, update: message.update});
+      // An empty conversion boundary (see AiChatMessageBody.conversionBoundary) proposes
+      // nothing: the chat had no uncommitted legacy content to convert, and the boundary alone
+      // must not make a read-only migrated chat show proposed changes. A boundary *with* a change
+      // is an ordinary proposed batch.
+      if (!message.conversionBoundary || message.change !== undefined) {
+        proposed.push({sequence: message.sequence, change: message.change});
+      }
     } else if (message.type === "merge") {
       while (proposed.length > 0 && proposed[0].sequence <= message.mergeThrough) {
-        let {update} = proposed.shift()!;
-        if (update !== undefined) accepted.push(update);
+        proposed.shift();
       }
     } else if (message.type === "revert") {
       while (proposed.length > 0 &&
@@ -121,7 +125,79 @@ export function foldProposedChanges(
       }
     }
   }
-  return {proposed, accepted};
+  return proposed;
+}
+
+/**
+ * Marks the messages of a chat log (or log tail) that lie in merged or reverted ranges: the
+ * single status rule shared by agent replay, chat-doc construction, and the merge/revert guards
+ * in overseer.ts. The semantics mirror foldProposedChanges: processing is strictly in log order,
+ * so a marking message affects only messages recorded *before* it; a merge accepts through
+ * `mergeThrough` inclusively; a revert discards from `revertFrom` up to (not including) the
+ * revert message itself; and the earliest marking wins. A "changes" message left unmarked is
+ * still proposed. Non-"changes" messages in a range are marked too: replay uses that to elide
+ * tool reads whose content was later reverted.
+ */
+export function chatChangeStatuses(
+    messages: Iterable<AiChatMessage>): Map<number, "merged" | "reverted"> {
+  let statuses = new Map<number, "merged" | "reverted">();
+  let seen: number[] = [];
+  let mark = (from: number, through: number, status: "merged" | "reverted") => {
+    for (let sequence of seen) {
+      if (sequence >= from && sequence <= through && !statuses.has(sequence)) {
+        statuses.set(sequence, status);
+      }
+    }
+  };
+  for (let msg of messages) {
+    if (msg.type === "merge") {
+      mark(0, msg.mergeThrough, "merged");
+    } else if (msg.type === "revert") {
+      mark(msg.revertFrom, msg.sequence - 1, "reverted");
+    }
+    seen.push(msg.sequence);
+  }
+  return statuses;
+}
+
+/**
+ * The code-log version a legacy (pre-git-storage) chat's Yjs doc base is anchored to: the
+ * maximum over every version the chat's history references -- the active compaction checkpoint's
+ * stamp, `observedCodeVersion` on tool calls and "changes" messages, and legacy merge messages'
+ * `version`. A chat that references no version reads the legacy log's tip ("current"), which is
+ * stable now that the log is read-only.
+ *
+ * The *maximum* matters, not the first stamp (the agent's own version-lock latch): a Yjs update
+ * applies cleanly to any doc state that includes the state it was built against, and every update
+ * in the log was built against the doc at *some* referenced version, so the max is the smallest
+ * base that can represent them all. Anchoring lower silently loses content: a user draft
+ * materialized while mainline was ahead of the agent's latch (its stamp is the then-current
+ * version) can reference Yjs items the lower-anchored doc lacks, which Yjs then parks as pending
+ * structs -- the edits just vanish from the flattened files. Merge versions are included so a
+ * chat whose own accept was the last mainline movement anchors at the tip it created, keeping
+ * the migration's pins (see git-migration.ts) fast-forwardable without a spurious
+ * update-from-mainline round.
+ *
+ * Used by the git-storage migration's conversion anchor (the version its conversion change's pins
+ * resolve at). Migration-internal: nothing else reads the legacy log anymore.
+ */
+export function legacyChatBaseVersion(
+    checkpoint: CompactionCheckpoint | undefined,
+    messages: Iterable<AiChatMessage>): number | "current" {
+  let anchor = checkpoint?.observedCodeVersion;
+  let bump = (version: number | undefined) => {
+    if (version !== undefined && (anchor === undefined || version > anchor)) anchor = version;
+  };
+  for (let msg of messages) {
+    if (msg.type === "message") {
+      for (let call of msg.toolCalls ?? []) bump(call.observedCodeVersion);
+    } else if (msg.type === "changes") {
+      bump(msg.observedCodeVersion);
+    } else if (msg.type === "merge") {
+      bump(msg.version);
+    }
+  }
+  return anchor ?? "current";
 }
 
 /**
@@ -305,7 +381,6 @@ export function buildCompactionState(
   let chatBindings = new Map(previous?.chatBindings ?? initialBindings);
   let callbackNameCounter = 0;
   let nextChangeId = previous?.nextChangeId ?? 0;
-  let observedCodeVersion = previous?.observedCodeVersion;
 
   for (let message of compacted) {
     if (message.type === "message") {
@@ -315,7 +390,6 @@ export function buildCompactionState(
         }
       }
       for (let call of message.toolCalls ?? []) {
-        observedCodeVersion ??= call.observedCodeVersion;
         if (call.error) continue;
         if (call.toolName === "createGadget" && call.output !== undefined) {
           chatBindings.set(call.input.bindingName, {type: "workpiece", id: call.output.gadgetId});
@@ -338,28 +412,54 @@ export function buildCompactionState(
           chatBindings.set(bindingName, {type: "workpiece", id: gadgetId});
         }
       }
-      observedCodeVersion ??= message.observedCodeVersion;
       ++nextChangeId;
     }
   }
 
-  // Accepted updates are permanent, so they accumulate across checkpoints; proposed ones stay
-  // addressable by sequence until a merge accepts them or a revert drops them. A carried-forward
-  // prefix is addressed below every message in this span: the previous checkpoint already folded it,
-  // so nothing here can accept or revert part of it.
-  let {proposed, accepted} = foldProposedChanges(
-      compacted, previous?.proposedChanges ? [{sequence: -1, update: previous.proposedChanges}] : []);
-  if (previous?.acceptedChanges) accepted.unshift(previous.acceptedChanges);
-  let stillProposed: Uint8Array[] = [];
+  // Pins active at the boundary, and the epoch it lies in: seeded from the previous checkpoint
+  // and folded over the compacted span -- an epoch boundary (an epochBoundary merge, or a
+  // migrated chat's conversionBoundary changes message) resets both, and a surviving "changes"
+  // message's declarations accumulate. Statuses are computed over the compacted span alone,
+  // which is sound because rollbackChatCompaction guarantees no revert in the tail reaches
+  // below the boundary.
+  let statuses = chatChangeStatuses(compacted);
+  let pins = new Map((previous?.pins ?? []).map(pin => [pin.gadgetId, pin] as const));
+  let epoch = previous?.epoch;
+  for (let message of compacted) {
+    if (message.type === "merge" && message.epochBoundary) {
+      pins.clear();
+      epoch = message.sequence;
+    } else if (message.type === "changes" && statuses.get(message.sequence) !== "reverted") {
+      if (message.conversionBoundary) {
+        pins.clear();
+        epoch = message.sequence;
+      }
+      for (let pin of message.pins ?? []) pins.set(pin.gadgetId, pin);
+    }
+  }
+
+  // Proposed changes stay addressable by sequence until a merge accepts them or a revert drops
+  // them; the checkpoint carries their composition so replay needn't load the compacted
+  // messages. A carried-forward prefix is addressed below every message in this span: the
+  // previous checkpoint already folded it, so nothing here can accept or revert part of it.
+  // Composition is bounded by content size, not edit count, so `proposedChange` can't grow with
+  // history the way merged CRDT updates could.
+  let proposed = foldProposedChanges(
+      compacted,
+      previous?.proposedChange !== undefined
+          ? [{sequence: -1, change: previous.proposedChange}] : []);
+  let proposedChange: CodeChange | undefined;
   for (let batch of proposed) {
-    if (batch.update !== undefined) stillProposed.push(batch.update);
+    if (batch.change === undefined) continue;
+    proposedChange = proposedChange === undefined
+        ? batch.change : composeCodeChange(proposedChange, batch.change);
   }
 
   return {
     chatBindings: [...chatBindings],
     nextChangeId,
-    observedCodeVersion,
-    acceptedChanges: accepted.length === 0 ? undefined : Y.mergeUpdatesV2(accepted),
-    proposedChanges: stillProposed.length === 0 ? undefined : Y.mergeUpdatesV2(stillProposed),
+    pins: pins.size === 0 ? undefined : [...pins.values()],
+    epoch,
+    proposedChange,
   };
 }

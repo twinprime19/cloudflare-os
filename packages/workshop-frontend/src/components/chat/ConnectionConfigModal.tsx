@@ -4,6 +4,7 @@ import { X } from '@phosphor-icons/react'
 import { Trans } from '@lingui/react/macro'
 import type { Connection, ConnectionResource } from '../../data/sample'
 import { logoComponents } from '../ConnectionLogos'
+import { isImeComposing } from '../../keyboardEvent'
 
 export default function ConnectionConfigModal({
   connection,
@@ -40,7 +41,7 @@ export default function ConnectionConfigModal({
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog size="base" className="p-0 overflow-hidden">
+      <Dialog size="base" className="responsive-dialog overflow-hidden p-0">
         {/* Header */}
         <div className="flex items-center gap-3 px-5 pt-5 pb-4">
           <div
@@ -81,6 +82,7 @@ export default function ConnectionConfigModal({
                   value={inputValue}
                   onChange={(e) => setInputValue(e.currentTarget.value)}
                   onKeyDown={(e) => {
+                    if (isImeComposing(e)) return
                     if (e.key === 'Enter') handleAdd()
                   }}
                   placeholder={config.placeholder}

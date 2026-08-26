@@ -38,8 +38,8 @@ describe("parsePo against the real catalog", () => {
     assert.equal(serializePo(catalog), source);
   });
 
-  it("finds all 825 messages", () => {
-    assert.equal(catalog.entries.length, 825);
+  it("finds all 843 messages", () => {
+    assert.equal(catalog.entries.length, 843);
   });
 
   it("joins continuation lines into one logical string", () => {

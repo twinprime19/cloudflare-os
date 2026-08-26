@@ -95,6 +95,16 @@
 # ZOOMINFO_CLIENT_ID=
 # ZOOMINFO_CLIENT_SECRET=
 
+# Linear — linear.app > Settings > API > OAuth applications > Create new.
+# LINEAR_CLIENT_ID=
+# LINEAR_CLIENT_SECRET=
+
+# Spotify — developer.spotify.com/dashboard > Create app, with Web API selected under "APIs used".
+# Spotify rejects `localhost` in a redirect URI, so register the loopback literal instead:
+# http://127.0.0.1:8787/gatekeeper/spotify/oauth (see packages/gatekeeper-spotify/README.md).
+# SPOTIFY_CLIENT_ID=
+# SPOTIFY_CLIENT_SECRET=
+
 
 # ---------------------------------------------------------------------------------------------
 # MCP connectors
@@ -115,6 +125,10 @@
 
 # "true" lets upstream tool annotations drive auto-approval. Off by default.
 # MCP_PORTAL_TRUST_ANNOTATIONS=false
+
+# Comma-separated upstream server IDs to hide from the configurator and refuse at the grant
+# boundary. Unset exposes every server the portal advertises.
+# MCP_PORTAL_HIDDEN_SERVER_IDS=jira-mcp-server,wiki-mcp-server
 
 # "true" allows http:// and private/loopback MCP endpoints for the mcp and mcp-portal gatekeepers.
 # Local dev only — it disables the endpoint safety checks.
