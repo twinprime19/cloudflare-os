@@ -12,7 +12,8 @@ bindings alike.
 
 A model's configuration never leaves the server. `listModels()` and the admin panel both return
 profiles only — `{type, id, name}` — so a provider API token cannot reach a client, admin included.
-Editing a model means supplying its token again.
+Editing a model means supplying its token again — the one exception is renaming it, where
+`renameSharedModel()` carries the stored configuration through untouched and asks for no token.
 
 In AI Gateway mode the gateway's built-in models are listed first, then the shared ones. A shared
 model may not reuse a built-in's id: the built-in is what a chat turn would resolve, so the shared
@@ -74,3 +75,7 @@ The "quick model" (fast, cheap tasks such as generating chat titles) is not an a
 `deleteSharedModel()` removes the catalog entry. A workspace that already bound the model holds its
 own snapshot of the configuration, API token included, taken when the binding was made — deletion does
 not reach into it. **To actually revoke access, rotate the key at the provider.**
+
+Renaming does not reach into those snapshots either: messages already sent and workspace bindings
+already made keep the name they were given, while `listModels()` reports the new one from the next
+call on.

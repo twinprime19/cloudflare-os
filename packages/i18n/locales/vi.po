@@ -1851,6 +1851,9 @@ msgstr "Đổi tên gadget"
 msgid "Rename output"
 msgstr "Đổi tên đầu ra"
 
+msgid "Rename provider"
+msgstr "Đổi tên nhà cung cấp"
+
 msgid "Rename workspace"
 msgstr "Đổi tên không gian làm việc"
 

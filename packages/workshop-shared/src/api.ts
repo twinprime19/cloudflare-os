@@ -1058,6 +1058,15 @@ export interface AdminApi {
   deleteSharedModel(id: string): Promise<void>;
 
   /**
+   * Change a shared model's display name. Its id and stored configuration -- API token included --
+   * are left alone, so renaming never asks for the provider secret again.
+   *
+   * Not retroactive: messages already sent and workspace bindings already made keep the name they
+   * snapshotted. `listModels()` reports the new one from the next call on.
+   */
+  renameSharedModel(id: string, name: string): Promise<void>;
+
+  /**
    * Set the model listed first for every user, which is what a new chat starts on. Pass null for
    * natural order. Throws unless the id names a shared model or a gateway built-in.
    */

@@ -117,6 +117,47 @@ describe("shared AI models", () => {
     });
   });
 
+  it("offers a renamed model under its new name to a different user", async () => {
+    const { profile, config } = freshModel();
+    await adminApi.addSharedModel(profile, config);
+
+    await adminApi.renameSharedModel(profile.id, "Renamed Model");
+
+    await withNewUser("renamed", async api => {
+      const models = await api.listModels();
+      const renamed = models.find(model => model.id === profile.id);
+      // The whole profile again, because renaming re-puts the stored record: were the write to
+      // rebuild the entry from the configuration instead of carrying it through untouched, the
+      // provider API token would surface here rather than staying on the server.
+      expect(renamed).toEqual({ type: "agent", id: profile.id, name: "Renamed Model" });
+    });
+  });
+
+  it("refuses to rename a model no user could reach anyway", async () => {
+    await expect(adminApi.renameSharedModel("integration-test/never-added", "X"))
+      .rejects.toThrow(/no such model/i);
+  });
+
+  it("refuses a blank new name, and stores a padded one trimmed", async () => {
+    const { profile, config } = freshModel();
+    await adminApi.addSharedModel(profile, config);
+
+    await expect(adminApi.renameSharedModel(profile.id, "")).rejects.toThrow(/cannot be empty/i);
+    await expect(adminApi.renameSharedModel(profile.id, "   ")).rejects.toThrow(/cannot be empty/i);
+    // A rejected rename leaves the catalog entry as it was, name included.
+    await withNewUser("unrenamed", async api => {
+      await expect(api.listModels()).resolves.toContainEqual(
+        { type: "agent", id: profile.id, name: profile.name });
+    });
+
+    await adminApi.renameSharedModel(profile.id, "  Padded Name  ");
+
+    await withNewUser("padded", async api => {
+      await expect(api.listModels()).resolves.toContainEqual(
+        { type: "agent", id: profile.id, name: "Padded Name" });
+    });
+  });
+
   it("lists the deployment's default model first for every user", async () => {
     const first = freshModel();
     const second = freshModel();
