@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { DropdownMenu, Switch, useKumoToastManager } from '@cloudflare/kumo'
+import { Dialog, DropdownMenu, Switch, useKumoToastManager } from '@cloudflare/kumo'
 import { RpcStub } from 'capnweb'
 import { useAuthenticatedApi } from '../AuthContext'
 import {
@@ -12,18 +12,21 @@ import {
 } from '@gadgets/workshop-shared/api'
 import {
   Plus,
+  PencilSimple,
   Trash,
   Lightning,
   MagnifyingGlass,
   DotsThreeVertical,
   ShieldWarning,
   Star,
+  X,
 } from '@phosphor-icons/react'
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 import AddModelModal from '../AddModelModal'
 import { useDocumentTitle } from '../useDocumentTitle'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER } from '../components/menuStyles'
+import { WorkshopButton, WorkshopIconButton } from '../components/WorkshopControls'
 
 export const Route = createFileRoute('/providers')({ component: ProvidersPage })
 
@@ -49,6 +52,7 @@ function ModelRow({
   isDisabled,
   isToggling,
   onDelete,
+  onRename,
   onSetDefault,
   onToggleEnabled,
 }: {
@@ -58,6 +62,7 @@ function ModelRow({
   isDisabled: boolean
   isToggling: boolean
   onDelete: () => void
+  onRename: () => void
   onSetDefault: () => void
   onToggleEnabled: (enabled: boolean) => void
 }) {
@@ -135,6 +140,14 @@ function ModelRow({
               <Star size={13} className="mr-2" weight={isDefault ? 'fill' : 'regular'} />
               {isDefault ? t`Clear default model` : t`Set as default`}
             </DropdownMenu.Item>
+            {/* Rename and Delete are for models an admin added; the gateway's built-ins aren't
+                ours to edit. */}
+            {!isBuiltIn && (
+              <DropdownMenu.Item onClick={onRename} className={MENU_ITEM}>
+                <PencilSimple size={13} className="mr-2" />
+                <Trans>Rename</Trans>
+              </DropdownMenu.Item>
+            )}
             {!isBuiltIn && (
               <DropdownMenu.Item variant="danger" onClick={onDelete} className={MENU_ITEM_DANGER}>
                 <Trash size={13} className="mr-2" />
@@ -155,6 +168,65 @@ function Notice({ children }: { children: React.ReactNode }) {
     <div className="flex items-start gap-3 rounded-xl border border-kumo-line bg-kumo-tint px-4 py-3 text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
       {children}
     </div>
+  )
+}
+
+// ─── rename dialog ─────────────────────────────────────────────────────────────
+
+// Only the display name is editable: the id is the key chats and workspaces pin to, and the stored
+// API token never comes back to the client, so it is not re-entered here.
+function RenameProviderDialog({
+  model,
+  value,
+  busy,
+  onValueChange,
+  onClose,
+  onSave,
+}: {
+  model: AiChatAuthorInfo | null
+  value: string
+  busy: boolean
+  onValueChange: (value: string) => void
+  onClose: () => void
+  onSave: () => void
+}) {
+  return (
+    <Dialog.Root open={model !== null} onOpenChange={(open) => { if (!open && !busy) onClose() }}>
+      <Dialog
+        className="!z-[1000] !w-[min(420px,calc(100vw-32px))] overflow-hidden bg-kumo-base p-0 !top-[20%] !-translate-y-0"
+        size="sm"
+      >
+        <form onSubmit={(event) => { event.preventDefault(); onSave() }}>
+          <div className="flex items-start justify-between gap-4 border-b border-kumo-line px-5 py-4">
+            <Dialog.Title className="min-w-0 text-[15px] font-medium leading-5 tracking-[-0.3px] text-kumo-default">
+              <Trans>Rename provider</Trans>
+            </Dialog.Title>
+            <WorkshopIconButton type="button" className="!h-7 !w-7" disabled={busy} aria-label={t`Close`} onClick={onClose}>
+              <X size={16} />
+            </WorkshopIconButton>
+          </div>
+          <div className="px-5 py-4">
+            <label className="block text-[12px] font-medium text-kumo-subtle" htmlFor="rename-provider-name">
+              <Trans>Display name</Trans>
+            </label>
+            <input
+              id="rename-provider-name"
+              autoFocus
+              value={value}
+              disabled={busy}
+              onChange={(event) => onValueChange(event.target.value)}
+              className="mt-1.5 h-9 w-full rounded-lg border border-kumo-line bg-kumo-base px-3 text-[13px] text-kumo-default focus:border-kumo-ring focus:outline-none focus:ring-[3px] focus:ring-kumo-ring/15"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-kumo-line px-5 py-3">
+            <WorkshopButton type="button" disabled={busy} onClick={onClose}><Trans>Cancel</Trans></WorkshopButton>
+            <WorkshopButton tone="primary" type="submit" disabled={busy || !value.trim()}>
+              {busy ? t`Saving…` : t`Save`}
+            </WorkshopButton>
+          </div>
+        </form>
+      </Dialog>
+    </Dialog.Root>
   )
 }
 
@@ -182,6 +254,11 @@ function ProvidersPage() {
   const [loadError, setLoadError] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // The row being renamed (null = dialog closed), its edited name, and whether the write is in
+  // flight.
+  const [renameTarget, setRenameTarget] = useState<AiChatAuthorInfo | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renameBusy, setRenameBusy] = useState(false)
 
   // Mint the admin capability once (the access check happens server-side) and load the catalog.
   useEffect(() => {
@@ -276,6 +353,30 @@ function ProvidersPage() {
       toasts.add({ title: 'Failed to delete provider', variant: 'error' })
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const beginRename = (model: AiChatAuthorInfo) => {
+    setRenameTarget(model)
+    setRenameValue(model.name)
+  }
+
+  // The name is what every user of the deployment sees, so the list is re-read from the server
+  // after the write instead of being patched optimistically. A failed save leaves the dialog open
+  // with the typed name still in it.
+  const saveRename = async () => {
+    const target = renameTarget
+    if (!admin || !target || !renameValue.trim()) return
+    setRenameBusy(true)
+    try {
+      await admin.api.renameSharedModel(target.id, renameValue)
+      await refreshModels()
+      setRenameTarget(null)
+    } catch (err) {
+      console.error('Failed to rename model:', err)
+      toasts.add({ title: 'Failed to rename provider', variant: 'error' })
+    } finally {
+      setRenameBusy(false)
     }
   }
 
@@ -440,6 +541,7 @@ function ProvidersPage() {
                 isDisabled={disabledIds.has(model.id)}
                 isToggling={togglingIds.has(model.id)}
                 onDelete={() => handleDelete(model)}
+                onRename={() => beginRename(model)}
                 onSetDefault={() => handleSetDefault(model.id)}
                 onToggleEnabled={(enabled) => handleToggleEnabled(model.id, enabled)}
               />
@@ -464,6 +566,15 @@ function ProvidersPage() {
           aiConfig={aiConfig}
         />
       )}
+
+      <RenameProviderDialog
+        model={renameTarget}
+        value={renameValue}
+        busy={renameBusy}
+        onValueChange={setRenameValue}
+        onClose={() => setRenameTarget(null)}
+        onSave={() => { void saveRename() }}
+      />
     </div>
   )
 }

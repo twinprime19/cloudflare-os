@@ -1891,6 +1891,9 @@ msgstr "Rename gadget"
 msgid "Rename output"
 msgstr "Rename output"
 
+msgid "Rename provider"
+msgstr "Rename provider"
+
 msgid "Rename workspace"
 msgstr "Rename workspace"
 

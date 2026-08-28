@@ -485,6 +485,19 @@ export class AdminSettings extends DurableObject<Cloudflare.Env> {
   }
 
   /**
+   * Change a shared model's display name, leaving its id and configuration alone.
+   *
+   * Re-puts the record whole (the collection replaces on put), carrying the stored configuration
+   * through rather than rebuilding it -- that is what keeps the provider API token out of the
+   * rename path, so fixing a name never asks an admin for the secret again.
+   */
+  async renameSharedModel(id: string, name: string): Promise<void> {
+    let record = this.storage.sharedAiModels.get(id);
+    if (!record) throw new Error(`No such model: ${id}`);
+    this.storage.sharedAiModels.put({profile: {...record.profile, name}, config: record.config});
+  }
+
+  /**
    * Stop offering a shared model, clearing the deployment default when it pointed here. The row
    * delete lands before the config mutation, so a failed mutation can leave a default naming a
    * model that is gone -- harmless, because listModels() ignores a default id it cannot find.
@@ -780,6 +793,20 @@ export class AdminApiImpl extends RpcTarget implements AdminApi {
 
   deleteSharedModel(id: string): Promise<void> {
     return this.admin.deleteSharedModel(id);
+  }
+
+  /**
+   * Name only: the model's configuration is not part of the request at all, which is how a rename
+   * squares with the write-only token rule above -- nothing to re-enter, nothing echoed back.
+   *
+   * Trimmed here so the stored value is the trimmed one -- the DO is not client-reachable, so this
+   * is the only door in. No length cap, because addSharedModel enforces none: capping only rename
+   * would let an admin add a name they could not then rename to.
+   */
+  async renameSharedModel(id: string, name: string): Promise<void> {
+    let trimmed = name.trim();
+    if (!trimmed) throw new Error("Model name cannot be empty.");
+    await this.admin.renameSharedModel(id, trimmed);
   }
 
   setDefaultModel(id: string | null): Promise<void> {
