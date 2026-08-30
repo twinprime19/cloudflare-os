@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Dialog, Button, Input, Select, SensitiveInput, Collapsible, useKumoToastManager } from '@cloudflare/kumo'
 import { AiChatAuthorInfo, AiModelConfig, AiModelProvider, AiGatewayInfo, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
-import { RpcStub } from 'capnweb'
-import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 
@@ -10,7 +8,8 @@ interface AddModelModalProps {
   visible: boolean
   onCancel: () => void
   onSuccess: () => void
-  authenticatedApi: RpcStub<AuthenticatedApi>
+  /** Stores the model the form built. Rejecting leaves the dialog open with an error toast. */
+  onSubmit: (profile: AiChatAuthorInfo, config: AiModelConfig) => Promise<void>
   aiConfig: AiGatewayInfo | null
 }
 
@@ -91,7 +90,7 @@ function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null
   return options
 }
 
-export default function AddModelModal({ visible, onCancel, onSuccess, authenticatedApi, aiConfig }: AddModelModalProps) {
+export default function AddModelModal({ visible, onCancel, onSuccess, onSubmit, aiConfig }: AddModelModalProps) {
   const toasts = useKumoToastManager()
 
   const [loading, setLoading] = useState(false)
@@ -204,7 +203,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
         ...(!gatewayMode && apiUrl.trim() && { apiUrl: apiUrl.trim() }),
       }
 
-      await authenticatedApi.addModel(profile, config)
+      await onSubmit(profile, config)
       toasts.add({ title: 'AI model added successfully', variant: 'success' })
       onSuccess()
     } catch (error: any) {
@@ -235,7 +234,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
 
   return (
     <Dialog.Root open={visible} onOpenChange={(open) => { if (!open) onCancel() }}>
-      <Dialog className="p-6" size="lg">
+      <Dialog className="responsive-dialog overflow-y-auto p-6" size="lg">
         <Dialog.Title className="text-lg font-semibold mb-4">
           <Trans>Add AI Model</Trans>
         </Dialog.Title>

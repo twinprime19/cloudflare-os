@@ -90,7 +90,7 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
-      <Dialog className="p-6 sm:w-[560px]" size="base">
+      <Dialog className="responsive-dialog overflow-y-auto p-6 sm:w-[560px]" size="base">
         <Dialog.Title className="text-lg font-semibold mb-2 flex items-center gap-2">
           <CloudWarning size={22} weight="bold" className="text-kumo-warning" />
           <Trans>You've reached your free usage limit</Trans>

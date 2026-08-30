@@ -564,7 +564,15 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     this.storage.profile.put(profile);
   }
 
+  /**
+   * The models this user can chat with: the AI Gateway built-ins, then the models an admin offers
+   * to everyone on this deployment, minus the ones the admin has turned off. The deployment's
+   * default model is moved to the front, because callers take the first entry as the one a new chat
+   * starts on.
+   */
   async listModels(): Promise<AiChatAuthorInfo[]> {
+    // One read of the KV mirror serves both the denylist and the default ordering below.
+    let {defaultModelId, disabledModelIds} = await readAdminConfig(this.env);
     let result: AiChatAuthorInfo[] = [];
 
     // When AI Gateway mode is active, include all suggested models for enabled providers.
@@ -577,12 +585,37 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       }
     }
 
-    // Also include user-configured models, skipping any that duplicate a gateway model.
-    for (let model of this.storage.aiModels.list()) {
-      if (!gwModelIds.has(model.profile.id)) {
-        result.push(model.profile);
+    // Also include the shared models, skipping any that duplicate a gateway model: the gateway's is
+    // the one getChatContext resolves, so the shared entry would name a model nobody can reach.
+    // Listing a catalog must not depend on the settings object being up, so a failure here costs
+    // the shared entries and nothing more.
+    try {
+      for (let profile of await this.adminSettings.getByName("").listSharedModels()) {
+        if (!gwModelIds.has(profile.id)) {
+          result.push(profile);
+        }
+      }
+    } catch (err) {
+      logger.warn("failed to list shared models", {
+        event: "shared.models.list.failed", error: err,
+      });
+    }
+
+    // Models the admin has turned off leave every user's catalog, built-ins included.
+    if (disabledModelIds.length > 0) {
+      let disabled = new Set(disabledModelIds);
+      result = result.filter(entry => !disabled.has(entry.id));
+    }
+
+    // An unset default, one naming a model that has since gone away, or one that is currently
+    // disabled, leaves the natural order.
+    if (defaultModelId) {
+      let index = result.findIndex(entry => entry.id === defaultModelId);
+      if (index > 0) {
+        result.unshift(result.splice(index, 1)[0]);
       }
     }
+
     return result;
   }
 
@@ -730,7 +763,8 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
              resetAt: nextUtcMidnightIso() };
   }
 
-  /** DO NOT MAKE PUBLIC -- returns API keys. */
+  /** DO NOT MAKE PUBLIC -- returns API keys. Pure read: call sites replay it across DO resets
+   * via retryOnDoReset, so it must stay free of writes and side effects. */
   async getChatContext(modelId: string | null): Promise<UserChatContext> {
     let gwConfig = getAiGatewayConfig(this.env);
 
@@ -738,12 +772,19 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       profile: this.storage.profile.get()
     };
     if (modelId) {
+      // A model the admin turned off doesn't resolve at all, so a chat still pinned to one fails
+      // here rather than quietly continuing on a model that left every catalog.
+      if ((await readAdminConfig(this.env)).disabledModelIds.includes(modelId)) {
+        throw new Error(`Model disabled by administrator: ${modelId}`);
+      }
       // In AI Gateway mode, resolve gateway models first.
       if (gwConfig) {
         result.aiModel = gwConfig.resolveModel(modelId);
       }
       if (!result.aiModel) {
-        result.aiModel = this.storage.aiModels.get(modelId);
+        // Otherwise it's one of the admin's shared models, whose configuration (API token included)
+        // is fetched per turn rather than cached: nothing else here is authoritative for it.
+        result.aiModel = await this.adminSettings.getByName("").getSharedModelRecord(modelId);
       }
       if (!result.aiModel) throw new Error(`No such model: ${modelId}`);
     }
@@ -766,9 +807,9 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
 
   async getExternalMessageChatContext(existingChatModelId: string | null): Promise<UserChatContext> {
     let models = await this.listModels();
-    // Prefer the existing chat's model, then the user's preferred model, then the first available model.
+    // Prefer the existing chat's model, then the first available one — which listModels() orders as
+    // the deployment default.
     let selectedModel = models.find(model => model.id === existingChatModelId)
-      ?? models.find(model => model.id === this.storage.preferredModel.get())
       ?? models[0];
 
     return this.getChatContext(selectedModel?.id ?? null);

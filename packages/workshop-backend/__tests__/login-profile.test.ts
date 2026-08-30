@@ -167,6 +167,9 @@ type LoginCall = { email: string; allowCreate: boolean; nameHint?: string };
  */
 function makeCallback(options: {
   providesProfile?: boolean;
+  // Builds the props without the flag at all, the way a login started by a caller that never sets
+  // it would arrive.
+  omitProvidesProfile?: boolean;
   getAuthenticatedProfile?: () => Promise<ProfileHints>;
   existingAvatar?: Uint8Array;
   // What the user DO reports back: false stands for a hint it declined (a customised name).
@@ -195,7 +198,9 @@ function makeCallback(options: {
   };
   const ctx = {
     props: {
-      pendingId: "pending", vendorId: "test", providesProfile: options.providesProfile ?? true,
+      pendingId: "pending", vendorId: "test",
+      ...(options.omitProvidesProfile
+          ? {} : { providesProfile: options.providesProfile ?? true }),
     },
     exports: {
       PendingLogin: { idFromString: (id: string) => id, get: () => pendingStub },
@@ -422,6 +427,27 @@ describe("LoginConnectCallbackImpl profile seeding", () => {
     expect(harness.profileCalls()).toBe(0);
     expect(harness.loginCalls).toEqual([{ email: EMAIL, allowCreate: true, nameHint: undefined }]);
     expect(finishedLog(info)).toMatchObject({ profileSeeded: "none" });
+  });
+
+  // The flag is put in the callback's props by PublicApi.startGatekeeperLogin, from the vendor's
+  // providesAuthProfile declaration. Seeding is opt-in on it: a login started without it asks for
+  // nothing, so the hints can never be reached on the strength of a field that isn't there.
+  it("asks for no hints when the login was started without the profile flag", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const harness = makeCallback({
+      omitProvidesProfile: true,
+      getAuthenticatedProfile: async () => ({
+        name: "Alice Smith", photo: { data: PNG, mimeType: "image/png" },
+      }),
+    });
+
+    await harness.callback.complete(harness.account);
+
+    expect(harness.profileCalls()).toBe(0);
+    expect(harness.avatar()).toBeUndefined();
+    expect(harness.loginCalls).toEqual([{ email: EMAIL, allowCreate: true, nameHint: undefined }]);
+    expect(harness.delivered).toEqual([`${EMAIL}:session-secret`]);
+    expect(finishedLog(info)).toMatchObject({ outcome: "ok", profileSeeded: "none" });
   });
 
   it("gives up on the hints rather than the sign-in when the gatekeeper stalls", async () => {

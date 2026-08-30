@@ -19,6 +19,7 @@ import { Plural, Trans } from '@lingui/react/macro'
 import { WorkshopButton, WorkshopIconButton } from './components/WorkshopControls'
 import { PersonAvatar } from './components/PersonAvatar'
 import { copyToClipboard } from './clipboard'
+import { isImeComposing } from './keyboardEvent'
 
 type CollaboratorRow =
   | { kind: 'owner'; profile: AiChatAuthorInfo }
@@ -756,7 +757,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <Dialog
-        className="!z-[1000] !top-[clamp(24px,10vh,80px)] !flex !max-h-[calc(100vh-clamp(24px,10vh,80px)-24px)] !w-[min(640px,calc(100vw-32px))] !-translate-y-0 flex-col overflow-hidden bg-kumo-base p-0 !outline-none"
+        className="responsive-dialog !z-[1000] !top-[clamp(24px,10vh,80px)] !flex !max-h-[calc(100vh-clamp(24px,10vh,80px)-24px)] !w-[min(640px,calc(100vw-32px))] !-translate-y-0 flex-col overflow-hidden bg-kumo-base p-0 !outline-none"
         size="lg"
       >
         <div className="flex shrink-0 items-start justify-between gap-4 overflow-hidden px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
@@ -815,7 +816,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
               aria-label={t`Username or email`}
               value={addUsername}
               onChange={(e) => setAddUsername(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAddCollaborator() }}
+              onKeyDown={(e) => { if (!isImeComposing(e) && e.key === 'Enter') handleAddCollaborator() }}
               name="gadget-share-people-search"
               autoComplete="off"
               autoCorrect="off"
@@ -913,7 +914,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                       ref={linkNameRef}
                       value={newLinkNote}
                       onChange={(e) => setNewLinkNote(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleCreateShareLink() }}
+                      onKeyDown={(e) => { if (!isImeComposing(e) && e.key === 'Enter') handleCreateShareLink() }}
                       placeholder={t`Name this link (optional)…`}
                       aria-label={t`Share link name (optional)`}
                       className="h-9 min-w-0 flex-1 border-0 bg-transparent p-0 text-[14px] leading-5 tracking-[-0.25px] text-kumo-default outline-none placeholder:text-kumo-inactive"
@@ -1054,6 +1055,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                               value={editingShareLinkNote}
                               onChange={(e) => setEditingShareLinkNote(e.target.value)}
                               onKeyDown={(e) => {
+                                if (isImeComposing(e)) return
                                 if (e.key === 'Enter') handleSaveShareLinkNote()
                                 if (e.key === 'Escape') cancelRenameShareLink()
                               }}

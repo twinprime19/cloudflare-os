@@ -33,6 +33,10 @@ msgstr "{0, plural, other {# tài nguyên bị ẩn khi tắt.}}"
 msgid "{0, plural, one {# resource to add} other {# resources to add}}"
 msgstr "{0, plural, other {# tài nguyên cần thêm}}"
 
+#. placeholder {0}: row.hidden
+msgid "{0, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
+msgstr "{0, plural, other {Hiện # dòng đã xóa bị ẩn}}"
+
 #. placeholder {0}: formatOf(gadget.output).noun
 msgid "{0} · Click to open"
 msgstr "{0} · Nhấn để mở"
@@ -46,6 +50,14 @@ msgstr "{0} · hiển thị trong {1} tại Đầu ra"
 msgid "{0} accepted changes"
 msgstr "{0} đã chấp nhận thay đổi"
 
+#. placeholder {0}: entry.message.author.name
+msgid "{0} brought the gadget's latest changes into this draft"
+msgstr "{0} đã đưa các thay đổi mới nhất của gadget vào bản nháp này"
+
+#. placeholder {0}: entry.message.author.name
+msgid "{0} brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
+msgstr "{0} đã đưa các thay đổi mới nhất của gadget vào bản nháp này — {conflictCount} {conflictCount, plural, other {tệp có}} xung đột được đánh dấu trong mã"
+
 #. placeholder {0}: entry.requestedBy.name
 msgid "{0} compacted the context"
 msgstr "{0} đã nén ngữ cảnh"
@@ -58,10 +70,6 @@ msgstr "{0} đã tạo {1, plural, other {gadget}} {createdTitles}"
 #. placeholder {0}: msg.author.name
 msgid "{0} discarded changes"
 msgstr "{0} đã loại bỏ thay đổi"
-
-#. placeholder {0}: latestAuthor?.name ?? t`The agent`
-msgid "{0} is editing changes for this gadget."
-msgstr "{0} đang chỉnh sửa thay đổi cho gadget này."
 
 #. placeholder {0}: usage.remaining
 #. placeholder {1}: usage.dailyLimit
@@ -78,15 +86,8 @@ msgstr "{badgeCount} đang chờ"
 msgid "{DEFAULT_ACCENT_COLOR} (default)"
 msgstr "{DEFAULT_ACCENT_COLOR} (mặc định)"
 
-#. placeholder {0}: formatFullTimestamp(lastDraftEntry.timestamp)
-msgid "{description} Last edited {0}"
-msgstr "{description} Chỉnh sửa lần cuối {0}"
-
 msgid "{filename} is being edited"
 msgstr "{filename} đang được chỉnh sửa"
-
-msgid "{hidden, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
-msgstr "{hidden, plural, other {Hiện # dòng đã xóa bị ẩn}}"
 
 msgid "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
 msgstr "{kept, plural, other {# tin nhắn sau điểm cắt được giữ lại đầy đủ.}}"
@@ -100,13 +101,6 @@ msgstr "{readyCount} trong {0} đã sẵn sàng. Gợi ý được sử dụng t
 
 msgid "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
 msgstr "<0>Chế độ AI Gateway:</0> các mô hình tích hợp sẵn được quản lý bởi bản triển khai của bạn. Bạn vẫn có thể thêm mô hình tùy chỉnh bằng token API của riêng mình."
-
-#. placeholder {0}: models.find((m) => m.id === quickModel)?.name ?? quickModel
-msgid "<0>Quick model:</0> {0}."
-msgstr "<0>Mô hình nhanh:</0> {0}."
-
-msgid "<0>Quick model:</0> none set."
-msgstr "<0>Mô hình nhanh:</0> chưa thiết lập."
 
 msgid "A dismissible bar across the very top of the app (logged in or not). Markdown is supported, so you can include links. Leave empty to hide it. Applies on each user’s next connection."
 msgstr "Một thanh có thể đóng nằm ở trên cùng ứng dụng (dù đã đăng nhập hay chưa). Hỗ trợ Markdown, vì vậy bạn có thể thêm liên kết. Để trống để ẩn thanh này. Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
@@ -262,6 +256,9 @@ msgstr "Tác nhân đang chỉnh sửa tệp này"
 msgid "Agent model"
 msgstr "Mô hình tác nhân"
 
+msgid "AI meets your tools"
+msgstr "AI hòa vào công cụ của bạn"
+
 msgid "AI providers"
 msgstr "Nhà cung cấp AI"
 
@@ -394,8 +391,17 @@ msgstr "Tiêu đề blueprint"
 msgid "Blueprints"
 msgstr "Blueprint"
 
+msgid "Bring in latest changes"
+msgstr "Đưa vào thay đổi mới nhất"
+
 msgid "Browse all blueprints"
 msgstr "Duyệt tất cả blueprint"
+
+msgid "Build gadgets or just chat"
+msgstr "Tạo gadget hoặc chỉ trò chuyện"
+
+msgid "built-in"
+msgstr "Tích hợp sẵn"
 
 msgid "Bundled"
 msgstr "Tích hợp sẵn"
@@ -476,14 +482,11 @@ msgstr "Chọn những gì gadget này có thể sử dụng."
 msgid "Choose which Cloudflare account to bill"
 msgstr "Chọn tài khoản Cloudflare sẽ được tính phí"
 
-msgid "Choose your model"
-msgstr "Chọn mô hình của bạn"
-
 msgid "Clear"
 msgstr "Xóa"
 
-msgid "Clear quick model"
-msgstr "Xóa mô hình nhanh"
+msgid "Clear default model"
+msgstr "Xóa mô hình mặc định"
 
 msgid "Click the avatar to upload a new photo"
 msgstr "Nhấn vào ảnh đại diện để tải lên ảnh mới"
@@ -491,14 +494,17 @@ msgstr "Nhấn vào ảnh đại diện để tải lên ảnh mới"
 msgid "Click to re-authenticate this account"
 msgstr "Nhấn để xác thực lại tài khoản này"
 
-msgid "Click to set as quick model"
-msgstr "Nhấn để đặt làm mô hình nhanh"
+msgid "Click to set as default model"
+msgstr "Nhấn để đặt làm mô hình mặc định"
 
 msgid "Close"
 msgstr "Đóng"
 
 msgid "Close activity"
 msgstr "Đóng hoạt động"
+
+msgid "Close files"
+msgstr "Đóng ngăn tệp"
 
 msgid "Close gadget pane"
 msgstr "Đóng ngăn gadget"
@@ -521,6 +527,9 @@ msgstr "ID tài khoản Cloudflare"
 msgid "Code"
 msgstr "Mã"
 
+msgid "Collaborate in real time"
+msgstr "Cộng tác theo thời gian thực"
+
 msgid "Collapse outputs"
 msgstr "Thu gọn đầu ra"
 
@@ -539,9 +548,6 @@ msgstr "Đang nén…"
 #. placeholder {0}: activeBinding.title || activeBindingName
 msgid "Configure {0}"
 msgstr "Cấu hình {0}"
-
-msgid "Configure the AI models available to your workspaces."
-msgstr "Cấu hình các mô hình AI khả dụng cho không gian làm việc của bạn."
 
 msgid "Confirm new password"
 msgstr "Xác nhận mật khẩu mới"
@@ -653,6 +659,9 @@ msgstr "Sao chép"
 msgid "Copy {0}"
 msgstr "Sao chép {0}"
 
+msgid "Copy code"
+msgstr "Sao chép mã"
+
 msgid "Copy failed"
 msgstr "Sao chép thất bại"
 
@@ -701,6 +710,9 @@ msgstr "Tạo blueprint"
 
 msgid "Create file"
 msgstr "Tạo tệp"
+
+msgid "Create full web apps, or keep it simple with agent-only conversations. Your call."
+msgstr "Tạo ứng dụng web hoàn chỉnh, hoặc giữ mọi thứ đơn giản với các cuộc trò chuyện chỉ có tác nhân. Tùy bạn."
 
 msgid "Create link"
 msgstr "Tạo liên kết"
@@ -751,6 +763,12 @@ msgstr "Hiện đang bị ẩn khỏi các menu bên trên và khỏi danh mục
 
 msgid "Custom"
 msgstr "Tùy chỉnh"
+
+msgid "Default"
+msgstr "Mặc định"
+
+msgid "Default model. Click to clear"
+msgstr "Mô hình mặc định. Nhấn để xóa"
 
 msgid "Delete"
 msgstr "Xóa"
@@ -828,6 +846,9 @@ msgstr "Xác minh lời mời trực tiếp"
 msgid "Disable auto-approval for {0}"
 msgstr "Tắt duyệt tự động cho {0}"
 
+msgid "Disable for all users"
+msgstr "Tắt cho tất cả người dùng"
+
 msgid "Disable hook"
 msgstr "Tắt hook"
 
@@ -901,14 +922,17 @@ msgstr "Tải xuống tệp lưu trữ"
 msgid "Download file"
 msgstr "Tải xuống tệp"
 
+msgid "Download source"
+msgstr "Tải xuống mã nguồn"
+
+msgid "Download source as shown here, including changes you have not accepted"
+msgstr "Tải xuống mã nguồn đúng như đang hiển thị, bao gồm cả những thay đổi bạn chưa chấp nhận"
+
 msgid "Downloading..."
 msgstr "Đang tải xuống..."
 
 msgid "Draft"
 msgstr "Nháp"
-
-msgid "Draft changes in progress"
-msgstr "Thay đổi nháp đang diễn ra"
 
 msgid "Draft changes pending"
 msgstr "Thay đổi nháp đang chờ"
@@ -969,6 +993,9 @@ msgstr "Bật duyệt tự động cho {0}"
 
 msgid "Enable Email mailboxes"
 msgstr "Bật hộp thư Email"
+
+msgid "Enable for all users"
+msgstr "Bật cho tất cả người dùng"
 
 msgid "Enable hook"
 msgstr "Bật hook"
@@ -1073,6 +1100,12 @@ msgstr "Không thể mã hóa logo thành PNG."
 msgid "Failed to load blueprint."
 msgstr "Không thể tải blueprint."
 
+msgid "Failed to load this conversation's code changes. Try reloading the page."
+msgstr "Không thể tải các thay đổi mã của cuộc trò chuyện này. Thử tải lại trang."
+
+msgid "Failed to load this gadget's code."
+msgstr "Không thể tải mã của gadget này."
+
 msgid "Failed to prepare the logo image."
 msgstr "Không thể chuẩn bị hình ảnh logo."
 
@@ -1115,6 +1148,9 @@ msgstr "Toàn màn hình"
 #. placeholder {0}: formatOf(selectedGadgetSummary?.output).noun
 msgid "Full screen is available in {0} view"
 msgstr "Chế độ toàn màn hình khả dụng trong chế độ xem {0}"
+
+msgid "Full-screen preview"
+msgstr "Xem trước toàn màn hình"
 
 msgid "Future <0>{actionLabel}</0> actions on <1>{resourceTitle}</1> will be applied automatically, without asking for approval. This action will be applied now too."
 msgstr "Các hành động <0>{actionLabel}</0> trong tương lai trên <1>{resourceTitle}</1> sẽ được áp dụng tự động, không cần yêu cầu duyệt. Hành động này cũng sẽ được áp dụng ngay bây giờ."
@@ -1166,6 +1202,9 @@ msgstr "Cấp quyền truy cập"
 
 msgid "Grant the access needed to verify this resource"
 msgstr "Cấp quyền truy cập cần thiết để xác minh tài nguyên này"
+
+msgid "Have AI review a Google Doc, summarize Slack threads, triage Jira tickets, and more."
+msgstr "Để AI xem xét một Google Doc, tóm tắt các luồng Slack, phân loại ticket Jira và nhiều việc khác."
 
 msgid "Help text for {displayTitle}"
 msgstr "Văn bản trợ giúp cho {displayTitle}"
@@ -1376,6 +1415,9 @@ msgstr "Kích thước ảnh gốc của logo quá lớn."
 msgid "Logo source image is too large (max 5 MB)."
 msgstr "Ảnh gốc của logo quá lớn (tối đa 5 MB)."
 
+msgid "Manage the AI models everyone on this deployment can use."
+msgstr "Quản lý các mô hình AI mà mọi người trên bản triển khai này có thể sử dụng."
+
 msgid "Manage your account details, avatar, and security."
 msgstr "Quản lý thông tin tài khoản, ảnh đại diện và bảo mật của bạn."
 
@@ -1391,11 +1433,17 @@ msgstr "Mô hình"
 msgid "Model ID"
 msgstr "ID mô hình"
 
+msgid "Models ready to go"
+msgstr "Mô hình sẵn sàng sử dụng"
+
 msgid "Modified"
 msgstr "Đã sửa đổi"
 
 msgid "More blueprint actions"
 msgstr "Hành động khác cho blueprint"
+
+msgid "More workspace views and actions"
+msgstr "Chế độ xem và hành động khác cho không gian làm việc"
 
 msgid "Move down"
 msgstr "Di chuyển xuống"
@@ -1540,6 +1588,9 @@ msgstr "Không có sự kiện nào khớp"
 msgid "No matching resources."
 msgstr "Không có tài nguyên nào khớp."
 
+msgid "No models are available yet. Ask your administrator."
+msgstr "Chưa có mô hình nào khả dụng. Hãy hỏi quản trị viên của bạn."
+
 msgid "No models configured yet"
 msgstr "Chưa có mô hình nào được cấu hình"
 
@@ -1575,6 +1626,9 @@ msgstr "Chưa có không gian làm việc nào. Tạo không gian làm việc đ
 
 msgid "Not connected"
 msgstr "Chưa kết nối"
+
+msgid "Not now"
+msgstr "Không phải bây giờ"
 
 msgid "Nothing after it was kept."
 msgstr "Không có gì sau đó được giữ lại."
@@ -1615,6 +1669,9 @@ msgstr "Trên Đầu ra"
 msgid "Open"
 msgstr "Mở"
 
+msgid "Open a conversation and build with the agent, and its accepted files will appear here."
+msgstr "Mở một cuộc trò chuyện và xây dựng cùng tác nhân, các tệp đã được chấp nhận của cuộc trò chuyện đó sẽ xuất hiện ở đây."
+
 #. placeholder {0}: blueprint.metadata.title
 #. placeholder {0}: metadata.title
 msgid "Open blueprint {0}"
@@ -1626,6 +1683,9 @@ msgstr "Mở tùy chọn trò chuyện"
 #. placeholder {0}: blueprint.metadata.title
 msgid "Open featured blueprint {0}"
 msgstr "Mở blueprint nổi bật {0}"
+
+msgid "Open files"
+msgstr "Mở ngăn tệp"
 
 msgid "Open larger screenshot of {title}"
 msgstr "Mở ảnh chụp màn hình lớn hơn của {title}"
@@ -1691,9 +1751,6 @@ msgstr "Người có quyền truy cập <0>{0}</0> phải chứng minh tài kho�
 msgid "People with access"
 msgstr "Người có quyền truy cập"
 
-msgid "Pick the AI model you'd like to use by default"
-msgstr "Chọn mô hình AI bạn muốn sử dụng theo mặc định"
-
 #. placeholder {0}: resourceTitle ?? t`connection`
 msgid "Pick which {vendorName} identity this {0} should use."
 msgstr "Chọn danh tính {vendorName} mà {0} này nên sử dụng."
@@ -1704,6 +1761,9 @@ msgstr "Số nhiều"
 msgid "Press <0>Esc</0> to exit full screen"
 msgstr "Nhấn <0>Esc</0> để thoát chế độ toàn màn hình"
 
+msgid "Preview"
+msgstr "Xem trước"
+
 #. placeholder {0}: attachment.name ?? t`attached file`
 msgid "Preview {0}"
 msgstr "Xem trước {0}"
@@ -1713,6 +1773,9 @@ msgstr "Xem trước {title}"
 
 msgid "Primary"
 msgstr "Chính"
+
+msgid "Primary navigation"
+msgstr "Điều hướng chính"
 
 msgid "Processing..."
 msgstr "Đang xử lý..."
@@ -1741,9 +1804,6 @@ msgstr "Xuất bản không gian làm việc dưới dạng blueprint, hoặc th
 
 msgid "Publish this gadget as a reusable template."
 msgstr "Xuất bản gadget này dưới dạng mẫu có thể tái sử dụng."
-
-msgid "Quick model. Click to clear"
-msgstr "Mô hình nhanh. Nhấn để xóa."
 
 msgid "Re-authenticating…"
 msgstr "Đang xác thực lại…"
@@ -1830,6 +1890,9 @@ msgstr "Đổi tên gadget"
 
 msgid "Rename output"
 msgstr "Đổi tên đầu ra"
+
+msgid "Rename provider"
+msgstr "Đổi tên nhà cung cấp"
 
 msgid "Rename workspace"
 msgstr "Đổi tên không gian làm việc"
@@ -1996,8 +2059,8 @@ msgstr "Gửi tin nhắn"
 msgid "Send them this link to open it"
 msgstr "Gửi liên kết này cho họ để mở"
 
-msgid "Set as quick model"
-msgstr "Đặt làm mô hình nhanh"
+msgid "Set as default"
+msgstr "Đặt làm mặc định"
 
 msgid "Set up"
 msgstr "Thiết lập"
@@ -2011,6 +2074,9 @@ msgstr "Chia sẻ"
 #. placeholder {0}: metadata.title
 msgid "Share “{0}”"
 msgstr "Chia sẻ “{0}”"
+
+msgid "Share a workspace with teammates and work on it together, live."
+msgstr "Chia sẻ không gian làm việc với đồng đội và cùng nhau làm việc trực tiếp."
 
 msgid "share link"
 msgstr "liên kết chia sẻ"
@@ -2087,6 +2153,9 @@ msgstr "Lệnh gạch chéo"
 msgid "Some auto-approval options could not be loaded."
 msgstr "Không thể tải một số tùy chọn duyệt tự động."
 
+msgid "Someone else's changes were accepted in the meantime, so this draft's changes can't be applied as-is. Bring the latest changes into this draft first; any conflicts will be marked in the code for you (or the agent) to resolve before accepting again."
+msgstr "Thay đổi của người khác đã được chấp nhận trong lúc đó, nên không thể áp dụng nguyên trạng các thay đổi của bản nháp này. Trước tiên, đưa các thay đổi mới nhất vào bản nháp này; mọi xung đột sẽ được đánh dấu trong mã để bạn (hoặc tác nhân) giải quyết trước khi chấp nhận lại."
+
 msgid "Something went wrong"
 msgstr "Đã xảy ra lỗi"
 
@@ -2158,9 +2227,6 @@ msgstr "Đã chuyển sang {0}"
 msgid "The \"{0}\" gatekeeper is not available on this workshop, so this connection can't be configured."
 msgstr "Gatekeeper \"{0}\" không khả dụng trên Workshop này, nên kết nối này không thể được cấu hình."
 
-msgid "The agent"
-msgstr "Tác nhân"
-
 msgid "The agent reads this in place of everything earlier in the chat."
 msgstr "Tác nhân đọc nội dung này thay cho mọi thứ trước đó trong cuộc trò chuyện."
 
@@ -2179,6 +2245,9 @@ msgstr "Các quy tắc hiện tại có thể chưa đầy đủ. Thử tải l�
 
 msgid "The current screenshot will stay unless you upload a new one."
 msgstr "Ảnh chụp màn hình hiện tại sẽ được giữ nguyên trừ khi bạn tải lên ảnh mới."
+
+msgid "The gadget changed since this draft started"
+msgstr "Gadget đã thay đổi kể từ khi bắt đầu bản nháp này"
 
 #. placeholder {0}: example!.modelId
 msgid "The model identifier as specified by the provider (e.g., '{0}')"
@@ -2257,6 +2326,9 @@ msgstr "Thao tác này sẽ xóa <0>{0}</0>. Bạn không thể hoàn tác việ
 
 msgid "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
 msgstr "Thao tác này sẽ xóa <0>{deletingFile}</0> khỏi gadget. Bạn không thể hoàn tác việc này."
+
+msgid "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
+msgstr "Không thể hủy bỏ bản cập nhật này: nó đã đưa vào các thay đổi vốn đã được chấp nhận ở nơi khác. Thay vào đó, chỉnh sửa các tệp."
 
 msgid "This workspace can’t be shared"
 msgstr "Không thể chia sẻ không gian làm việc này"
@@ -2391,9 +2463,6 @@ msgstr "Dùng bố cục diff dạng xếp chồng"
 msgid "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
 msgstr "Dùng <0/><1>mũi tên hoàn tác</1> bên dưới bất kỳ phản hồi nào của tác nhân để hủy bỏ từ lượt đó trở đi."
 
-msgid "Used for fast tasks like generating chat titles. Click a model to set it."
-msgstr "Dùng cho các tác vụ nhanh như tạo tiêu đề trò chuyện. Nhấn vào một mô hình để đặt mô hình đó."
-
 msgid "Used the gadget"
 msgstr "Đã dùng gadget"
 
@@ -2508,6 +2577,12 @@ msgstr "Không gian làm việc"
 msgid "Yes, disconnect"
 msgstr "Có, ngắt kết nối"
 
+msgid "You brought the gadget's latest changes into this draft"
+msgstr "Bạn đã đưa các thay đổi mới nhất của gadget vào bản nháp này"
+
+msgid "You brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
+msgstr "Bạn đã đưa các thay đổi mới nhất của gadget vào bản nháp này — {conflictCount} {conflictCount, plural, other {tệp có}} xung đột được đánh dấu trong mã"
+
 msgid "You can copy it again anytime from Share links"
 msgstr "Bạn có thể sao chép lại bất cứ lúc nào từ Liên kết chia sẻ"
 
@@ -2538,6 +2613,15 @@ msgstr "Bạn đã sử dụng hết {0, plural, other {# yêu cầu miễn phí
 msgid "Your {0} API token for billing"
 msgstr "Token API {0} của bạn để thanh toán"
 
+msgid "Your administrator curates the AI models, so you can pick one and start right away."
+msgstr "Quản trị viên của bạn tuyển chọn các mô hình AI, nên bạn chỉ cần chọn một mô hình và bắt đầu ngay."
+
+msgid "Your administrator picks which models are available and which one new chats start on"
+msgstr "Quản trị viên của bạn chọn những mô hình khả dụng và mô hình mà các cuộc trò chuyện mới sẽ bắt đầu"
+
+msgid "Your AI models"
+msgstr "Mô hình AI của bạn"
+
 #. placeholder {0}: usage.balance.toFixed(2)
 msgid "Your Cloudflare account is connected with a balance of <0>${0}</0>, but it's below the minimum needed to continue."
 msgstr "Tài khoản Cloudflare của bạn đã được kết nối với số dư <0>${0}</0>, nhưng số dư này thấp hơn mức tối thiểu cần thiết để tiếp tục."
@@ -2556,6 +2640,10 @@ msgstr "Kết nối của bạn có quyền truy cập nhiều tài khoản Clou
 
 msgid "Your edits are still a live draft."
 msgstr "Các chỉnh sửa của bạn vẫn đang là bản nháp."
+
+#. placeholder {0}: formatFullTimestamp(lastEditedAt)
+msgid "Your edits are still a live draft. Last edited {0}"
+msgstr "Các chỉnh sửa của bạn vẫn đang là bản nháp. Chỉnh sửa lần cuối {0}"
 
 msgid "Your workspaces"
 msgstr "Không gian làm việc của bạn"

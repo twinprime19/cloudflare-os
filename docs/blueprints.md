@@ -18,7 +18,7 @@ This is analogous to a template: the blueprint author publishes a reusable gadge
 
 A blueprint captures:
 
-- **Source code** -- a snapshot of the gadget's committed Yjs document, stripped of edit history. The snapshot contains only the final file contents (one insert operation per file), producing a minimal encoding.
+- **Source code** -- a snapshot of the files in the gadget's published commit, taken from the workspace's git store and stripped of history. The snapshot is an archive-only Yjs document holding just the final file contents (one insert operation per file), producing a minimal encoding.
 - **Binding requirements** -- a description of each named binding the gadget uses, including what type of connection is needed (gatekeeper, AI model, or agent spawner) and how to configure it. The blueprint does not include any credentials or live connections.
 - **Metadata** -- title, description, optional screenshot metadata, author info, version number, and timestamps.
 
@@ -160,7 +160,7 @@ When someone opens a blueprint link (`/blueprint/<id>`), they see the **Blueprin
    - Creates gatekeepers from the user's binding assignments (pipelined for performance).
    - Returns the new Overseer stub, and the UI redirects to the new gadget.
 
-The new gadget is independent from the blueprint source: it has its own storage, chat history, and bindings. There is currently no mechanism for automatic updates from the blueprint to existing instances (though the Yjs-based storage format could support this in the future).
+The new gadget is independent from the blueprint source: it has its own storage, chat history, and bindings. There is currently no mechanism for automatic updates from the blueprint to existing instances (though the git store's commit history could support this in the future).
 
 ### Instantiation by the agent
 
