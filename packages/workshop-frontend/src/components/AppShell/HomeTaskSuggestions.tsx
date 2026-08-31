@@ -21,8 +21,8 @@ type TaskSuggestion = {
   icon: Icon
 }
 
-// Formats are advertised by example rather than by a row of "Start with Docs" buttons, so the
-// first move isn't "pick a file type". The formats themselves are in the composer's `+` menu.
+// These stay AI-prompt examples. One-click "New Doc / New Sheets / …" lives in NewFormatRow
+// above this list (and in the composer's `+` menu as tokens for the agent).
 const SUGGESTIONS: TaskSuggestion[] = [
   {
     id: 'one-on-one',

@@ -661,7 +661,7 @@ function OutputsPage() {
                   : t`Anything your workspaces build will show up here.`}
               </p>
             </div>
-            {/* Offer the deployment's formats here rather than sending them to the home page. */}
+            {/* Same one-click format shortcuts as Home, so an empty Outputs page can start one. */}
             {!isFiltered && <NewFormatRow label={t`Start with`} />}
           </div>
         ) : view === 'grid' ? (
