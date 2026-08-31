@@ -17,7 +17,8 @@ import { webFetch as webFetchImpl, WebFetchEnv, formatWebFetchResult } from "./w
 import { AgentCatalogSnapshot, formatAlwaysAvailableResourcesPrompt } from "./agent-catalog";
 import { formatInstanceInstructions } from "./admin-config";
 import type { AiGatewayLogRoute } from "./ai-gateway";
-import { AgentTurnError, completeText, httpStatusFromError, zeroUsage } from "./ai-invoke";
+import { AgentTurnError, completeText, describeRequestFailure, httpStatusFromError, zeroUsage }
+  from "./ai-invoke";
 import type { ModelHandle } from "./ai-models";
 import {
   buildCompactionState, buildSummaryPrompt, chatChangeStatuses, COMPACTION_SYSTEM_PROMPT,
@@ -3173,7 +3174,8 @@ export async function runAgent(
     // Other failures become an AgentTurnError carrying the failing request's HTTP status (when
     // it can be determined) for the overseer's triage.
     throw new AgentTurnError(
-        turnFailure.message, httpStatusFromError(turnFailure.message, handle));
+        describeRequestFailure(turnFailure.message, handle),
+        httpStatusFromError(turnFailure.message, handle));
   }
 
   // The turn ran, so there is no checkpoint to report.

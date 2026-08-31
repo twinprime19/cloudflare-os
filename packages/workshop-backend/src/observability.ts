@@ -5,9 +5,11 @@ import { createTracer } from "@gadgets/backend-utils/tracing";
 export type WorkshopObservabilityFields = {
   accountId: number;
   actionId: number | string;
+  aiGatewayLogId: string;
   autoProvisioned: boolean;
   blueprintId: string;
   callbackInitiated: boolean;
+  cfRay: string;
   chatId: number;
   commitCount: number;
   durableObjectId: string;
@@ -24,6 +26,7 @@ export type WorkshopObservabilityFields = {
   outcome: "ok" | "error" | "usage_limit" | "callbacks_stalled" | "no_email" | "signups_disabled";
   path: string;
   profileSeeded: "name+photo" | "name" | "photo" | "none";
+  providerError: string;
   resourceTitle: string;
   sequence: number;
   size: number;
