@@ -5,6 +5,7 @@ import { useKumoToastManager } from "@cloudflare/kumo";
 import { ChatInput } from "../ChatInterface";
 import MeshBackground from "../components/MeshBackground";
 import HomeTaskSuggestions from "../components/AppShell/HomeTaskSuggestions";
+import NewFormatRow from "../components/format/NewFormatRow";
 import { useAuthenticatedApi } from "../AuthContext";
 import { RpcStub } from "capnweb";
 import {
@@ -32,8 +33,8 @@ export const Route = createFileRoute("/")({
 });
 
 // The Home page is the "new workspace" launcher. Persistent navigation (recents, favorites) lives
-// in the AppShell rail, so this page focuses on a single thing: composing the first message of a
-// new gadget — a centered column with a hero, the prompt composer, and a few task suggestions.
+// in the AppShell rail. The column is a hero, the prompt composer (the AI path), one-click format
+// shortcuts that stamp a workspace with no model, and a few task suggestions.
 function HomePage() {
   return <HomePageContent prompt={Route.useSearch().prompt} />;
 }
@@ -199,6 +200,10 @@ export function HomePageContent({ prompt }: HomeSearch) {
             ? composerDraftStorageKey(currentUser.id, "home")
             : undefined}
         />
+
+        {/* Same formats as the composer's + menu, but these stamp a workspace immediately instead
+            of inserting a token for the agent. Renders nothing when the deployment promotes none. */}
+        <NewFormatRow label={t`Start with`} />
 
         {/* A few example work tasks to spark ideas. Picking one seeds the composer above. */}
         <HomeTaskSuggestions
