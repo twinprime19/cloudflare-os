@@ -3066,6 +3066,29 @@ export type AiToolCall = {
    */
   output?: string;
 } | {
+  /**
+   * Import files attached to a message in one of the chat's connections (e.g. a mailbox) into the
+   * chat itself. The files travel the same path a user upload takes and arrive as a separate chat
+   * message carrying them, so they are visible in the transcript and replay into the model's
+   * context exactly like an uploaded file.
+   */
+  toolName: "importAttachments";
+  input: {
+    /** Chat binding name of the connection holding the message (a property of the agent's env). */
+    binding: string;
+    /** Id of the message the attachments belong to, within that connection. */
+    messageId: string;
+    /** Ids of the attachments to import, as the message listed them. */
+    attachmentIds: string[];
+  };
+
+  /**
+   * Output, if the import actually completed. (Otherwise, `error` should be present.) Stored so
+   * chat-history replay can report the import without performing it a second time -- the imported
+   * files are already in the chat log.
+   */
+  output?: string;
+} | {
   /** This actually shouldn't ever appear in logs unless the agent misunderstands the tool. */
   toolName: "observeUserChanges";
   input: {};

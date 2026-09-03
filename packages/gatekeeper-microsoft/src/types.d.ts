@@ -35,6 +35,32 @@ export type OutlookMessageInfo = {
   conversationId?: string;
 }
 
+/** Metadata for one attachment on a message. Never carries the attachment's content. */
+export type OutlookAttachmentInfo = {
+  /** Id of this attachment within its message. Pass it to `getAttachmentContent()`. */
+  id: string;
+  /** Filename as the sender supplied it. Untrusted text: it is chosen by whoever sent the mail. */
+  name: string;
+  /** MIME type Outlook recorded, e.g. "application/pdf". Also chosen by the sender. */
+  mimeType: string;
+  /**
+   * Size in bytes as Outlook reports it. For a file attachment this measures the stored form,
+   * which is a little larger than the file itself, so treat it as an upper bound.
+   */
+  sizeBytes: number;
+  /** True for images and other parts displayed inside the message body rather than listed. */
+  isInline: boolean;
+  /**
+   * What this attachment actually is:
+   *
+   * - `"file"` — an ordinary attached file. The only kind whose contents can be read.
+   * - `"item"` — another Outlook item (email, event, contact) attached to this message.
+   * - `"reference"` — a link to a file in OneDrive or SharePoint. The bytes live there, not in
+   *   the mailbox.
+   */
+  kind: "file" | "item" | "reference";
+}
+
 /** Metadata for a mail folder. */
 export type OutlookFolderInfo = {
   id: string;
@@ -89,6 +115,15 @@ export interface OutlookMailSession {
    * truncated.
    */
   listFolders(): Promise<OutlookFolderEntry[]>;
+
+  /**
+   * Get a message capability for a message id seen earlier (see `OutlookMessageInfo.id`).
+   *
+   * Nothing is read and no id is checked here: any non-empty id is accepted, and a wrong one simply
+   * fails on the first call made against it. Each read through the returned message is authorized
+   * on its own, exactly as it is for a message obtained from a cursor.
+   */
+  getMessage(messageId: string): Promise<OutlookMessage>;
 }
 
 export interface OutlookFolder {
@@ -108,6 +143,27 @@ export interface OutlookMessage {
 
   /** Get the full message body as plain text. */
   getBody(): Promise<string>;
+
+  /**
+   * List this message's attachments. Metadata only — no content is downloaded, so this is cheap
+   * even for a message carrying large files.
+   *
+   * One page: a message holding more attachments than Outlook returns at once is refused rather
+   * than listed in part, so what comes back is always the message's complete set.
+   */
+  listAttachments(): Promise<OutlookAttachmentInfo[]>;
+
+  /**
+   * Read one attachment's contents, exactly as stored: nothing is converted, decoded or
+   * interpreted here.
+   *
+   * Only `kind: "file"` attachments have contents; item and reference attachments throw, as does an
+   * attachment over 10 MiB — which is refused from its metadata, before anything is downloaded.
+   *
+   * Treat the bytes as untrusted input: their name, type and content all come from whoever sent
+   * the message.
+   */
+  getAttachmentContent(attachmentId: string): Promise<ArrayBuffer>;
 
   /**
    * Mark this message as read.
