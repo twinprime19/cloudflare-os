@@ -34,10 +34,15 @@ const logger = createWorkshopLogger("workshop.ai-models");
    apiKey: string;
  }
 
-// Gadgets-owned attribution schema attached to AI Gateway requests.
+// Gadgets-owned attribution schema attached to AI Gateway requests. AI Gateway forwards these
+// keys verbatim as OpenTelemetry span attributes and keeps at most five entries.
 type GatewayMetadata = {
-  // Stable Gadgets user identifier for attribution.
-  user: string;
+  // Acting user's identifier (the login email on gatekeeper/OAuth sign-in), under the literal
+  // dotted key `user.id`: Langfuse promotes only `user.id` (or `langfuse.user.id`) to its
+  // first-class user field, and any other spelling lands in generic span metadata instead. It
+  // replaces a plain `user` key rather than joining it, because the widest path
+  // (gadget-automated chat) already uses all five slots.
+  "user.id": string;
   // Gadgets execution context, present when the call is associated with a gadget operation.
   source?: GatewayMetadataContext["source"];
   gadgetId?: string;
@@ -109,7 +114,7 @@ export type ModelHandle = {
 };
 
 function buildMetadata(initiator: AiChatAuthorInfo, context?: GatewayMetadataContext): GatewayMetadata {
-  const metadata: GatewayMetadata = { user: initiator.id };
+  const metadata: GatewayMetadata = { "user.id": initiator.id };
   if (context) {
     metadata.source = context.source;
     if (context.gadgetId) metadata.gadgetId = context.gadgetId;
