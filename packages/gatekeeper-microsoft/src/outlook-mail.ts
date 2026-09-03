@@ -27,8 +27,8 @@ import {
 import { AccessTokenCache, AccessTokenRequest } from "./auth-retry";
 import { GraphMailApi, MAX_REPLY_BODY_BYTES, validateSearchQuery } from "./graph-api";
 import type {
-  OutlookFolder, OutlookFolderEntry, OutlookFolderInfo, OutlookMailSession, OutlookMessage,
-  OutlookMessageEntry, OutlookMessageInfo,
+  OutlookAttachmentInfo, OutlookFolder, OutlookFolderEntry, OutlookFolderInfo, OutlookMailSession,
+  OutlookMessage, OutlookMessageEntry, OutlookMessageInfo,
 } from "./types";
 import TYPES_CODE from "./types.txt";
 import type { Env, UserAccount } from "./microsoft";
@@ -127,6 +127,17 @@ function describeMessage(info: OutlookMessageInfo): string {
     formatApprovalField("From", info.from?.address ?? "(unknown sender)"),
     formatApprovalField("Received", info.receivedAt.toISOString()),
   ].join("\n\n");
+}
+
+/**
+ * One line per attachment for an approval prompt. Sender-chosen filenames and MIME types go through
+ * `formatApprovalField` at the call site, which is what keeps them from forging Markdown.
+ */
+function describeAttachments(attachments: OutlookAttachmentInfo[]): string {
+  if (attachments.length === 0) return "(none)";
+  return attachments.map(attachment =>
+      `${attachment.name} — ${attachment.mimeType}, ${attachment.sizeBytes} bytes, ` +
+      `${attachment.kind}${attachment.isInline ? ", inline" : ""}`).join("\n");
 }
 
 async function submitOutlookAction(
@@ -342,6 +353,46 @@ class OutlookMessageStub extends RpcTarget implements OutlookMessage {
     return body;
   }
 
+  /** Attachment metadata for this message. Reads no attachment content. */
+  async listAttachments(): Promise<OutlookAttachmentInfo[]> {
+    let info = await this.#ensureInfo();
+    let attachments = await this.#ctx.api.listAttachments(this.#messageId);
+
+    await this.#ctx.approvalQueue.authorizeObservation({
+      title: sanitizeApprovalTitle(`List ${attachments.length} attachments: ${info.subject}`),
+      description:
+          "List the attachments on an Outlook message.\n\n" +
+          `${describeMessage(info)}\n\n` +
+          formatApprovalField("Attachments", describeAttachments(attachments)),
+    });
+
+    return attachments;
+  }
+
+  /**
+   * One attachment's bytes. The size cap, and the refusal of kinds that carry no bytes, live in the
+   * Graph client, so nothing oversized is downloaded to be rejected here.
+   */
+  async getAttachmentContent(attachmentId: string): Promise<ArrayBuffer> {
+    if (!attachmentId) throw new Error("getAttachmentContent() requires an attachment id.");
+    let info = await this.#ensureInfo();
+    // Like getBody(), the fetch may precede the authorization; what matters is that nothing is
+    // returned to the caller until the observation has been authorized.
+    let { info: attachment, content } =
+        await this.#ctx.api.getAttachmentBytes(this.#messageId, attachmentId);
+
+    await this.#ctx.approvalQueue.authorizeObservation({
+      title: sanitizeApprovalTitle(
+          `Read attachment: ${attachment.name} (${content.byteLength} bytes) — ${info.subject}`),
+      description:
+          "Read the contents of an attachment on an Outlook message.\n\n" +
+          `${describeMessage(info)}\n\n` +
+          formatApprovalField("Attachment", describeAttachments([attachment])),
+    });
+
+    return content;
+  }
+
   /**
    * Queue "mark as read". Returns as soon as the action is queued; the mailbox is unchanged until
    * the action is approved, and this session never reports the outcome.
@@ -486,6 +537,18 @@ class OutlookMailSessionImpl extends RpcTarget implements OutlookMailSession {
     });
     return new OutlookMessageCursorImpl(this.#ctx, "this mailbox search",
         () => this.#ctx.api.searchMessages(validated));
+  }
+
+  /**
+   * Re-derive a message capability from an id the agent already holds.
+   *
+   * No observation is authorized here, and none is owed: minting the stub reads nothing from the
+   * mailbox, and every read made through it authorizes itself individually. An id that names no
+   * message fails on the first call, not here.
+   */
+  async getMessage(messageId: string): Promise<OutlookMessage> {
+    if (!messageId) throw new Error("getMessage() requires a message id.");
+    return new OutlookMessageStub(this.#ctx, messageId) as OutlookMessage;
   }
 
   async listFolders(): Promise<OutlookFolderEntry[]> {

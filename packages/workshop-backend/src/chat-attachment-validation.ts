@@ -4,13 +4,24 @@ import { PDF_MIME_TYPE } from "./chat-attachment-pdf";
 import { convertDocumentToMarkdown } from "./doc-to-markdown";
 import type { DocToMarkdownEnv } from "./doc-to-markdown";
 
-// Bounds attachment storage and the bytes replayed into model requests.
-//
-// Ceiling is the SQLite-backed Durable Object storage limit: a key and its value combined cannot
-// exceed 2 MB, and each attachment is stored as one key-value record with no chunking. 1.75 MiB
-// leaves roughly 165 KB for the key and the record envelope. Raising this further requires moving
-// attachment bytes out of Durable Object storage.
-const MAX_CHAT_ATTACHMENT_BYTES = 1792 * 1024; // 1.75 MiB
+/**
+ * Bounds attachment storage and the bytes replayed into model requests.
+ *
+ * Ceiling is the SQLite-backed Durable Object storage limit: a key and its value combined cannot
+ * exceed 2 MB, and each attachment is stored as one key-value record with no chunking. 1.75 MiB
+ * leaves roughly 165 KB for the key and the record envelope. Raising this further requires moving
+ * attachment bytes out of Durable Object storage.
+ */
+export const MAX_CHAT_ATTACHMENT_BYTES = 1792 * 1024; // 1.75 MiB
+
+/**
+ * Ceiling on how many attachments one chat message can carry.
+ *
+ * Enforced wherever a batch is assembled -- before any bytes are fetched, so an over-long batch is
+ * refused rather than downloaded first -- and again where the refs are canonicalized on the way
+ * into the message.
+ */
+export const MAX_CHAT_ATTACHMENTS_PER_MESSAGE = 8;
 
 /**
  * Raw size ceiling for a document that will be converted to Markdown rather than stored as-is.
@@ -117,7 +128,16 @@ const ATTACHMENT_SUPPORT_BY_PROVIDER = {
   ollama: isTextOrImageMime,
 } satisfies Record<AiModelProvider, (mimeType: string) => boolean>;
 
-function sanitizeChatAttachmentMimeType(mimeType: string | undefined): string {
+/**
+ * Reduce a declared MIME type to the bare type the validation rules are written against: no
+ * parameters, no surrounding whitespace, lower case. Anything missing, blank or carrying a line
+ * break becomes `application/octet-stream`.
+ *
+ * Callers that classify a file before its bytes reach `validateChatAttachmentUpload` -- e.g. an
+ * import screening a mailbox listing -- must normalize with this first, or they classify a
+ * different string than the pipeline will.
+ */
+export function sanitizeChatAttachmentMimeType(mimeType: string | undefined): string {
   if (!mimeType || /[\r\n]/.test(mimeType)) return "application/octet-stream";
   return mimeType.split(";", 1)[0].trim().toLowerCase() || "application/octet-stream";
 }
@@ -159,7 +179,10 @@ export function assertChatAttachmentSupportedByProvider(
  * directly keep the higher-fidelity native path (see chat-attachment-pdf.ts). Office documents
  * have no native path anywhere, so they always convert.
  */
-function shouldConvertUpload(mimeType: string, provider: AiModelProvider | undefined): boolean {
+export function shouldConvertUpload(
+  mimeType: string,
+  provider: AiModelProvider | undefined,
+): boolean {
   if (!CONVERTIBLE_MIME_TYPES.has(mimeType)) return false;
   if (mimeType !== PDF_MIME_TYPE) return true;
   return !isChatAttachmentSupportedByProvider(provider, PDF_MIME_TYPE);

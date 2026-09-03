@@ -51,6 +51,7 @@ import {
   ShieldCheck,
   Terminal,
   Globe,
+  Paperclip,
   MagnifyingGlass,
   Question,
   ArrowUpRight,
@@ -823,6 +824,11 @@ function getToolCallSummary(
       }
       return { verb: "Fetched", target };
     }
+    case "importAttachments":
+      return {
+        verb: "Imported",
+        target: pluralize(tc.input.attachmentIds?.length ?? 0, "attachment"),
+      };
     case "observeUserChanges":
       return { verb: "Observed user changes" };
     case "listBlueprints":
@@ -888,6 +894,8 @@ function describeToolCallCount(toolName: AiToolCall["toolName"], count: number):
       return count === 1 ? "Made 1 edit" : `Made ${count} edits`;
     case "webFetch":
       return `Fetched ${pluralize(count, "page")}`;
+    case "importAttachments":
+      return count === 1 ? "Imported attachments" : `Imported attachments ${formatTimes(count)}`;
     case "executeCode":
       return count === 1 ? "Ran code" : `Ran code ${formatTimes(count)}`;
     case "describeBinding":
@@ -931,6 +939,8 @@ function getToolIcon(
       return Terminal;
     case "webFetch":
       return Globe;
+    case "importAttachments":
+      return Paperclip;
     case "describeBinding":
       return MagnifyingGlass;
     case "setBindingHook":
@@ -972,6 +982,8 @@ function getProvisionalToolLabel(toolName: AiToolCall["toolName"] | null | undef
       return "Running code";
     case "webFetch":
       return "Fetching web page";
+    case "importAttachments":
+      return "Importing attachments";
     case "observeUserChanges":
       return "Observing user changes";
     case "giveUp":
@@ -998,6 +1010,7 @@ function getProvisionalToolVerb(toolName: AiToolCall["toolName"]): string {
     case "createGadget": return "Creating gadget";
     case "executeCode": return "Running code";
     case "webFetch": return "Fetching";
+    case "importAttachments": return "Importing attachments";
     case "observeUserChanges": return "Observing user changes";
     case "giveUp": return "Stopping";
     case "listBlueprints": return "Listing blueprints";
@@ -1016,6 +1029,7 @@ function describeProvisionalToolCount(toolName: AiToolCall["toolName"], count: n
     case "writeFile": return `Writing ${pluralize(count, "file")}`;
     case "editFile": return `Making ${count} edits`;
     case "webFetch": return `Fetching ${pluralize(count, "page")}`;
+    case "importAttachments": return "Importing attachments";
     case "executeCode": return count === 1 ? "Running code" : `Running code ${formatTimes(count)}`;
     case "describeBinding": return `Inspecting ${pluralize(count, "binding")}`;
     case "setBindingHook": return `Connecting ${pluralize(count, "binding")}`;
@@ -7836,6 +7850,16 @@ function ChatInterface({
                             <div className="group/agentMessage relative space-y-1.5">
                               {showReasoning && (
                                 <ThinkingTraceRow reasoning={msg.reasoning!} />
+                              )}
+
+                              {/* Attachments also ride messages the user did not author: a file
+                                  imported from a connected resource is stored, hydrated and
+                                  replayed exactly like an upload, so it gets the same grid. */}
+                              {msg.attachments && msg.attachments.length > 0 && (
+                                <ChatAttachmentGrid
+                                  attachments={msg.attachments}
+                                  onDownload={(attachment) => { void downloadChatAttachment(msg.chatId, attachment); }}
+                                />
                               )}
 
                               {hasMessageText && (
