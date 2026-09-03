@@ -5,7 +5,7 @@ import { act } from "react";
 import { type Root } from "react-dom/client";
 import { createI18nRoot } from "./testI18nRoot";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { OutputFormatOffer } from "@gadgets/workshop-shared/api";
+import type { BlueprintBindingAssignment, OutputFormatOffer } from "@gadgets/workshop-shared/api";
 
 const DOC_FORMAT: OutputFormatOffer = {
   blueprintId: "format.document",
@@ -24,8 +24,10 @@ const SLIDES_FORMAT: OutputFormatOffer = {
 const testState = vi.hoisted(() => {
   const listModels = vi.fn<() => Promise<never[]>>(async () => []);
   const newGadget = vi.fn<() => never>();
-  const listOutputFormats = vi.fn(async () => [] as never[]);
-  const newGadgetFromBlueprint = vi.fn();
+  const listOutputFormats = vi.fn<() => Promise<OutputFormatOffer[]>>(async () => []);
+  const newGadgetFromBlueprint = vi.fn<
+    (blueprintId: string, bindings: Record<string, BlueprintBindingAssignment>) => Promise<unknown>
+  >();
   // A new object each time so useOutputFormats's module cache (keyed on the api stub) does not
   // replay a previous test's list across this file.
   const makeApi = () => ({
@@ -118,8 +120,8 @@ describe("Home prompt route flow", () => {
   it("offers each promoted format as a New shortcut that stamps a workspace with no chat", async () => {
     testState.listOutputFormats.mockResolvedValue([DOC_FORMAT, SLIDES_FORMAT]);
     const overseer = {
-      getMetadata: vi.fn(async () => ({ id: "ws-doc" })),
-      [Symbol.dispose]: vi.fn(),
+      getMetadata: vi.fn<() => Promise<{ id: string }>>(async () => ({ id: "ws-doc" })),
+      [Symbol.dispose]: vi.fn<() => void>(),
     };
     testState.newGadgetFromBlueprint.mockResolvedValue(overseer);
 
