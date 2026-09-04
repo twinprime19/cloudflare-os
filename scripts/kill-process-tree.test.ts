@@ -22,7 +22,10 @@ async function waitUntilGone(pid: number, timeoutMs = 10_000): Promise<boolean> 
   return true;
 }
 
-describe("killProcessTree", () => {
+// Concurrent for the reason `relay-termination.test.ts` is: these cases spend their time waiting on
+// signalled processes to go away, not doing work, so in sequence the file costs the sum of those
+// waits. Each spawns its own tree and addresses it by pid, so they cannot reach each other.
+describe("killProcessTree", { concurrency: true }, () => {
   it("rejects a non-numeric pid rather than signalling a process group", async () => {
     await assert.rejects(
         killProcessTree("not-a-pid" as unknown as number), /pid must be a positive integer/);
@@ -77,7 +80,9 @@ async function spawnWrapper(grandchildBody: string): Promise<{
     `const { spawn } = require("node:child_process");
      const child = spawn(process.execPath, ["-e", ${JSON.stringify(grandchildBody)}],
          { stdio: "ignore" });
-     console.log(child.pid);
+     // The test runner sets FORCE_COLOR for a TTY; writing a number through console.log would add
+     // an ANSI color code whose leading "33" could be mistaken for the pid below.
+     process.stdout.write(String(child.pid) + "\\n");
      ${IDLE}`,
   ], { stdio: ["ignore", "pipe", "ignore"] });
 
@@ -97,7 +102,7 @@ async function spawnWrapper(grandchildBody: string): Promise<{
     let output = "";
     for await (const chunk of wrapper.stdout) {
       output += String(chunk);
-      const printed = /\d+/.exec(output);
+      const printed = /^\d+$/.exec(output.trimEnd());
       if (printed) {
         grandchildPid = Number(printed[0]);
         break;
@@ -111,7 +116,7 @@ async function spawnWrapper(grandchildBody: string): Promise<{
   return { wrapperPid, grandchildPid, cleanUp };
 }
 
-describe("killProcessTreeEscalating", () => {
+describe("killProcessTreeEscalating", { concurrency: true }, () => {
   it("SIGKILLs a descendant that ignored the SIGTERM", async () => {
     const { wrapperPid, grandchildPid, cleanUp } = await spawnWrapper(IGNORES_SIGTERM);
     try {

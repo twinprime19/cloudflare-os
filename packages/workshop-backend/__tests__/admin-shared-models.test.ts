@@ -39,13 +39,14 @@ const SHARED_CONFIG: AiModelConfig = {
   provider: "anthropic", model: "acme-1", apiToken: "acme-secret-token",
 };
 
-// The deployment's only suggested Cloudflare model. Its id is a unified-catalog id, not an
-// @cf/ one, and its window is the vendor's published 1M held back by 8%.
-const BUILT_IN_ID = "alibaba/qwen3.7-plus";
+// The deployment's default suggested Cloudflare model -- first in SUGGESTED_MODELS.cloudflare,
+// so a new chat starts on it when the admin has not set a default. Its id is the deployment's
+// own decision, so it stays literal: renaming a model upstream must fail this test.
+const BUILT_IN_ID = "@cf/zai-org/glm-5.3-flash";
+const BUILT_IN_NAME = "GLM 5.3 Flash (Workers AI)";
 
 // A built-in from a provider whose catalog is not ours to pin: read out of the catalog rather
-// than named, so renaming a model upstream cannot fail a test about fork behaviour. BUILT_IN_ID
-// above stays literal on purpose -- that id is the deployment's own decision.
+// than named, so renaming a model upstream cannot fail a test about fork behaviour.
 const ANTHROPIC_BUILT_IN = Object.keys(SUGGESTED_MODELS.anthropic)[0];
 
 afterEach(() => {
@@ -252,7 +253,7 @@ describe("AdminSettings shared-model catalog", () => {
     await expect(admin.addSharedModel(
         { type: "agent", id: BUILT_IN_ID, name: "Impostor" },
         { provider: "cloudflare", model: BUILT_IN_ID, apiToken: "token" },
-    )).rejects.toThrow(`Model id "${BUILT_IN_ID}" belongs to built-in model "Qwen 3.7 Plus".`);
+    )).rejects.toThrow(`Model id "${BUILT_IN_ID}" belongs to built-in model "${BUILT_IN_NAME}".`);
   }));
 
   it("turns a gateway built-in off deployment-wide",
@@ -326,7 +327,7 @@ describe("UserDurableObject.listModels", () => {
     const listed = await user.listModels();
 
     expect(listed.filter(entry => entry.id === BUILT_IN_ID))
-        .toEqual([{ type: "agent", id: BUILT_IN_ID, name: "Qwen 3.7 Plus" }]);
+        .toEqual([{ type: "agent", id: BUILT_IN_ID, name: BUILT_IN_NAME }]);
   }));
 
   it("still lists the built-ins when the settings singleton is down",
@@ -334,7 +335,7 @@ describe("UserDurableObject.listModels", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     breakSettings();
 
-    expect(await listedIds(user)).toEqual([BUILT_IN_ID]);
+    expect(await listedIds(user)).toEqual(Object.keys(SUGGESTED_MODELS.cloudflare));
     expect(warn.mock.calls.map(call => (call[0] as { event?: string })?.event))
         .toContain("shared.models.list.failed");
   }));

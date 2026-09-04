@@ -9,3 +9,6 @@ Banner	naturalized loanword in Vietnamese admin UIs; "biểu ngữ" carries a st
 Gatekeeper	product feature name (access broker); kept English everywhere per glossary, incl. embedded uses like "Gatekeeper app"
 Hooks	product feature name (lifecycle hooks); kept English, embedded uses render as "Đã bật Hooks" etc.
 Logo	naturalized loanword; standalone label matches embedded uses ("Logo hiện tại", …)
+{0} KB	unit symbol; Vietnamese uses the same SI-style byte units (cf. "tối đa 5 MB" in the shipped catalog). The number is formatted in code.
+{0} MB	unit symbol; Vietnamese uses the same SI-style byte units (cf. "tối đa 5 MB" in the shipped catalog). The number is formatted in code.
+{size} B	unit symbol; Vietnamese writes bytes as "B" too. The number is formatted in code.

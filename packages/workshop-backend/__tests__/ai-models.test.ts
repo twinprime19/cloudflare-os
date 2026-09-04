@@ -95,7 +95,7 @@ describe("getModel AI Gateway routing", () => {
     expect(request.headers.get("x-api-key")).toBeNull();
     expect(request.headers.get("authorization")).toBeNull();
     expect(JSON.parse(request.headers.get("cf-aig-metadata")!)).toEqual({
-      user: "user-123",
+      "user.id": "user-123",
       source: "chat",
       gadgetId: "gadget-123",
       chatId: 7,
@@ -131,7 +131,7 @@ describe("getModel AI Gateway routing", () => {
 
     const request = await captureRequest(handle);
     expect(JSON.parse(request.headers.get("cf-aig-metadata")!)).toEqual({
-      user: "owner-456",
+      "user.id": "owner-456",
       source: "thread-title",
       gadgetId: "gadget-456",
       chatId: 8,
@@ -175,7 +175,7 @@ describe("getModel AI Gateway routing", () => {
         "chat/completions");
     expect(request.headers.get("cf-aig-authorization")).toBe("Bearer user-token");
     expect(JSON.parse(request.headers.get("cf-aig-metadata")!)).toEqual({
-      user: "user-123",
+      "user.id": "user-123",
       source: "chat",
       gadgetId: "gadget-789",
       chatId: 9,
@@ -207,6 +207,9 @@ describe("getModel AI Gateway routing", () => {
   it("routes Workers AI through the platform gateway like every other provider", async () => {
     const handle = getModel(env(), WORKERS_AI_CONFIG, INITIATOR,
         { sessionAffinity: "session-a" });
+    const glm = getModel(env(),
+        {...WORKERS_AI_CONFIG, model: "@cf/zai-org/glm-5.3-flash"}, INITIATOR);
+    expect(glm.model).toMatchObject({reasoning: true, input: ["text", "image"]});
 
     expect(handle.model.api).toBe("openai-completions");
     expect(handle.model.id).toBe("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
@@ -310,7 +313,7 @@ describe("getModel AI Gateway binding transport", () => {
     expect(headerNames).not.toContain("x-api-key");
     expect(headerNames).not.toContain("authorization");
     expect(JSON.parse(entry.headers["cf-aig-metadata"])).toEqual({
-      user: "user-123",
+      "user.id": "user-123",
       source: "chat",
       gadgetId: "gadget-123",
       chatId: 7,

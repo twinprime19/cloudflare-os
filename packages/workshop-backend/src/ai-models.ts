@@ -18,8 +18,11 @@ import AI_MODEL_BINDING_TYPES from "./ai-model-binding.txt";
 import { AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, WORKERS_AI_OUTPUT_LIMIT }
   from "@gadgets/workshop-shared/api";
 import { AiGatewayConfig, getAiGatewayConfig, type AiGatewayLogRoute } from "./ai-gateway.js";
-import { completeText } from "./ai-invoke.js";
+import { completeText, summarizeProviderErrorBody } from "./ai-invoke.js";
 import { bridgePdfAttachments } from "./chat-attachment-pdf.js";
+import { createWorkshopLogger } from "./observability";
+
+const logger = createWorkshopLogger("workshop.ai-models");
 
  /**
   * Routing to bill a user's own Cloudflare account for inference (BYOK path once the free tier is
@@ -31,10 +34,15 @@ import { bridgePdfAttachments } from "./chat-attachment-pdf.js";
    apiKey: string;
  }
 
-// Gadgets-owned attribution schema attached to AI Gateway requests.
+// Gadgets-owned attribution schema attached to AI Gateway requests. AI Gateway forwards these
+// keys verbatim as OpenTelemetry span attributes and keeps at most five entries.
 type GatewayMetadata = {
-  // Stable Gadgets user identifier for attribution.
-  user: string;
+  // Acting user's identifier (the login email on gatekeeper/OAuth sign-in), under the literal
+  // dotted key `user.id`: Langfuse promotes only `user.id` (or `langfuse.user.id`) to its
+  // first-class user field, and any other spelling lands in generic span metadata instead. It
+  // replaces a plain `user` key rather than joining it, because the widest path
+  // (gadget-automated chat) already uses all five slots.
+  "user.id": string;
   // Gadgets execution context, present when the call is associated with a gadget operation.
   source?: GatewayMetadataContext["source"];
   gadgetId?: string;
@@ -94,17 +102,19 @@ export type ModelHandle = {
   aiGatewayLogRoute?: AiGatewayLogRoute;
 
   /**
-   * Status and AI Gateway log id of the most recent HTTP response observed by `stream`. Reset at
-   * the start of every request and set from pi's onResponse callback (which fires only once a
-   * response arrives -- an SDK-level failure leaves this undefined), so consumers must read it
-   * right after the request they care about completes. Turns run requests sequentially, so this
-   * is safe.
+   * Status, AI Gateway log id, and (for a failure) a one-line reason from the most recent HTTP
+   * response observed by `stream`. Reset at the start of every request; set from pi's onResponse
+   * callback for a response the SDK accepted, and from the handle's transport wrapper for one it
+   * rejected (non-2xx, which pi otherwise surfaces only as error text -- see
+   * observeFailedRequests). A transport-level failure, with no response at all, leaves this
+   * undefined. Consumers must read it right after the request they care about completes; turns
+   * run requests sequentially, so this is safe.
    */
-  lastResponse?: { status: number; aiGatewayLogId?: string };
+  lastResponse?: { status: number; aiGatewayLogId?: string; errorDetail?: string };
 };
 
 function buildMetadata(initiator: AiChatAuthorInfo, context?: GatewayMetadataContext): GatewayMetadata {
-  const metadata: GatewayMetadata = { user: initiator.id };
+  const metadata: GatewayMetadata = { "user.id": initiator.id };
   if (context) {
     metadata.source = context.source;
     if (context.gadgetId) metadata.gadgetId = context.gadgetId;
@@ -276,6 +286,69 @@ type HandleArgs = {
   fetch?: FetchFunction;
 };
 
+/** Byte length of the request body the SDK is sending, when it is a string or a buffer. */
+function requestBodyBytes(init: RequestInit | undefined): number | undefined {
+  const body = init?.body;
+  if (typeof body === "string") return new TextEncoder().encode(body).byteLength;
+  if (body instanceof ArrayBuffer) return body.byteLength;
+  if (ArrayBuffer.isView(body)) return body.byteLength;
+  return undefined;
+}
+
+/**
+ * Wraps a handle's transport so a failed request leaves evidence behind. The provider SDKs turn
+ * a non-2xx response into an exception whose text pi reports as the turn's errorMessage -- and
+ * for a body the SDK doesn't understand (Cloudflare's API envelope) that text is just
+ * "<status> status code (no body)": the reason, the AI Gateway log id, and the timing are all
+ * lost. So before the SDK sees an error response, this records its status, `cf-aig-log-id`, and
+ * a one-line summary of the body on `handle.lastResponse` (surfaced to the chat by
+ * describeRequestFailure), and logs them with the time to headers and the request size -- the
+ * two numbers that tell a size-driven inference timeout apart from a transient one. A transport
+ * rejection (connection lost before any response) is logged the same way and rethrown unchanged.
+ * Successful responses pass through untouched.
+ */
+function observeFailedRequests(transport: FetchFunction, handle: ModelHandle): FetchFunction {
+  return async (input, init) => {
+    const startedAt = Date.now();
+    let response: Response;
+    try {
+      response = await transport(input, init);
+    } catch (error) {
+      // A cancelled request rejects here too; that is the user's doing, not a failure.
+      if (init?.signal?.aborted) throw error;
+      logger.warn("model request transport failed", {
+        event: "ai_model.request.transport_failed",
+        modelId: handle.model.id,
+        durationMs: Date.now() - startedAt,
+        size: requestBodyBytes(init),
+        error,
+      });
+      throw error;
+    }
+    if (response.ok) return response;
+    // The SDK consumes the body to build its exception; summarize a copy so its view is unchanged.
+    let errorDetail: string | undefined;
+    try {
+      errorDetail = summarizeProviderErrorBody(await response.clone().text());
+    } catch {
+      errorDetail = undefined;
+    }
+    const aiGatewayLogId = response.headers.get("cf-aig-log-id") ?? undefined;
+    handle.lastResponse = { status: response.status, aiGatewayLogId, errorDetail };
+    logger.warn("model request failed", {
+      event: "ai_model.request.failed",
+      modelId: handle.model.id,
+      statusCode: response.status,
+      durationMs: Date.now() - startedAt,
+      size: requestBodyBytes(init),
+      aiGatewayLogId,
+      cfRay: response.headers.get("cf-ray") ?? undefined,
+      providerError: errorDetail ?? "(empty body)",
+    });
+    return response;
+  };
+}
+
 function makeHandle(args: HandleArgs): ModelHandle {
   const streamFn = API_STREAMS[args.model.api];
   if (!streamFn) {
@@ -312,6 +385,13 @@ function makeHandle(args: HandleArgs): ModelHandle {
             ? { "cf-aig-metadata": JSON.stringify(args.gatewayMetadata) }
             : {}),
       };
+      // Transport precedence: a per-call fetch (tests, diagnostics) over the handle's (the
+      // gateway binding) over the global one. Every API but Google's gets it wrapped to record
+      // failed responses (observeFailedRequests); pi's Google adapter rejects any fetch other
+      // than the global one, so that API keeps only what the caller passed.
+      const transportFetch = args.model.api === "google-generative-ai"
+          ? options.fetch
+          : observeFailedRequests(options.fetch ?? args.fetch ?? globalThis.fetch, handle);
       const merged: SimpleStreamOptions = {
         // API defaults first, so an explicit per-call option can override them. `thinking: false`
         // replaces them with an explicit thinking-off request: for Anthropic pi sends
@@ -321,8 +401,8 @@ function makeHandle(args: HandleArgs): ModelHandle {
         ...(thinking
             ? apiExtras
             : args.model.api === "anthropic-messages" ? { thinkingEnabled: false } : {}),
-        ...(args.fetch !== undefined ? { fetch: args.fetch } : {}),
         ...options,
+        ...(transportFetch !== undefined ? { fetch: transportFetch } : {}),
         ...(args.apiKey !== undefined ? { apiKey: args.apiKey } : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
         // Session affinity: pi only sends it when caching isn't "none" (fine for us).

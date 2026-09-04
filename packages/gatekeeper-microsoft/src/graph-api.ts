@@ -17,7 +17,7 @@
 import {
   AccessTokenProvider, CredentialsRejectedReporter, claimsChallengeDetail, fetchWithAuthRetry,
 } from "./auth-retry";
-import type { OutlookFolderInfo, OutlookMessageInfo } from "./types";
+import type { OutlookAttachmentInfo, OutlookFolderInfo, OutlookMessageInfo } from "./types";
 
 /** Graph's origin. Pagination links are pinned to it; see `assertGraphUrl`. */
 export const GRAPH_ORIGIN = "https://graph.microsoft.com";
@@ -35,6 +35,29 @@ const MESSAGE_SELECT = [
   "id", "subject", "from", "toRecipients", "ccRecipients", "receivedDateTime", "isRead",
   "hasAttachments", "bodyPreview", "parentFolderId", "webLink", "conversationId",
 ].join(",");
+
+/**
+ * Attachment fields every attachment read selects.
+ *
+ * Selecting is what keeps a listing cheap: without `$select`, Graph returns `contentBytes` for
+ * every file attachment, so listing a message with a 9 MiB PDF would download the PDF.
+ *
+ * Only properties of the base `microsoft.graph.attachment` type may appear here — Graph rejects a
+ * `$select` naming a property that exists solely on a derived type (`contentBytes`, `contentId`).
+ * `@odata.type` is deliberately absent for the same reason: it is OData control information rather
+ * than a property, and Graph emits it anyway, because the collection is declared as the base type
+ * while every instance is one of the derived ones.
+ */
+const ATTACHMENT_SELECT = ["id", "name", "contentType", "size", "isInline"].join(",");
+
+/**
+ * Ceiling on a single attachment read, in bytes.
+ *
+ * Mirrors the workshop's 10 MiB document limit (`MAX_CONVERTIBLE_DOCUMENT_BYTES` in
+ * workshop-backend). It is repeated here as a literal rather than imported: this gatekeeper is its
+ * own worker and must bound its RPC payloads whatever the application on the other side does.
+ */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MiB
 
 // `childFolderCount` is what makes the folder walk cheap: a folder reporting none is never asked
 // for its children.
@@ -89,6 +112,16 @@ type GraphMailFolder = {
   totalItemCount?: number;
   unreadItemCount?: number;
   childFolderCount?: number;
+};
+
+type GraphAttachment = {
+  /** OData type annotation: `#microsoft.graph.fileAttachment` and friends. */
+  "@odata.type"?: string;
+  id?: string;
+  name?: string;
+  contentType?: string;
+  size?: number;
+  isInline?: boolean;
 };
 
 type GraphCollection<T> = {
@@ -232,6 +265,40 @@ function folderInfoFrom(folder: GraphMailFolder): OutlookFolderInfo {
 }
 
 /**
+ * Classify an attachment from its OData type annotation.
+ *
+ * Anything not recognized as a file or a reference is reported as `"item"`, the kind that carries
+ * no downloadable bytes. That is the safe default: a type this code has never seen is not something
+ * `/$value` can be assumed to serve, and misreporting it as a file would turn a Graph error into an
+ * unexplained download failure.
+ */
+function attachmentKind(odataType: string | undefined): OutlookAttachmentInfo["kind"] {
+  let type = (odataType ?? "").replace(/^#/, "").toLowerCase();
+  if (type === "microsoft.graph.fileattachment") return "file";
+  if (type === "microsoft.graph.referenceattachment") return "reference";
+  return "item";
+}
+
+function attachmentInfoFrom(attachment: GraphAttachment): OutlookAttachmentInfo {
+  if (typeof attachment.id !== "string" || !attachment.id) {
+    throw new Error("Microsoft Graph returned an attachment without an id.");
+  }
+  return {
+    id: attachment.id,
+    name: attachment.name ?? "(unnamed attachment)",
+    mimeType: attachment.contentType ?? "application/octet-stream",
+    sizeBytes: typeof attachment.size === "number" && attachment.size > 0 ? attachment.size : 0,
+    isInline: attachment.isInline === true,
+    kind: attachmentKind(attachment["@odata.type"]),
+  };
+}
+
+/** An attachment name as it can safely appear in a one-line error message. */
+function attachmentLabel(name: string): string {
+  return truncate(name.replace(/[\r\n]+/g, " "), 100);
+}
+
+/**
  * Validate an agent-supplied KQL search string.
  *
  * A double quote would close the quoted KQL literal the term is wrapped in, turning the rest of the
@@ -300,6 +367,13 @@ export class GraphMailApi {
     if (!response.ok) throw await this.#toError(response);
     if (response.status === 204) return undefined as T;
     return await response.json<T>();
+  }
+
+  /** Read a response body as bytes. Used only for `/$value`, which serves no JSON. */
+  async #fetchBytes(url: string): Promise<ArrayBuffer> {
+    let response = await this.#request(url, { headers: { Accept: "*/*" } });
+    if (!response.ok) throw await this.#toError(response);
+    return await response.arrayBuffer();
   }
 
   async #send(url: string, init: RequestInit): Promise<void> {
@@ -475,6 +549,81 @@ export class GraphMailApi {
     let message = await this.#fetchJson<GraphMessage>(
         graphUrl(["me", "messages", messageId], { $select: "id,body" }));
     return typeof message.body?.content === "string" ? message.body.content : "";
+  }
+
+  /**
+   * Metadata for every attachment on a message, without any content.
+   *
+   * One request, no pagination loop: a message holds a handful of attachments and Graph returns
+   * them in a single page. A `@odata.nextLink` here would mean a message with more attachments than
+   * Outlook itself permits, and paging a mailbox on the caller's behalf is not this method's job --
+   * so such a listing is refused rather than truncated. A short answer must never be mistakable for
+   * a complete one, by the caller or by the audit trail that records what was listed.
+   */
+  async listAttachments(messageId: string): Promise<OutlookAttachmentInfo[]> {
+    let body = await this.#fetchJson<GraphCollection<GraphAttachment>>(
+        graphUrl(["me", "messages", messageId, "attachments"], { $select: ATTACHMENT_SELECT }));
+    if (body["@odata.nextLink"]) {
+      throw new Error(
+          "This message carries more attachments than Outlook returns in one page, so they " +
+          "cannot be listed completely here. Open the message in Outlook to see them all.");
+    }
+    return (body.value ?? []).map(attachmentInfoFrom);
+  }
+
+  /** Metadata for one attachment, without its content. */
+  async #getAttachment(messageId: string, attachmentId: string): Promise<OutlookAttachmentInfo> {
+    let attachment = await this.#fetchJson<GraphAttachment>(
+        graphUrl(["me", "messages", messageId, "attachments", attachmentId],
+                 { $select: ATTACHMENT_SELECT }));
+    return attachmentInfoFrom(attachment);
+  }
+
+  /**
+   * One file attachment's raw bytes, with the metadata that describes them.
+   *
+   * Metadata is read first so a kind that has no bytes, or a file over the cap, costs one small
+   * request instead of a download that is then thrown away. Graph's `size` counts the stored
+   * (base64) form of a file attachment, so it slightly overstates the file — a file just under the
+   * cap can therefore be refused here. No compensation math: the post-download check below is the
+   * authoritative one, and refusing marginally early is the safe direction.
+   *
+   * The body is buffered rather than streamed: the size gate above has already bounded it, and
+   * Graph is a first-party origin whose declared size the callers are entitled to trust.
+   */
+  async getAttachmentBytes(messageId: string, attachmentId: string)
+      : Promise<{ info: OutlookAttachmentInfo; content: ArrayBuffer }> {
+    let info = await this.#getAttachment(messageId, attachmentId);
+    let label = attachmentLabel(info.name);
+
+    if (info.kind === "item") {
+      throw new Error(
+          `"${label}" is an Outlook item attached to this message (an email, event or contact), ` +
+          "not a file, so it has no file contents to read.");
+    }
+    if (info.kind === "reference") {
+      throw new Error(
+          `"${label}" is a link to a file stored in OneDrive or SharePoint, not a copy of the ` +
+          "file, so the mailbox holds no contents to read. Open the link in Outlook instead.");
+    }
+    if (info.sizeBytes > MAX_ATTACHMENT_BYTES) {
+      throw new Error(
+          `"${label}" is ${info.sizeBytes} bytes, which is over the ${MAX_ATTACHMENT_BYTES}-byte ` +
+          "limit for reading an attachment. It was not downloaded.");
+    }
+
+    // `$value` is written literally for the same reason the OData query options are: it is a
+    // fixed segment from this file, not caller data, and percent-encoding it would ask Graph for a
+    // child named "%24value". The id before it is still encoded by graphUrl().
+    let content = await this.#fetchBytes(
+        `${graphUrl(["me", "messages", messageId, "attachments", attachmentId])}/$value`);
+
+    if (content.byteLength > MAX_ATTACHMENT_BYTES) {
+      throw new Error(
+          `"${label}" returned ${content.byteLength} bytes, which is over the ` +
+          `${MAX_ATTACHMENT_BYTES}-byte limit for reading an attachment.`);
+    }
+    return { info, content };
   }
 
   // ── Writes ────────────────────────────────────────────────────────────────────

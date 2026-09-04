@@ -71,6 +71,18 @@ msgstr "{0} created {1, plural, one {gadget} other {gadgets}} {createdTitles}"
 msgid "{0} discarded changes"
 msgstr "{0} discarded changes"
 
+#. placeholder {0}: (size / 1024).toFixed(1)
+msgid "{0} KB"
+msgstr "{0} KB"
+
+#. placeholder {0}: history.entries.length
+msgid "{0} loaded"
+msgstr "{0} loaded"
+
+#. placeholder {0}: (size / (1024 * 1024)).toFixed(1)
+msgid "{0} MB"
+msgstr "{0} MB"
+
 #. placeholder {0}: usage.remaining
 #. placeholder {1}: usage.dailyLimit
 msgid "{0} of {1, plural, one {# request} other {# requests}} remaining today"
@@ -89,6 +101,9 @@ msgstr "{DEFAULT_ACCENT_COLOR} (default)"
 msgid "{filename} is being edited"
 msgstr "{filename} is being edited"
 
+msgid "{initialRoom, plural, one {Only the first attachment was attached} other {Only the first # attachments were attached}}"
+msgstr "{initialRoom, plural, one {Only the first attachment was attached} other {Only the first # attachments were attached}}"
+
 msgid "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
 msgstr "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
 
@@ -98,6 +113,9 @@ msgstr "{label}. Switch to {nextMode}."
 #. placeholder {0}: bindingEntries.length
 msgid "{readyCount} of {0} ready. Suggestions are used automatically when they match one of your connected accounts."
 msgstr "{readyCount} of {0} ready. Suggestions are used automatically when they match one of your connected accounts."
+
+msgid "{size} B"
+msgstr "{size} B"
 
 msgid "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
 msgstr "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
@@ -319,8 +337,17 @@ msgstr "attached file"
 msgid "Attached file"
 msgstr "Attached file"
 
+#. placeholder {0}: formatAttachmentSize(MAX_CHAT_ATTACHMENT_TOTAL_BYTES) ?? ""
+msgid "Attached files must total {0} or less"
+msgstr "Attached files must total {0} or less"
+
 msgid "Attached image"
 msgstr "Attached image"
+
+#. placeholder {0}: formatAttachmentSize(MAX_CHAT_ATTACHMENT_BYTES) ?? ""
+#. placeholder {0}: formatAttachmentSize(limit) ?? ""
+msgid "Attachments must be {0} or smaller."
+msgstr "Attachments must be {0} or smaller."
 
 msgid "Authenticating..."
 msgstr "Authenticating..."
@@ -445,6 +472,9 @@ msgstr "Chat"
 
 msgid "Check your connection and try refreshing the page."
 msgstr "Check your connection and try refreshing the page."
+
+msgid "Checking for requests…"
+msgstr "Checking for requests…"
 
 msgid "Choose \"None\" to create conversations without an agent."
 msgstr "Choose \"None\" to create conversations without an agent."
@@ -674,6 +704,18 @@ msgstr "Copy message"
 msgid "Copy user ID"
 msgstr "Copy user ID"
 
+msgid "Could not check for requests"
+msgstr "Could not check for requests"
+
+msgid "Could not check for requests — reload the page to try again."
+msgstr "Could not check for requests — reload the page to try again."
+
+msgid "Could not finish checking for requests — reload the page to try again."
+msgstr "Could not finish checking for requests — reload the page to try again."
+
+msgid "Could not load activity"
+msgstr "Could not load activity"
+
 msgid "Could not load auto-approval"
 msgstr "Could not load auto-approval"
 
@@ -692,6 +734,9 @@ msgstr "Couldn’t load commands. {error}"
 
 msgid "Couldn't load deployment settings."
 msgstr "Couldn't load deployment settings."
+
+msgid "Couldn't load older activity"
+msgstr "Couldn't load older activity"
 
 msgid "Create"
 msgstr "Create"
@@ -1082,8 +1127,14 @@ msgstr "Extra instructions added to every agent’s system prompt on this deploy
 msgid "Failed"
 msgstr "Failed"
 
+msgid "Failed to add resource"
+msgstr "Failed to add resource"
+
 msgid "Failed to approve action"
 msgstr "Failed to approve action"
+
+msgid "Failed to create resource connection"
+msgstr "Failed to create resource connection"
 
 msgid "Failed to deny action"
 msgstr "Failed to deny action"
@@ -1094,8 +1145,14 @@ msgstr "Failed to disable auto-approval"
 msgid "Failed to enable auto-approval"
 msgstr "Failed to enable auto-approval"
 
+msgid "Failed to encode image."
+msgstr "Failed to encode image."
+
 msgid "Failed to encode the logo as PNG."
 msgstr "Failed to encode the logo as PNG."
+
+msgid "Failed to get 2D canvas context."
+msgstr "Failed to get 2D canvas context."
 
 msgid "Failed to load blueprint."
 msgstr "Failed to load blueprint."
@@ -1109,8 +1166,14 @@ msgstr "Failed to load this gadget's code."
 msgid "Failed to prepare the logo image."
 msgstr "Failed to prepare the logo image."
 
+msgid "Failed to process attachment"
+msgstr "Failed to process attachment"
+
 msgid "Failed to read the selected image."
 msgstr "Failed to read the selected image."
+
+msgid "Failed to upload attachment"
+msgstr "Failed to upload attachment"
 
 msgid "Favorite"
 msgstr "Favorite"
@@ -1248,6 +1311,10 @@ msgstr "Human-readable name shown in the UI"
 msgid "Icon"
 msgstr "Icon"
 
+#. placeholder {0}: formatAttachmentSize(MAX_CHAT_ATTACHMENT_SOURCE_IMAGE_BYTES) ?? ""
+msgid "Images must be {0} or smaller before resizing."
+msgstr "Images must be {0} or smaller before resizing."
+
 #. placeholder {0}: owner.name
 msgid "In a workspace shared by {0}"
 msgstr "In a workspace shared by {0}"
@@ -1326,6 +1393,9 @@ msgstr "Link ready"
 
 msgid "Link your accounts so your gadgets can access them. You can always add more later."
 msgstr "Link your accounts so your gadgets can access them. You can always add more later."
+
+msgid "Load older"
+msgstr "Load older"
 
 msgid "Loading accounts…"
 msgstr "Loading accounts…"
@@ -1636,6 +1706,9 @@ msgstr "Nothing after it was kept."
 msgid "Nothing can run automatically"
 msgstr "Nothing can run automatically"
 
+msgid "Nothing in the most recent activity"
+msgstr "Nothing in the most recent activity"
+
 msgid "Nothing is available to offer spawned agents here. Create the agent from a gadget's Connections tab to give it access to that gadget and its resources."
 msgstr "Nothing is available to offer spawned agents here. Create the agent from a gadget's Connections tab to give it access to that gadget and its resources."
 
@@ -1835,6 +1908,9 @@ msgstr "Referenced in code as: <0>{bindingName}</0>"
 
 msgid "Reload"
 msgstr "Reload"
+
+msgid "Reload the page to try again."
+msgstr "Reload the page to try again."
 
 msgid "Reload the Workshop to start again."
 msgstr "Reload the Workshop to start again."
@@ -2044,14 +2120,14 @@ msgstr "Select at least one resource to continue."
 msgid "Select model"
 msgstr "Select model"
 
-msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {error} other {errors}} to chat"
-msgstr "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {error} other {errors}} to chat"
+msgid "Send {count} captured {count, plural, one {error} other {errors}} to chat"
+msgstr "Send {count} captured {count, plural, one {error} other {errors}} to chat"
 
-msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {log} other {logs}} to chat"
-msgstr "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {log} other {logs}} to chat"
+msgid "Send {count} captured {count, plural, one {log} other {logs}} to chat"
+msgstr "Send {count} captured {count, plural, one {log} other {logs}} to chat"
 
-msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {warning} other {warnings}} to chat"
-msgstr "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {warning} other {warnings}} to chat"
+msgid "Send {count} captured {count, plural, one {warning} other {warnings}} to chat"
+msgstr "Send {count} captured {count, plural, one {warning} other {warnings}} to chat"
 
 msgid "Send message"
 msgstr "Send message"
@@ -2204,6 +2280,9 @@ msgstr "Start with"
 msgid "Status"
 msgstr "Status"
 
+msgid "Still checking older activity…"
+msgstr "Still checking older activity…"
+
 msgid "Stop agent"
 msgstr "Stop agent"
 
@@ -2252,6 +2331,9 @@ msgstr "The gadget changed since this draft started"
 #. placeholder {0}: example!.modelId
 msgid "The model identifier as specified by the provider (e.g., '{0}')"
 msgstr "The model identifier as specified by the provider (e.g., '{0}')"
+
+msgid "The prompt changed before the resource could be added"
+msgstr "The prompt changed before the resource could be added"
 
 #. placeholder {0}: vendor.description.displayName
 msgid "The required resource type for this binding isn't offered by {0}."
@@ -2433,6 +2515,9 @@ msgstr "Upload .gadget"
 msgid "Upload a .gadget archive"
 msgstr "Upload a .gadget archive"
 
+msgid "Upload failed"
+msgstr "Upload failed"
+
 msgid "Upload file"
 msgstr "Upload file"
 
@@ -2582,6 +2667,9 @@ msgstr "You brought the gadget's latest changes into this draft"
 
 msgid "You brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
 msgstr "You brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
+
+msgid "You can attach up to {MAX_COMPOSER_ATTACHMENTS} attachments"
+msgstr "You can attach up to {MAX_COMPOSER_ATTACHMENTS} attachments"
 
 msgid "You can copy it again anytime from Share links"
 msgstr "You can copy it again anytime from Share links"

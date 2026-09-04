@@ -487,6 +487,168 @@ describe("error taxonomy", () => {
   });
 });
 
+const ATTACHMENTS = [
+  {
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    id: "att-file", name: "report.pdf", contentType: "application/pdf", size: 2048,
+    isInline: false,
+  },
+  {
+    "@odata.type": "#microsoft.graph.itemAttachment",
+    id: "att-item", name: "Forwarded thread", contentType: "message/rfc822", size: 4096,
+    isInline: false,
+  },
+  {
+    "@odata.type": "#microsoft.graph.referenceAttachment",
+    id: "att-ref", name: "Budget.xlsx", contentType: "application/octet-stream", size: 0,
+    isInline: false,
+  },
+  {
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    id: "att-inline", name: "logo.png", contentType: "image/png", size: 512, isInline: true,
+  },
+  // A type this code has never seen. It must not be treated as downloadable.
+  { "@odata.type": "#microsoft.graph.someFutureAttachment", id: "att-new", size: 10 },
+];
+
+/** Answers attachment metadata from ATTACHMENTS and serves `$value` as `bytes`. */
+function attachmentRoute(bytes = new Uint8Array(2048)) {
+  return (call: Call): Response => {
+    const path = new URL(call.url).pathname;
+    if (path.endsWith("/$value")) return new Response(bytes);
+    if (path.endsWith("/attachments")) return jsonResponse({ value: ATTACHMENTS });
+    const found = ATTACHMENTS.find(attachment => path.endsWith(`/attachments/${attachment.id}`));
+    if (found) return jsonResponse(found);
+    throw new Error(`unexpected request: ${call.url}`);
+  };
+}
+
+describe("attachments", () => {
+  it("lists metadata without asking Graph for any content", async () => {
+    const calls = stubFetch(attachmentRoute());
+
+    const attachments = await newApi().listAttachments(MESSAGE.id);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain(
+      `$select=${encodeURIComponent("id,name,contentType,size,isInline")}`);
+    // contentBytes is what a bare listing would return: megabytes per file attachment.
+    expect(calls[0].url).not.toContain("contentBytes");
+    expect(prefer(calls[0])).toContain('IdType="ImmutableId"');
+    expect(attachments).toEqual([
+      {
+        id: "att-file", name: "report.pdf", mimeType: "application/pdf", sizeBytes: 2048,
+        isInline: false, kind: "file",
+      },
+      {
+        id: "att-item", name: "Forwarded thread", mimeType: "message/rfc822", sizeBytes: 4096,
+        isInline: false, kind: "item",
+      },
+      {
+        id: "att-ref", name: "Budget.xlsx", mimeType: "application/octet-stream", sizeBytes: 0,
+        isInline: false, kind: "reference",
+      },
+      {
+        id: "att-inline", name: "logo.png", mimeType: "image/png", sizeBytes: 512,
+        isInline: true, kind: "file",
+      },
+      {
+        id: "att-new", name: "(unnamed attachment)", mimeType: "application/octet-stream",
+        sizeBytes: 10, isInline: false, kind: "item",
+      },
+    ]);
+  });
+
+  it("refuses a listing Graph split across pages instead of truncating it", async () => {
+    // A partial listing is indistinguishable from a complete one to the caller and to the audit
+    // trail, so it is an error rather than a short answer.
+    const calls = stubFetch(() => jsonResponse({
+      value: [ATTACHMENTS[0]],
+      "@odata.nextLink":
+        `https://graph.microsoft.com/v1.0/me/messages/${MESSAGE.id}/attachments?$skiptoken=abc`,
+    }));
+
+    await expect(newApi().listAttachments(MESSAGE.id)).rejects.toThrow(
+      /cannot be listed completely here/);
+    // One request; no page was followed.
+    expect(calls).toHaveLength(1);
+  });
+
+  it("downloads a file attachment from its $value endpoint", async () => {
+    const calls = stubFetch(attachmentRoute(new Uint8Array(2048).fill(7)));
+
+    const { info, content } = await newApi().getAttachmentBytes(MESSAGE.id, "att-file");
+
+    expect(info.name).toBe("report.pdf");
+    expect(content.byteLength).toBe(2048);
+    expect(new Uint8Array(content)[0]).toBe(7);
+    // Metadata first, then the bytes.
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toBe(
+      `https://graph.microsoft.com/v1.0/me/messages/${MESSAGE.id}/attachments/att-file/$value`);
+    expect(prefer(calls[1])).toContain('IdType="ImmutableId"');
+  });
+
+  it("rejects a relative attachment id before any request is made", async () => {
+    const calls = stubFetch(() => jsonResponse(ATTACHMENTS[0]));
+
+    // An attachment id is agent-supplied and reaches a URL path, so it takes the same treatment a
+    // folder id does.
+    await expect(newApi().getAttachmentBytes(MESSAGE.id, "..")).rejects.toThrow(
+      /empty or relative/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses kinds that carry no file bytes, naming what each one actually is", async () => {
+    const calls = stubFetch(attachmentRoute());
+    const api = newApi();
+
+    await expect(api.getAttachmentBytes(MESSAGE.id, "att-item"))
+      .rejects.toThrow(/is an Outlook item attached to this message/);
+    await expect(api.getAttachmentBytes(MESSAGE.id, "att-ref"))
+      .rejects.toThrow(/is a link to a file stored in OneDrive or SharePoint/);
+    await expect(api.getAttachmentBytes(MESSAGE.id, "att-new"))
+      .rejects.toThrow(/is an Outlook item attached to this message/);
+
+    // Metadata only: nothing was downloaded for any of the three.
+    expect(calls).toHaveLength(3);
+    expect(calls.some(call => call.url.endsWith("/$value"))).toBe(false);
+  });
+
+  it("refuses an oversized attachment from its metadata, before downloading it", async () => {
+    const calls = stubFetch(call => new URL(call.url).pathname.endsWith("/$value")
+      ? new Response(new Uint8Array(1024))
+      : jsonResponse({ ...ATTACHMENTS[0], size: 10 * 1024 * 1024 + 1 }));
+
+    await expect(newApi().getAttachmentBytes(MESSAGE.id, "att-file"))
+      .rejects.toThrow(/over the 10485760-byte limit .* not downloaded/s);
+
+    expect(calls).toHaveLength(1);
+  });
+
+  it("refuses a body that arrives over the cap despite an in-range declared size", async () => {
+    // Graph's `size` counts the stored form, so it should exceed the raw bytes — a body larger than
+    // its own metadata means the pre-check cannot be the only gate.
+    stubFetch(call => new URL(call.url).pathname.endsWith("/$value")
+      ? new Response(new Uint8Array(10 * 1024 * 1024 + 1))
+      : jsonResponse({ ...ATTACHMENTS[0], size: 1024 }));
+
+    await expect(newApi().getAttachmentBytes(MESSAGE.id, "att-file"))
+      .rejects.toThrow(/returned 10485761 bytes, which is over the 10485760-byte limit/);
+  });
+
+  it("surfaces a Graph error from the metadata read in mailbox terms", async () => {
+    stubFetch(() => jsonResponse(
+      { error: { code: "ErrorItemNotFound", message: "attachment not found" } }, 404));
+
+    const error = await newApi().getAttachmentBytes(MESSAGE.id, "att-file")
+      .catch(err => err) as GraphApiError;
+
+    expect(error.status).toBe(404);
+    expect(error.message).toMatch(/no longer exists/i);
+  });
+});
+
 describe("writes", () => {
   it("builds the documented mailbox write requests", async () => {
     const calls = stubFetch(() => new Response(null, { status: 204 }));

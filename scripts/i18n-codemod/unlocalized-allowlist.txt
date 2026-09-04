@@ -105,6 +105,12 @@ packages/workshop-frontend/src/diff/diffModel.ts|Deleted
 packages/workshop-frontend/src/diff/diffModel.ts|Modified
 packages/workshop-frontend/src/diff/diffModel.ts|Unchanged
 
+# Test fixture factory: `entry()` builds `Resource ${id}` / `Action ${id}` as ActionLogEntry
+# stand-ins for the action-store hook tests. Never rendered in the product, and wrapping them would
+# make the fixtures depend on an activated locale. The detector's `*.test.*` exclusion does not
+# reach this file because it is a shared harness, not a test file.
+packages/workshop-frontend/src/action-test-harness.ts
+
 # The literal prompt line an admin previews for a standard format, mirrored verbatim from the
 # (unlocalized) backend at packages/workshop-backend/src/overseer.ts:5853. Translating this copy
 # would show an admin a preview that misdescribes what the agent actually receives -- the backend

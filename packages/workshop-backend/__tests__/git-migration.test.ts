@@ -152,7 +152,9 @@ describe("migrateCodeLogToGit", () => {
     expect(conversion.pins).toEqual([{ gadgetId: 50, baseCommit: head }]);
     expect(ws.codeBase(5)).toMatchObject(
         { generation: 0, epoch: conversion.sequence, revision: 0 });
-    expect(ws.storage.chatMeta.get(5)!.hasProposedChanges).toBe(true);
+    // Proposed-ness is derived from the pin just asserted (see proposedChangeWorkpieceIds);
+    // the migration stamps no cached flag.
+    expect(ws.storage.chatMeta.get(5)!.hasProposedChanges).toBeUndefined();
 
     // The change re-creates the chat's uncommitted content on top of the pinned tree.
     expect(await ws.convertedContent(5)).toEqual(new Map([
@@ -269,7 +271,8 @@ describe("migrateCodeLogToGit", () => {
     expect(conversion.pins).toEqual([{ gadgetId: gadget.id, baseCommit: gadget.commitId }]);
     expect(ws.codeBase(1)!.pins).toEqual(
         [{ gadgetId: gadget.id, baseCommit: gadget.commitId, mergedCommit: gadget.commitId }]);
-    expect(ws.storage.chatMeta.get(1)!.hasProposedChanges).toBe(true);
+    // Proposed-ness is derived from the pin just asserted; no cached flag is stamped.
+    expect(ws.storage.chatMeta.get(1)!.hasProposedChanges).toBeUndefined();
     expect(await ws.convertedContent(1)).toEqual(new Map([
       [gadget.id, new Map([["server.js", "hello\n"], ["client.js", "world\n"]])],
     ]));

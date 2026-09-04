@@ -32,6 +32,16 @@ function makePager(
   return { pager, authorized, requested: server.requested };
 }
 
+class DisposableSentinel {
+  disposed = false;
+
+  constructor(readonly value: string) {}
+
+  [Symbol.dispose]() {
+    this.disposed = true;
+  }
+}
+
 /** Drains a pager, guarding against a cursor that never terminates. */
 async function drain(pager: CursorPager<string, string>, limit = 50): Promise<string[]> {
   let all: string[] = [];
@@ -70,10 +80,10 @@ describe("paging", () => {
     expect(requested).toEqual([undefined]);
   });
 
-  it("reports the end immediately when the only page is empty", async () => {
+  it("authorizes the end when the only page is empty", async () => {
     let { pager, authorized } = makePager([[]]);
     expect(await pager.next()).toBeNull();
-    expect(authorized).toEqual([]);
+    expect(authorized).toEqual([[]]);
   });
 });
 
@@ -204,6 +214,74 @@ describe("authorization", () => {
     denied = false;
     expect(await pager.next()).toEqual(["a"]);
     expect(await pager.next()).toBeNull();
+  });
+
+  it("disposes a denied page and rebuilds it for a successful retry", async () => {
+    let server = pageServer([["a", "b"]]);
+    let built: DisposableSentinel[][] = [];
+    let authorized: DisposableSentinel[][] = [];
+    let denied = true;
+    let authorizationError = new Error("denied");
+    let pager = new CursorPager<string, DisposableSentinel>({
+      provider: "TestProvider",
+      fetchPage: server.fetchPage,
+      buildEntries: async items => {
+        let entries = items.map(item => new DisposableSentinel(item));
+        built.push(entries);
+        return entries;
+      },
+      authorize: async entries => {
+        authorized.push(entries);
+        if (denied) throw authorizationError;
+      },
+      disposeEntries: entries => {
+        for (let entry of entries) entry[Symbol.dispose]();
+      },
+    });
+
+    await expect(pager.next()).rejects.toBe(authorizationError);
+    expect(built[0].every(entry => entry.disposed)).toBe(true);
+
+    denied = false;
+    let returned = await pager.next();
+    expect(returned).toBe(built[1]);
+    expect(returned?.map(entry => entry.value)).toEqual(["a", "b"]);
+    expect(returned?.every(entry => !entry.disposed)).toBe(true);
+    expect(built).toHaveLength(2);
+    expect(authorized).toEqual(built);
+    expect(server.requested).toEqual([undefined, undefined]);
+  });
+
+  it("does not mask an authorization error when disposal fails", async () => {
+    let authorizationError = new Error("denied");
+    let pager = new CursorPager<string, DisposableSentinel>({
+      provider: "TestProvider",
+      fetchPage: async () => ({ items: ["a"] }),
+      buildEntries: async items => items.map(item => new DisposableSentinel(item)),
+      authorize: async () => { throw authorizationError; },
+      disposeEntries: () => { throw new Error("disposal failed"); },
+    });
+
+    await expect(pager.next()).rejects.toBe(authorizationError);
+  });
+});
+
+describe("terminal empty authorization", () => {
+  it("leaves an empty result uncommitted when authorization is denied", async () => {
+    let denied = true;
+    let { pager, authorized, requested } = makePager([[], []], {
+      authorize: async entries => {
+        authorized.push(entries);
+        if (denied) throw new Error("denied");
+      },
+    });
+
+    await expect(pager.next()).rejects.toThrow("denied");
+    denied = false;
+    await expect(pager.next()).resolves.toBeNull();
+    await expect(pager.next()).resolves.toBeNull();
+    expect(authorized).toEqual([[], []]);
+    expect(requested).toEqual([undefined, "1", undefined, "1"]);
   });
 });
 
