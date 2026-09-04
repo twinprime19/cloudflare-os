@@ -57,6 +57,13 @@ jobs:
     # process (a spawned child that outlives its reap keeps `node --test` alive forever) burns the
     # 6-hour default instead of failing, on every run of the branch.
     timeout-minutes: 20
+    # The GitHub-hosted runners this repo gets have 2 CPUs, but scripts/vp/concurrency.ts floors its
+    # computed limit at Vite+'s default of 4, so four concurrent vitest fleets share two cores and
+    # starve workshop-backend's cold start (esbuild bundle + workerd boot) past the 60s idle watchdog
+    # in scripts/with-timeout.ts, killing the job before any test reports. Job-level so Build and Test
+    # both get it, and set here rather than in the formula, which is upstream's to own.
+    env:
+      VP_RUN_CONCURRENCY_LIMIT: "2"
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
