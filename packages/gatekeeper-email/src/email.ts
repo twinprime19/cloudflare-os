@@ -589,8 +589,9 @@ export class EmailGatekeeperImpl extends DurableObject<Env, EmailGatekeeperImplP
 export class EmailHookControllerImpl extends WorkerEntrypoint<Env, EmailGatekeeperImplProps>
     implements HookController<EmailHookTarget> {
   /**
-   * `_target` is unused -- email doesn't display its hooks -- but must be declared, since RPC
-   * argument validation is generated from this signature and would reject the extra argument.
+   * `_target` is unused -- email doesn't display its hooks. It no longer strictly needs to be
+   * declared (since capnweb-validate 0.3.0, extra arguments to a validated method are dropped
+   * rather than rejected), but declaring it keeps the signature aligned with the interface.
    */
   async enable(initiator: Fetcher<HookInitiator<EmailHookTarget>>,
                _target: HookTargetMetadata): Promise<void> {

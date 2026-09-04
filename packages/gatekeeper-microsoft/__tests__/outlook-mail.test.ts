@@ -1,6 +1,9 @@
+import { RpcTarget } from "cloudflare:workers";
 import { RpcStub } from "capnweb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Gatekeeper, GitCache, GitObjectType, GitOid }
+  from "@gadgets/workshop-shared/gatekeeper";
 import { OutlookMailGatekeeperImpl } from "../src/outlook-mail";
 import type { OutlookMailSession, OutlookMessage } from "../src/types";
 
@@ -155,6 +158,43 @@ async function firstMessage(session: OutlookMailSession): Promise<OutlookMessage
   const page = await cursor.next();
   expect(page).not.toBeNull();
   return page![0].message;
+}
+
+/**
+ * Stands in for the git cache the overseer hands to `applyAction()`. A mailbox holds no git
+ * objects, so every method throws.
+ */
+class TestGitCache extends RpcTarget implements GitCache {
+  async get(_id: GitOid): Promise<{type: GitObjectType, content: Uint8Array} | null> {
+    throw new Error("not implemented");
+  }
+  async has(_id: GitOid): Promise<boolean> { throw new Error("not implemented"); }
+  async stat(_id: GitOid): Promise<{type: GitObjectType, size: number} | null> {
+    throw new Error("not implemented");
+  }
+  async put(_type: GitObjectType, _content: Uint8Array): Promise<GitOid> {
+    throw new Error("not implemented");
+  }
+  async advertiseCommit(_commitId: GitOid): Promise<void> { throw new Error("not implemented"); }
+  async buildPack(): Promise<ReadableStream<Uint8Array>> { throw new Error("not implemented"); }
+  async consumePack(_pack: ReadableStream<Uint8Array>): Promise<GitOid[]> {
+    throw new Error("not implemented");
+  }
+  async isAncestor(_ancestor: GitOid, _descendant: GitOid): Promise<boolean> {
+    throw new Error("not implemented");
+  }
+}
+
+/**
+ * Applies an approved action the way the overseer does. The mailbox implementation omits the
+ * `cache` parameter it never uses, so the call goes through the Gatekeeper interface, which still
+ * passes one -- the RPC argument validator is derived from that interface and rejects a call
+ * without it. The stub is capnweb's, which the validator accepts but which is not the workerd
+ * `RpcStub` the interface names, hence the cast (as for the verifier stub below).
+ */
+function applyApprovedAction(actionId: number): Promise<void> {
+  const rpc: Gatekeeper<OutlookMailSession> = gatekeeper;
+  return rpc.applyAction(actionId, new RpcStub(new TestGitCache()) as never);
 }
 
 beforeEach(() => {
@@ -445,7 +485,7 @@ describe("queued mutations", () => {
     const message = await firstMessage(session);
 
     await expect(message.markRead()).rejects.toThrow(/queue full/);
-    await expect(gatekeeper.applyAction(1)).rejects.toThrow(/Unknown pending Outlook action/);
+    await expect(applyApprovedAction(1)).rejects.toThrow(/Unknown pending Outlook action/);
   });
 });
 
@@ -456,12 +496,12 @@ describe("approved actions", () => {
     const message = await firstMessage(session);
     await message.markUnread();
 
-    await gatekeeper.applyAction(approvals.actions[0].id);
+    await applyApprovedAction(approvals.actions[0].id);
 
     const write = calls.find(call => (call.init.method ?? "GET") === "PATCH")!;
     expect(write.url).toMatch(/\/me\/messages\/AAMkImmutable1$/);
     expect(write.init.body).toBe(JSON.stringify({ isRead: false }));
-    await expect(gatekeeper.applyAction(approvals.actions[0].id))
+    await expect(applyApprovedAction(approvals.actions[0].id))
       .rejects.toThrow(/Unknown pending Outlook action/);
   });
 
@@ -471,7 +511,7 @@ describe("approved actions", () => {
     const message = await firstMessage(session);
     await message.moveToFolder("folder-archive");
 
-    await gatekeeper.applyAction(approvals.actions[0].id);
+    await applyApprovedAction(approvals.actions[0].id);
 
     const write = calls.find(call => call.url.endsWith("/move"))!;
     expect(write.init.method).toBe("POST");
@@ -484,7 +524,7 @@ describe("approved actions", () => {
     const message = await firstMessage(session);
     await message.createReplyDraft("On it.");
 
-    await gatekeeper.applyAction(approvals.actions[0].id);
+    await applyApprovedAction(approvals.actions[0].id);
 
     const write = calls.find(call => call.url.endsWith("/createReply"))!;
     expect(write.init.method).toBe("POST");

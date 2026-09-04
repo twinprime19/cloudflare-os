@@ -31,7 +31,7 @@
 // Both stages take a `CodeChange`, and that parameter type is a precondition rather than a
 // hope: the declared shape is established before they run, by capnweb-validate's generated
 // validator at the RPC edge (Overseer.submitCodeChange) and by the compiler for the one
-// in-process producer (the agent's AgentHooks.appendAgentCodeChange, whose changes this module
+// in-process producer (the agent's AgentHooks.commitAgentStep, whose changes this module
 // itself builds). So neither stage re-checks that a value is an object, an array, a pair, or a
 // string; they check the invariants a TypeScript type cannot express -- canonical gadget keys,
 // path rules, size caps, integer section lengths, and the one variant rule the wire validator's
@@ -149,6 +149,48 @@ export const MAX_CODE_CHANGE_SIZE = 2 * 1024 * 1024;
 // nothing but needn't be exact.
 const FILE_ENTRY_SIZE_OVERHEAD = 16;
 const EDIT_SECTION_SIZE_WEIGHT = 4;
+
+// Structure overhead granted per node by codeChangeSerializedSize: V8 writes a handful of
+// header/varint bytes per object, array, and string, so a generous fixed share per node keeps
+// the estimate an upper bound without measuring anything.
+const SERIALIZED_ENTRY_OVERHEAD = 32;
+const SERIALIZED_SECTION_OVERHEAD = 16;
+const SERIALIZED_LINE_OVERHEAD = 8;
+
+/**
+ * Upper bound on the bytes a `CodeChange` contributes to a V8-serialized storage record --
+ * the form Durable Object storage actually holds change rows and "changes" messages in,
+ * subject to its 2MB value cap. V8 writes each string raw (Latin-1 at one byte per UTF-16
+ * code unit, or UTF-16 at two) plus small structure headers, so two bytes per code unit of
+ * every string -- gadget keys, paths, `set` text, inserted lines -- plus a fixed share per
+ * structural node never undercounts; the estimate reads only string lengths, costing O(nodes)
+ * independent of text size, and is immune to the escape-sequence and multi-byte inflation a
+ * JSON-text measure would suffer. Callers use it to keep *compositions* of changes inside
+ * one storable record; `MAX_CODE_CHANGE_SIZE` separately bounds a single change with its own
+ * unit-weighted measure at validation time.
+ */
+export function codeChangeSerializedSize(change: CodeChange): number {
+  let bytes = SERIALIZED_ENTRY_OVERHEAD;  // the change object's own framing
+  for (let [gadgetKey, entries] of Object.entries(change)) {
+    bytes += SERIALIZED_ENTRY_OVERHEAD + 2 * gadgetKey.length;
+    for (let [path, fileChange] of entries) {
+      bytes += SERIALIZED_ENTRY_OVERHEAD + 2 * path.length;
+      if ("set" in fileChange) {
+        bytes += 2 * fileChange.set.length;
+      } else if ("edit" in fileChange) {
+        for (let section of fileChange.edit) {
+          bytes += SERIALIZED_SECTION_OVERHEAD;
+          if (typeof section !== "number") {
+            for (let part of section) {
+              if (typeof part === "string") bytes += SERIALIZED_LINE_OVERHEAD + 2 * part.length;
+            }
+          }
+        }
+      }
+    }
+  }
+  return bytes;
+}
 
 // =======================================================================================
 // Internal helpers

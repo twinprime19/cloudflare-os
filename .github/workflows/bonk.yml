@@ -1,12 +1,10 @@
 name: Bonk
 
 on:
-  # Emergency shutoff: restore the comment triggers when Bonk is confirmed working.
-  workflow_dispatch:
-  # issue_comment:
-  #   types: [created]
-  # pull_request_review_comment:
-  #   types: [created]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 jobs:
   # This `if:` is a prefilter, not the authorization: it only keeps the job from starting a runner
@@ -53,7 +51,7 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       - name: Run Bonk
-        uses: ask-bonk/ask-bonk/github@d00cbcf581a5463f7adc2d81e470234b1727f8dd
+        uses: ask-bonk/ask-bonk/github@5d4fe8f4a557afb1b73ec8c0ffcf60359a28865f
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_AI_GATEWAY_ACCOUNT_ID }}
           CLOUDFLARE_GATEWAY_ID: ${{ secrets.CF_AI_GATEWAY_NAME }}
@@ -68,4 +66,4 @@ jobs:
           permissions: write
           token_permissions: NO_PUSH
           agent: bonk
-          opencode_version: 1.18.18
+          opencode_version: 1.18.24

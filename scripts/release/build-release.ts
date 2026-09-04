@@ -27,12 +27,13 @@ import { mkdtempSync } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
 import { killProcessTree, killProcessTreeEscalating } from "../kill-process-tree.ts";
 import { mapConcurrent } from "../map-concurrent.ts";
+import { vpRunEnv } from "../vp/concurrency.ts";
 import {
   collectAssets, collectModules, stableStringify, type CollectedAssets,
 } from "./hash-lib.ts";
 import {
-  findDeployablePackages, generateManifest, readDeployInputs, readWranglerConfig,
-  type WorkerBuild, type WranglerConfig,
+  generateManifest, readDeployablePackages, readDeployInputs,
+  type DeployablePackage, type WorkerBuild,
 } from "./manifest-lib.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -82,15 +83,6 @@ class CancelledBySignal extends Error {
   }
 }
 
-/** A deployable package, with its `wrangler.jsonc` read once and carried alongside. */
-interface DeployablePackage {
-  /** Package directory name, which is also the worker name. */
-  name: string;
-  /** Absolute path to the package directory. */
-  dir: string;
-  /** The package's parsed wrangler config. */
-  config: WranglerConfig;
-}
 
 function parseArgs(argv: string[]): {
   out: string;
@@ -229,9 +221,10 @@ function pinnedWranglerVersion(): string {
 //
 // Through vp rather than a package script: `build` is a task, so there is no script to run, and the
 // task declares VITE_* as fingerprinted env — a release built at a different flag value is a cache
-// miss rather than a stale replay.
+// miss rather than a stale replay. Based on `vpRunEnv()` so the run gets the machine-aware
+// concurrency limit (vp/concurrency.ts); the limit is not a task input, so it never affects the hash.
 async function buildFrontend(signal: AbortSignal): Promise<CollectedAssets> {
-  const env = { ...process.env, VITE_CF_ACCESS_MODE: "true" };
+  const env = { ...vpRunEnv(), VITE_CF_ACCESS_MODE: "true" };
   await run("frontend (access mode)", "pnpm",
       ["exec", "vp", "run", "-F", "@gadgets/workshop-frontend", "build"], { env, signal });
   return collectAssets(join(FRONTEND_DIR, "dist"));
@@ -365,8 +358,7 @@ async function main() {
   mkdirSync(join(args.out, "modules"), { recursive: true });
   mkdirSync(join(args.out, "assets"), { recursive: true });
 
-  const packages: DeployablePackage[] = findDeployablePackages(PACKAGES_DIR)
-      .map((pkg) => ({ ...pkg, config: readWranglerConfig(pkg.dir) }));
+  const packages = readDeployablePackages(PACKAGES_DIR);
 
   // 1. Every bundle, overlapping.
   const { bundles, assets } = await buildAll(packages, args.concurrency);

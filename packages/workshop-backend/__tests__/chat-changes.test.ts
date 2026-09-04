@@ -37,7 +37,7 @@ async function withImpl(fn: (impl: any) => Promise<void>): Promise<void> {
 
 function addGadget(impl: any, id: number, bindingName: string, commitId?: string): void {
   impl.storage.gadgets.put({
-    id, title: bindingName, created: new Date(0), bindingName, bindings: {},
+    type: "gadget", id, title: bindingName, created: new Date(0), bindingName, bindings: {},
     ...(commitId !== undefined ? { commitId } : {}),
   });
 }
@@ -865,14 +865,16 @@ describe("revert and draft discard", () => {
       createdGadgets: [{ gadgetId: 2, title: "Mine", bindingName: "MINE" }],
     });
     impl.storage.gadgets.put({
-      id: 2, title: "Mine", created: new Date(0), bindingName: "MINE", bindings: {},
-      pending: { chatId: 1, sequence: boundary },
+      type: "gadget", id: 2, title: "Mine", created: new Date(0), bindingName: "MINE",
+      bindings: {}, pending: { chatId: 1, sequence: boundary },
     });
     let meta = impl.storage.chatMeta.get(1)!;
     meta.codeBase = {
       pins: [{ gadgetId: 1, baseCommit: c1, mergedCommit: c1 }],
       generation: 0, epoch: boundary, revision: 0,
     };
+    // A stale cached flag, as rows written before proposed-ness became derived may carry
+    // (see StoredChatMetadata): nothing reads it, and delivery must strip it.
     meta.hasProposedChanges = true;
     impl.storage.chatMeta.put(meta);
     return boundary;
@@ -898,7 +900,12 @@ describe("revert and draft discard", () => {
     let meta = impl.storage.chatMeta.get(1)!;
     expect(meta.codeBase!.pins).toEqual([]);
     expect(meta.codeBase).toMatchObject({ generation: 1, revision: 0 });
-    expect(meta.hasProposedChanges).toBeUndefined();
+    expect(impl.proposedChangeWorkpieceIds(1, meta)).toEqual([]);
+    // The stale legacy flag the seed wrote is dead weight: derivation ignores it and delivery
+    // strips it.
+    let delivered = impl.chatMetaForClient(meta);
+    expect(delivered.proposedChangeWorkpieces).toBeUndefined();
+    expect(delivered.hasProposedChanges).toBeUndefined();
     expect(await gadgetContent(impl, 1, 1)).toEqual({});
     expect(impl.storage.gadgets.get(2)).toBeUndefined();
   }));
@@ -917,7 +924,7 @@ describe("revert and draft discard", () => {
     let meta = impl.storage.chatMeta.get(1)!;
     expect(meta.codeBase!.pins).toEqual([]);
     expect(meta.codeBase).toMatchObject({ generation: 1, revision: 0 });
-    expect(meta.hasProposedChanges).toBeUndefined();
+    expect(impl.proposedChangeWorkpieceIds(1, meta)).toEqual([]);
     expect(await gadgetContent(impl, 1, 1)).toEqual({});
     expect(impl.storage.gadgets.get(2)).toBeUndefined();
   }));
@@ -1048,38 +1055,226 @@ describe("updateChatFromMainline", () => {
   }));
 });
 
-describe("agent change appends", () => {
-  it("appendAgentCodeChange pins at the current head and mirrors the pin at append time",
+describe("agent step barrier", () => {
+  // The step's chat messages as the turn_end barrier would hand them over.
+  function stepMsgs(text: string): { type: "message", message: string }[] {
+    return [{ type: "message", message: text }];
+  }
+  const NO_EXTRAS = { createdGadgets: [], createdWorktrees: [], addedBindings: [] };
+
+  it("persists the step message, appends rows in order, and materializes -- one transaction",
       () => withImpl(async impl => {
     let c1 = await commitFiles(impl, { "a.txt": "one\n" });
     addGadget(impl, 1, "APP", c1);
     addChat(impl, 1);
 
-    let ack = await impl.appendAgentCodeChange(1, AGENT,
-        { 1: [["a.txt", { set: "one\nagent\n" }]] }, { gadgetId: 1, baseCommit: c1 });
-    expect(ack).toEqual({ generation: 0, revision: 1 });
+    expect(await impl.commitAgentStep(1, AGENT, stepMsgs("wrote files"), {
+      ...NO_EXTRAS,
+      changes: [
+        { change: { 1: [["a.txt", { set: "one\nagent\n" }]] },
+          pin: { gadgetId: 1, baseCommit: c1 } },
+        { change: { 1: [["b.txt", { set: "bee\n" }]] } },
+      ],
+    })).toBe(true);
+
+    // Ordering: the tool-call message precedes the step's single "changes" message, so a
+    // suffix revert can never erase the call while keeping its edits.
+    let msgs = chatMessages(impl, 1);
+    expect(msgs.map(msg => msg.type)).toEqual(["message", "changes"]);
+    expect(msgs[1].author).toEqual(AGENT);
+    expect(msgs[1].pins).toEqual([{ gadgetId: 1, baseCommit: c1 }]);
+    expect(msgs[1].watermark).toEqual({ changesGeneration: 0, throughRevision: 2 });
+
+    // One row per buffered change, in call order, born retired (live only inside the barrier);
+    // the pin was validated and mirrored with its row.
+    let rows = [...impl.storage.chatChanges.list({ prefix: `${keyString(1)}.` })];
+    expect(rows.map((row: any) => [row.revision, row.author.type, row.retired]))
+        .toEqual([[1, "agent", true], [2, "agent", true]]);
     expect(impl.storage.chatMeta.get(1)!.codeBase!.pins).toEqual(
         [{ gadgetId: 1, baseCommit: c1, mergedCommit: c1 }]);
-    expect(await gadgetContent(impl, 1, 1)).toEqual({ "a.txt": "one\nagent\n" });
-    expect(impl.listUnmaterializedChatChanges(1)).toHaveLength(1);
-    expect(impl.undeclaredChatPins(1)).toEqual([{ gadgetId: 1, baseCommit: c1 }]);
+    expect(impl.undeclaredMetaPins(1, impl.storage.chatMeta.get(1)!)).toEqual([]);
+    expect(await gadgetContent(impl, 1, 1)).toEqual(
+        { "a.txt": "one\nagent\n", "b.txt": "bee\n" });
 
-    // The turn flush materializes the rows and declares the pin.
-    expect(impl.flushAgentChanges(1, AGENT, {})).toBe(true);
-    expect(impl.flushAgentChanges(1, AGENT, {})).toBe(false);  // nothing left
+    // A changeless step persists its message but writes no "changes" message (the agent's
+    // change-ID numbering counts messages, so the false return keeps the counter in step).
+    expect(await impl.commitAgentStep(1, AGENT, stepMsgs("just talk"),
+        { ...NO_EXTRAS, changes: [] })).toBe(false);
+    expect(chatMessages(impl, 1).map(msg => msg.type))
+        .toEqual(["message", "changes", "message"]);
+  }));
+
+  it("writes the step's buffer as one message even past the message byte budget",
+      () => withImpl(async impl => {
+    let c1 = await commitFiles(impl, { "a.txt": "one\n" });
+    addGadget(impl, 1, "APP", c1);
+    addChat(impl, 1);
+
+    // Two buffered changes composing to ~1.2MB by the serialized-size estimate: past
+    // CHAT_CHANGE_MESSAGE_BUDGET (the *user* path's accumulation bound) but within the step
+    // budget the write calls enforce. The barrier still writes exactly one message -- the
+    // no-chunking policy; the step's bound is what keeps this storable.
+    let text = "文".repeat(300_000);
+    expect(await impl.commitAgentStep(1, AGENT, stepMsgs("big step"), {
+      ...NO_EXTRAS,
+      changes: [
+        { change: { 1: [["a.txt", { set: text }]] }, pin: { gadgetId: 1, baseCommit: c1 } },
+        { change: { 1: [["b.txt", { set: text }]] } },
+      ],
+    })).toBe(true);
+
     let changes = chatMessages(impl, 1).filter(msg => msg.type === "changes");
     expect(changes).toHaveLength(1);
-    expect(changes[0].author).toEqual(AGENT);
-    expect(changes[0].pins).toEqual([{ gadgetId: 1, baseCommit: c1 }]);
-    expect(impl.undeclaredChatPins(1)).toEqual([]);
+    expect(changes[0].watermark).toEqual({ changesGeneration: 0, throughRevision: 2 });
+    expect(liveRows(impl, 1)).toHaveLength(0);
 
-    // A pin whose base is no longer the head fails the append (mid-turn head movement).
+    let folded = await impl.buildChatContent(1);
+    expect(["a.txt", "b.txt"].map(file => folded.get(1)!.get(file))).toEqual([text, text]);
+  }));
+
+  it("a mid-barrier failure leaves no partial durable state and the chat stays usable",
+      () => withImpl(async impl => {
+    let c1 = await commitFiles(impl, { "a.txt": "one\n" });
+    addGadget(impl, 1, "APP", c1);
+    addChat(impl, 1);
+
+    // The second buffered change fails content validation after the first already appended its
+    // row (and broadcast it): the transaction must roll back the row, the pin mirror, and the
+    // step's messages together -- a partial step is exactly the state this barrier exists to
+    // make impossible.
+    await expect(impl.commitAgentStep(1, AGENT, stepMsgs("doomed"), {
+      ...NO_EXTRAS,
+      changes: [
+        { change: { 1: [["a.txt", { set: "one\nagent\n" }]] },
+          pin: { gadgetId: 1, baseCommit: c1 } },
+        { change: { 1: [["a.txt", { edit: [2, [2, "x"], 96] }]] } },  // expects a 100-unit file
+      ],
+    })).rejects.toThrow(/length mismatch/);
+
+    expect(chatMessages(impl, 1)).toEqual([]);
+    expect([...impl.storage.chatChanges.list({ prefix: `${keyString(1)}.` })]).toEqual([]);
+    expect(impl.storage.chatMeta.get(1)!.codeBase?.pins ?? []).toEqual([]);
+    expect(await gadgetContent(impl, 1, 1)).toEqual({});
+
+    // The in-memory content/byte caches were dropped with the rollback: a subsequent barrier
+    // starts from revision 0 as if the failed one never happened.
+    expect(await impl.commitAgentStep(1, AGENT, stepMsgs("retried"), {
+      ...NO_EXTRAS,
+      changes: [{ change: { 1: [["a.txt", { set: "one\nagent\n" }]] },
+                  pin: { gadgetId: 1, baseCommit: c1 } }],
+    })).toBe(true);
+    expect(chatMessages(impl, 1).find(msg => msg.type === "changes")!.watermark)
+        .toEqual({ changesGeneration: 0, throughRevision: 1 });
+    expect(await gadgetContent(impl, 1, 1)).toEqual({ "a.txt": "one\nagent\n" });
+  }));
+
+  it("a pin whose base is no longer the head fails the barrier with no durable trace",
+      () => withImpl(async impl => {
+    let c1 = await commitFiles(impl, { "a.txt": "one\n" });
     let c2 = await commitFiles(impl, { "a.txt": "two\n" }, [c1]);
-    addGadget(impl, 2, "OTHER", c2);
-    setHead(impl, 2, c1);
-    await expect(impl.appendAgentCodeChange(1, AGENT,
-        { 2: [["a.txt", { set: "x" }]] }, { gadgetId: 2, baseCommit: c2 }))
-        .rejects.toThrow(/no longer the gadget's head/);
+    addGadget(impl, 1, "APP", c2);
+    addChat(impl, 1);
+
+    // Mainline moved between the tool call (which anchored at c2) and the barrier.
+    setHead(impl, 1, c1);
+    await expect(impl.commitAgentStep(1, AGENT, stepMsgs("stale pin"), {
+      ...NO_EXTRAS,
+      changes: [{ change: { 1: [["a.txt", { set: "x" }]] },
+                  pin: { gadgetId: 1, baseCommit: c2 } }],
+    })).rejects.toThrow(/no longer the gadget's head/);
+    expect(chatMessages(impl, 1)).toEqual([]);
+    expect([...impl.storage.chatChanges.list({ prefix: `${keyString(1)}.` })]).toEqual([]);
+  }));
+
+  it("stamps a pending gadget creation with the step's changes message",
+      () => withImpl(async impl => {
+    addChat(impl, 1);
+    let created = impl.createGadget("My Gadget", "MY_GADGET", 1);
+    // The record is created (and its name reserved) mid-step, unstamped until the barrier.
+    expect(impl.storage.gadgets.get(created.id)!.pending).toEqual({ chatId: 1 });
+
+    expect(await impl.commitAgentStep(1, AGENT, stepMsgs("created a gadget"), {
+      changes: [{ change: { [created.id]: [["main.js", { set: "code\n" }]] } }],
+      createdGadgets: [
+        { gadgetId: created.id, title: created.title, bindingName: "MY_GADGET" }],
+      createdWorktrees: [],
+      addedBindings: [],
+    })).toBe(true);
+
+    // The stamp is the changes message's sequence: the durable record merge/revert compare
+    // against, written in the same transaction as the message itself.
+    let changes = chatMessages(impl, 1).find(msg => msg.type === "changes")!;
+    expect(changes.createdGadgets).toEqual(
+        [{ gadgetId: created.id, title: created.title, bindingName: "MY_GADGET" }]);
+    expect(impl.storage.gadgets.get(created.id)!.pending)
+        .toEqual({ chatId: 1, sequence: changes.sequence });
+  }));
+
+});
+
+describe("reconcilePendingGadgets", () => {
+  it("reaps unstamped records and edges regardless of what the log holds (no vouching)",
+      () => withImpl(async impl => {
+    let c1 = await commitFiles(impl, { "a.txt": "one\n" });
+    addGadget(impl, 1, "APP", c1);
+    addChat(impl, 1);
+
+    // Simulate a mid-step crash: the createGadget/setGadgetBinding tools ran (registry record
+    // created and name reserved, edge added) but the step never reached its barrier, so both
+    // are unstamped.
+    let created = impl.createGadget("Doomed", "DOOMED", 1);
+    let gadget1 = impl.storage.gadgets.get(1)!;
+    gadget1.bindings["FOO"] = { target: 99, pending: { chatId: 1 } };
+    impl.storage.gadgets.put(gadget1);
+
+    // The old recovery scanned the log for persisted tool calls that "vouch" for an orphan,
+    // sparing it for replay to re-adopt. Barrier atomicity inverted that: a persisted call
+    // implies a persisted stamp, so an unstamped record is a mid-step crash orphan no matter
+    // what the log holds -- even a message referencing it (which, post-barrier, can only be
+    // corrupt or pre-barrier history) must not resurrect it.
+    impl.addChatMessages(1, AGENT, [{
+      type: "message", message: "creating",
+      toolCalls: [
+        { toolCallId: "t1", toolName: "createGadget",
+          input: { title: "Doomed", bindingName: "DOOMED" },
+          output: { gadgetId: created.id, changeId: 1 } },
+        { toolCallId: "t2", toolName: "setGadgetBinding",
+          input: { gadget: "APP", source: "FOO" },
+          output: { gadgetId: 1, name: "FOO", target: 99, changeId: 1 } },
+      ],
+    }]);
+
+    await impl.reconcilePendingGadgets(1);
+    expect(impl.storage.gadgets.get(created.id)).toBeUndefined();
+    expect(impl.storage.gadgets.get(1)!.bindings).toEqual({});
+  }));
+
+  it("removes a stamped record once the log marks its creation reverted",
+      () => withImpl(async impl => {
+    addChat(impl, 1);
+    let created = impl.createGadget("My Gadget", "MY_GADGET", 1);
+    await impl.commitAgentStep(1, AGENT, [{ type: "message", message: "created a gadget" }], {
+      changes: [{ change: { [created.id]: [["main.js", { set: "code\n" }]] } }],
+      createdGadgets: [
+        { gadgetId: created.id, title: created.title, bindingName: "MY_GADGET" }],
+      createdWorktrees: [],
+      addedBindings: [],
+    });
+    let stamp = impl.storage.gadgets.get(created.id)!.pending!.sequence!;
+
+    // A stamped record is untouched while its creation stands...
+    await impl.reconcilePendingGadgets(1);
+    expect(impl.storage.gadgets.get(created.id)).toBeDefined();
+
+    // ...but once a revert message covers the stamp, reconciliation removes it. (Simulates a
+    // revert that recorded its message and then crashed before the awaited record deletions --
+    // reverts record first, see #revertChanges -- making reconciliation the recovery.)
+    impl.storage.chats.put({
+      chatId: 1, sequence: impl.nextChatSequence(1), timestamp: impl.getChatTimestamp(),
+      author: USER, type: "revert", revertFrom: stamp,
+    });
+    await impl.reconcilePendingGadgets(1);
+    expect(impl.storage.gadgets.get(created.id)).toBeUndefined();
   }));
 });
 
@@ -1115,7 +1310,7 @@ describe("chat content reconstruction", () => {
     addChat(impl, 1);
 
     let text = "0\n";
-    for (let i = 1; i <= 129; i++) {
+    for (let i = 1; i <= 1001; i++) {
       let next = `${i}\n${text}`;
       await submit(impl, 1, {
         generation: 0, revision: i - 1, clientId: "cli", seq: i,
@@ -1125,53 +1320,85 @@ describe("chat content reconstruction", () => {
       text = next;
     }
 
-    // The 128-row window was materialized into a "changes" message; the stream keeps counting.
+    // The 1000-row window was materialized into a single "changes" message; the stream keeps
+    // counting.
     let changes = chatMessages(impl, 1).filter(msg => msg.type === "changes");
     expect(changes).toHaveLength(1);
-    expect(changes[0].watermark).toEqual({ changesGeneration: 0, throughRevision: 128 });
+    expect(changes[0].watermark).toEqual({ changesGeneration: 0, throughRevision: 1000 });
     expect(liveRows(impl, 1)).toHaveLength(1);
-    expect(impl.storage.chatMeta.get(1)!.codeBase!.revision).toBe(129);
+    expect(impl.storage.chatMeta.get(1)!.codeBase!.revision).toBe(1001);
     expect((await gadgetContent(impl, 1, 1))["a.txt"]).toBe(text);
   }));
 
-  it("splits an oversized batch across consecutive watermarked messages",
+  it("materializes the pending window before a submission would breach the byte budget",
       () => withImpl(async impl => {
     let c1 = await commitFiles(impl, { "a.txt": "one\n" });
     addGadget(impl, 1, "APP", c1);
     addChat(impl, 1);
 
-    // Three rows setting *distinct* files (so their composition genuinely accumulates payload
-    // rather than collapsing), each ~200K CJK characters = ~600KB of UTF-8 (hand-built `set`
-    // changes: diffing dissimilar strings this large is quadratic). Any two rows compose past the
-    // 1MB byte budget -- though a code-unit measure would put all three at ~600K "characters"
-    // and pack them into one oversized message -- so materialization must cut per row.
-    let files = ["a.txt", "b.txt", "c.txt"];
-    let text = "文".repeat(200_000);
-    for (let [i, file] of files.entries()) {
-      await submit(impl, 1, {
-        generation: 0, revision: i, clientId: "cli", seq: i + 1,
-        ...(i === 0 ? { pins: [{ gadgetId: 1, baseCommit: c1 }] } : {}),
-        change: { 1: [[file, { set: text }]] },
-      });
-    }
+    // Two rows setting *distinct* files (so their composition genuinely accumulates payload
+    // rather than collapsing), each 300K two-byte characters = ~600KB by the serialized-size
+    // estimate (hand-built `set` changes: diffing dissimilar strings this large is quadratic).
+    // Together they compose past the 1MB byte budget, so the second submission must materialize
+    // the first row into its own message before appending.
+    let text = "文".repeat(300_000);
+    await submit(impl, 1, {
+      generation: 0, revision: 0, clientId: "cli", seq: 1,
+      pins: [{ gadgetId: 1, baseCommit: c1 }],
+      change: { 1: [["a.txt", { set: text }]] },
+    });
+    expect(chatMessages(impl, 1).filter(msg => msg.type === "changes")).toHaveLength(0);
 
-    impl.materializeChatChanges(1);
+    await submit(impl, 1, {
+      generation: 0, revision: 1, clientId: "cli", seq: 2,
+      change: { 1: [["b.txt", { set: text }]] },
+    });
     let changes = chatMessages(impl, 1).filter(msg => msg.type === "changes");
-    expect(changes).toHaveLength(3);
-    // The pin declaration rides the first message only; each message's watermark names the
-    // rows it absorbed.
+    expect(changes).toHaveLength(1);
     expect(changes[0].pins).toEqual([{ gadgetId: 1, baseCommit: c1 }]);
-    expect(changes.map(msg => msg.watermark)).toEqual([
-      { changesGeneration: 0, throughRevision: 1 },
-      { changesGeneration: 0, throughRevision: 2 },
-      { changesGeneration: 0, throughRevision: 3 },
-    ]);
+    expect(changes[0].watermark).toEqual({ changesGeneration: 0, throughRevision: 1 });
+    expect(liveRows(impl, 1)).toHaveLength(1);
+
+    // A materialize call writes exactly one message covering the remaining row.
+    impl.materializeChatChanges(1);
+    changes = chatMessages(impl, 1).filter(msg => msg.type === "changes");
+    expect(changes).toHaveLength(2);
+    expect(changes[1].watermark).toEqual({ changesGeneration: 0, throughRevision: 2 });
     expect(changes[1].pins).toBeUndefined();
     expect(liveRows(impl, 1)).toHaveLength(0);
 
-    // The chunked log folds to the same content a single message would have.
+    // The split log folds to the same content a single message would have.
     let folded = await impl.buildChatContent(1);
-    expect(files.map(file => folded.get(1)!.get(file))).toEqual([text, text, text]);
+    expect(["a.txt", "b.txt"].map(file => folded.get(1)!.get(file))).toEqual([text, text]);
+  }));
+
+  it("a change bigger than the whole budget travels alone in one oversized message",
+      () => withImpl(async impl => {
+    let c1 = await commitFiles(impl, { "a.txt": "one\n" });
+    addGadget(impl, 1, "APP", c1);
+    addChat(impl, 1);
+
+    // One row -- a single multi-file change of two 300K-two-byte-character files, ~1.2MB by the
+    // serialized-size estimate -- exceeds the 1MB budget on its own while staying inside the
+    // per-file and per-change caps. It appends into an empty window; the next submission's byte
+    // trigger then materializes it alone, in one message.
+    let big = "文".repeat(300_000);
+    await submit(impl, 1, {
+      generation: 0, revision: 0, clientId: "cli", seq: 1,
+      pins: [{ gadgetId: 1, baseCommit: c1 }],
+      change: { 1: [["a.txt", { set: big }], ["b.txt", { set: big }]] },
+    });
+    await submit(impl, 1, {
+      generation: 0, revision: 1, clientId: "cli", seq: 2,
+      change: { 1: [["c.txt", { set: "small\n" }]] },
+    });
+
+    let changes = chatMessages(impl, 1).filter(msg => msg.type === "changes");
+    expect(changes).toHaveLength(1);
+    expect(changes[0].watermark).toEqual({ changesGeneration: 0, throughRevision: 1 });
+    expect(liveRows(impl, 1)).toHaveLength(1);
+    expect((await gadgetContent(impl, 1, 1))["a.txt"]).toBe(big);
+    expect((await gadgetContent(impl, 1, 1))["b.txt"]).toBe(big);
   }));
 
   it("splits batches by author when a different author resumes after idle",
@@ -1201,5 +1428,95 @@ describe("chat content reconstruction", () => {
     expect(changes[0].author).toEqual(USER);
     expect(changes[0].watermark).toEqual({ changesGeneration: 0, throughRevision: 1 });
     expect(liveRows(impl, 1)).toHaveLength(1);
+  }));
+});
+
+describe("proposed-changes derivation", () => {
+  // proposedChangeWorkpieceIds derives per-workpiece proposed-ness from the chat's pins and the
+  // registry's pending records/edges -- there is no cached flag to drift. Worktree-side coverage
+  // (worktree pins and creations never propose) lives in worktrees.test.ts.
+
+  function derived(impl: any, chatId: number): number[] {
+    return impl.proposedChangeWorkpieceIds(chatId, impl.storage.chatMeta.get(chatId)!);
+  }
+
+  it("derives from pins: only the touched gadget proposes, and accept clears it",
+      () => withImpl(async impl => {
+    let c1 = await commitFiles(impl, { "a.txt": "one\n" });
+    let c2 = await commitFiles(impl, { "b.txt": "two\n" });
+    addGadget(impl, 1, "APP", c1);
+    addGadget(impl, 2, "OTHER", c2);
+    addChat(impl, 1);
+    expect(derived(impl, 1)).toEqual([]);
+
+    await submit(impl, 1, {
+      generation: 0, revision: 0, clientId: "cli", seq: 1,
+      pins: [{ gadgetId: 1, baseCommit: c1 }],
+      change: editChange(1, { "a.txt": "one\n" }, { "a.txt": "xone\n" }),
+    });
+    // The untouched gadget 2 stays out: it must keep loading as its mainline self even while
+    // this chat proposes changes elsewhere (see getGadgetFacetFetcher). Delivery carries the
+    // same list.
+    expect(derived(impl, 1)).toEqual([1]);
+    expect(impl.chatMetaForClient(impl.storage.chatMeta.get(1)!).proposedChangeWorkpieces)
+        .toEqual([1]);
+
+    expect(await impl.mergeChanges(1, USER_META, "user-do-id")).toEqual({ outcome: "merged" });
+    expect(derived(impl, 1)).toEqual([]);
+    expect(impl.chatMetaForClient(impl.storage.chatMeta.get(1)!).proposedChangeWorkpieces)
+        .toBeUndefined();
+  }));
+
+  it("counts pending creations and pending binding edges, scoped to their chat",
+      () => withImpl(async impl => {
+    let c1 = await commitFiles(impl, { "a.txt": "one\n" });
+    addGadget(impl, 1, "APP", c1);
+    addChat(impl, 1);
+    // (Distinct lastActive: chatMeta.byLastActive is a unique index.)
+    impl.storage.chatMeta.put(
+        { id: 2, title: "Chat 2", started: new Date(0), lastActive: new Date(1) });
+
+    // A provisional creation in chat 1, and a provisional binding edge on gadget 1 added by
+    // chat 2 (seeded directly; only the edge's pending stamp matters here). A binding addition
+    // changes the gadget's env without touching its code, so it must count.
+    let created = impl.createGadget("Mine", "MINE", 1);
+    let app = impl.storage.gadgets.get(1)!;
+    app.bindings["GK"] = { target: 999, pending: { chatId: 2 } };
+    impl.storage.gadgets.put(app);
+
+    expect(derived(impl, 1)).toEqual([created.id]);
+    expect(derived(impl, 2)).toEqual([1]);
+  }));
+
+  it("a revert re-broadcasts derived metadata after reaping the doomed creation",
+      () => withImpl(async impl => {
+    let c1 = await commitFiles(impl, { "a.txt": "one\n" });
+    addGadget(impl, 1, "APP", c1);
+    addChat(impl, 1);
+    let created = impl.createGadget("Mine", "MINE", 1);
+    // Record the creation so the pending record gets sequence-stamped.
+    impl.materializeChatChanges(1, undefined, { author: USER, createdGadgets: [
+      { gadgetId: created.id, title: "Mine", bindingName: "MINE" },
+    ]});
+    expect(derived(impl, 1)).toEqual([created.id]);
+
+    let deliveredLists: (number[] | undefined)[] = [];
+    impl.storage.chatMeta.subscribe({
+      add: () => {},
+      update: (_old: unknown, next: unknown) => {
+        deliveredLists.push(impl.chatMetaForClient(next).proposedChangeWorkpieces);
+      },
+      remove: () => {},
+    });
+
+    // The revert's own meta write precedes the awaited record reap (see #revertChanges on why
+    // that order is fixed), so reconciliation must re-put the metadata afterwards: the *last*
+    // broadcast a subscriber saw has to reflect the post-reap state, or the client keeps
+    // offering accept/discard for a chat that proposes nothing.
+    await impl.revertChanges(1, 0, USER);
+    expect(impl.storage.gadgets.get(created.id)).toBeUndefined();
+    expect(derived(impl, 1)).toEqual([]);
+    expect(deliveredLists.length).toBeGreaterThan(0);
+    expect(deliveredLists.at(-1)).toBeUndefined();
   }));
 });

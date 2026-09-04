@@ -13,7 +13,7 @@ import type {
 } from "@gadgets/workshop-shared/api";
 import { applyCodeChange, type CodeContent } from "@gadgets/workshop-shared/code-change";
 import { makeMockStorage } from "./mock-storage";
-import { makeOverseerStorage, type OverseerStorage } from "../src/overseer";
+import { makeOverseerStorage, type GadgetRecord, type OverseerStorage } from "../src/overseer";
 import { GitStore } from "../src/git-store";
 import type { GitMigrationHost } from "../src/git-migration";
 
@@ -79,10 +79,12 @@ export class LegacyWorkspace {
 
   addGadget(id: number, bindingName: string,
             pending?: { chatId: number, sequence?: number }): void {
+    // Legacy pre-v4 rows deliberately lack the `type` discriminant (the 3→4 migration stamps
+    // it), so this bypasses the current record type.
     this.storage.gadgets.put({
       id, title: bindingName, created: new Date(T0), bindingName, bindings: {},
       ...(pending !== undefined ? { pending } : {}),
-    });
+    } as GadgetRecord);
   }
 
   addChat(id: number): void {
@@ -125,9 +127,10 @@ export class LegacyWorkspace {
         this.storage.nextGatekeeperId.put(id + 1);
         this.storage.defaultGadgetId.put(id);
         defaultGadgetId = id;
+        // A legacy row, like addGadget's (the migration host predates the v4 type stamp).
         this.storage.gadgets.put({
           id, title: "Workspace", created: new Date(T0), bindingName: "GADGET", bindings: {},
-        });
+        } as GadgetRecord);
         return id;
       },
       gadgetRootName: (id) => id === defaultGadgetId ? "" : `${id}`,
@@ -213,7 +216,8 @@ export function readDocFiles(doc: Y.Doc, rootName: string): Map<string, string> 
 export async function expectHeadsMatchDoc(
     storage: Pick<OverseerStorage, "gadgets">, gitStore: GitStore, doc: Y.Doc,
     defaultGadgetId?: WorkpieceId): Promise<void> {
-  for (let gadget of storage.gadgets.list()) {
+  for (let record of storage.gadgets.list()) {
+    let gadget = record as GadgetRecord;  // legacy workspaces hold only gadgets
     if (gadget.pending !== undefined) {
       expect(gadget.commitId).toBeUndefined();
       continue;

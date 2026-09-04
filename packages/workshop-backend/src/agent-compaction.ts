@@ -393,6 +393,9 @@ export function buildCompactionState(
         if (call.error) continue;
         if (call.toolName === "createGadget" && call.output !== undefined) {
           chatBindings.set(call.input.bindingName, {type: "workpiece", id: call.output.gadgetId});
+        } else if (call.toolName === "createWorktree" && call.output !== undefined) {
+          chatBindings.set(call.input.bindingName,
+              {type: "workpiece", id: call.output.worktreeId});
         }
       }
     } else if (message.type === "agentCallback") {
@@ -412,6 +415,11 @@ export function buildCompactionState(
           chatBindings.set(bindingName, {type: "workpiece", id: gadgetId});
         }
       }
+      for (let {worktreeId, bindingName} of message.createdWorktrees ?? []) {
+        if (!chatBindings.has(bindingName)) {
+          chatBindings.set(bindingName, {type: "workpiece", id: worktreeId});
+        }
+      }
       ++nextChangeId;
     }
   }
@@ -429,6 +437,13 @@ export function buildCompactionState(
     if (message.type === "merge" && message.epochBoundary) {
       pins.clear();
       epoch = message.sequence;
+      // Worktree pins re-establish at the boundary itself, from the merge's own re-pin record
+      // (see AiChatMessageBody.worktreePins) -- there is no later "changes" declaration to
+      // re-pin them lazily, so the checkpoint must carry them or post-compaction replay would
+      // lose the worktrees' bases.
+      for (let pin of message.worktreePins ?? []) {
+        pins.set(pin.worktreeId, {gadgetId: pin.worktreeId, baseCommit: pin.baseCommit});
+      }
     } else if (message.type === "changes" && statuses.get(message.sequence) !== "reverted") {
       if (message.conversionBoundary) {
         pins.clear();

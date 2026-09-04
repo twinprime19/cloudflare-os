@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { watch } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
@@ -208,7 +209,7 @@ function setValues(patch) {
   const active = getFocusState();
   values = { ...values, ...patch };
   postSelectionState();
-  render(active);
+  render(active, true);
 }
 
 function clearFields(...names) {
@@ -648,9 +649,14 @@ RadioCards = components.RadioCards;
 CheckboxList = components.CheckboxList;
 Autocomplete = components.Autocomplete;
 
-function render(focusState = undefined) {
+function render(focusState = undefined, preserveCheckboxScroll = false) {
   if (!root || !spec) return;
   if (focusState === undefined) focusState = getFocusState();
+  const checkboxScrollOffsets = preserveCheckboxScroll
+    ? new Map(Array.from(root.querySelectorAll(".checkbox-list[data-name]"), list => [
+        list.getAttribute("data-name"), list.querySelector(".checkbox-rows")?.scrollTop,
+      ]))
+    : null;
   renderGeneration++;
   renderedCheckboxNames = new Set();
   isRendering = true;
@@ -658,6 +664,13 @@ function render(focusState = undefined) {
     spec.render({ ui, values, setValues, clearFields, components }),
   ]));
   isRendering = false;
+  if (checkboxScrollOffsets) {
+    for (const list of root.querySelectorAll(".checkbox-list[data-name]")) {
+      const offset = checkboxScrollOffsets.get(list.getAttribute("data-name"));
+      const rows = list.querySelector(".checkbox-rows");
+      if (rows && offset !== undefined) rows.scrollTop = offset;
+    }
+  }
   pruneCheckboxEntries(checkboxOptionsByName, renderedCheckboxNames);
   if (focusState?.name) {
     const input = root.querySelector('[data-configurator-input="' + CSS.escape(focusState.name) + '"]');
