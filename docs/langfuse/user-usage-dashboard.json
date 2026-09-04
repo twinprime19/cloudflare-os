@@ -1,0 +1,165 @@
+{
+  "$langfuseDashboard": true,
+  "version": 1,
+  "name": "User usage",
+  "description": "Who uses the platform, how much, and when. All numbers follow the dashboard date range. Gadget-driven calls are credited to the person who owns the gadget.",
+  "widgets": [
+    {
+      "type": "widget",
+      "x": 0, "y": 0, "x_size": 4, "y_size": 4,
+      "widget": {
+        "$langfuseWidget": true,
+        "version": 1,
+        "name": "Active users",
+        "description": "Distinct users with at least one LLM call in the selected range.",
+        "view": "traces",
+        "dimensions": [],
+        "metrics": [{ "measure": "uniqueUserIds", "agg": "uniq" }],
+        "filters": [],
+        "chartType": "NUMBER",
+        "chartConfig": { "type": "NUMBER" },
+        "minVersion": 1
+      }
+    },
+    {
+      "type": "widget",
+      "x": 4, "y": 0, "x_size": 4, "y_size": 4,
+      "widget": {
+        "$langfuseWidget": true,
+        "version": 1,
+        "name": "Requests",
+        "description": "LLM requests (traces) in the selected range.",
+        "view": "traces",
+        "dimensions": [],
+        "metrics": [{ "measure": "count", "agg": "count" }],
+        "filters": [],
+        "chartType": "NUMBER",
+        "chartConfig": { "type": "NUMBER" },
+        "minVersion": 1
+      }
+    },
+    {
+      "type": "widget",
+      "x": 8, "y": 0, "x_size": 4, "y_size": 4,
+      "widget": {
+        "$langfuseWidget": true,
+        "version": 1,
+        "name": "Cost",
+        "description": "Total model cost in the selected range (gateway estimate, analytics grade).",
+        "view": "traces",
+        "dimensions": [],
+        "metrics": [{ "measure": "totalCost", "agg": "sum" }],
+        "filters": [],
+        "chartType": "NUMBER",
+        "chartConfig": { "type": "NUMBER" },
+        "minVersion": 1
+      }
+    },
+    {
+      "type": "widget",
+      "x": 0, "y": 4, "x_size": 6, "y_size": 6,
+      "widget": {
+        "$langfuseWidget": true,
+        "version": 1,
+        "name": "Active users over time",
+        "description": "Distinct users per bucket. Buckets are daily for short ranges and coarser for long ranges.",
+        "view": "traces",
+        "dimensions": [],
+        "metrics": [{ "measure": "uniqueUserIds", "agg": "uniq" }],
+        "filters": [],
+        "chartType": "BAR_TIME_SERIES",
+        "chartConfig": { "type": "BAR_TIME_SERIES" },
+        "minVersion": 1
+      }
+    },
+    {
+      "type": "widget",
+      "x": 6, "y": 4, "x_size": 6, "y_size": 6,
+      "widget": {
+        "$langfuseWidget": true,
+        "version": 1,
+        "name": "Requests over time by user",
+        "description": "One series per user. Shows who was active on which days.",
+        "view": "traces",
+        "dimensions": [{ "field": "userId" }],
+        "metrics": [{ "measure": "count", "agg": "count" }],
+        "filters": [],
+        "chartType": "BAR_TIME_SERIES",
+        "chartConfig": { "type": "BAR_TIME_SERIES" },
+        "minVersion": 1
+      }
+    },
+    {
+      "type": "widget",
+      "x": 0, "y": 10, "x_size": 4, "y_size": 6,
+      "widget": {
+        "$langfuseWidget": true,
+        "version": 1,
+        "name": "Top users by requests",
+        "description": "Users ranked by number of LLM requests.",
+        "view": "traces",
+        "dimensions": [{ "field": "userId" }],
+        "metrics": [{ "measure": "count", "agg": "count" }],
+        "filters": [],
+        "chartType": "HORIZONTAL_BAR",
+        "chartConfig": { "type": "HORIZONTAL_BAR", "row_limit": 20 },
+        "minVersion": 1
+      }
+    },
+    {
+      "type": "widget",
+      "x": 4, "y": 10, "x_size": 4, "y_size": 6,
+      "widget": {
+        "$langfuseWidget": true,
+        "version": 1,
+        "name": "Top users by tokens",
+        "description": "Users ranked by total tokens (input plus output).",
+        "view": "traces",
+        "dimensions": [{ "field": "userId" }],
+        "metrics": [{ "measure": "totalTokens", "agg": "sum" }],
+        "filters": [],
+        "chartType": "HORIZONTAL_BAR",
+        "chartConfig": { "type": "HORIZONTAL_BAR", "row_limit": 20 },
+        "minVersion": 1
+      }
+    },
+    {
+      "type": "widget",
+      "x": 8, "y": 10, "x_size": 4, "y_size": 6,
+      "widget": {
+        "$langfuseWidget": true,
+        "version": 1,
+        "name": "Top users by cost",
+        "description": "Users ranked by total model cost.",
+        "view": "traces",
+        "dimensions": [{ "field": "userId" }],
+        "metrics": [{ "measure": "totalCost", "agg": "sum" }],
+        "filters": [],
+        "chartType": "HORIZONTAL_BAR",
+        "chartConfig": { "type": "HORIZONTAL_BAR", "row_limit": 20 },
+        "minVersion": 1
+      }
+    },
+    {
+      "type": "widget",
+      "x": 0, "y": 16, "x_size": 12, "y_size": 7,
+      "widget": {
+        "$langfuseWidget": true,
+        "version": 1,
+        "name": "User activity",
+        "description": "Every user active in the selected range with requests, tokens, and cost. Row count equals the Active users tile.",
+        "view": "traces",
+        "dimensions": [{ "field": "userId" }],
+        "metrics": [
+          { "measure": "count", "agg": "count" },
+          { "measure": "totalTokens", "agg": "sum" },
+          { "measure": "totalCost", "agg": "sum" }
+        ],
+        "filters": [],
+        "chartType": "PIVOT_TABLE",
+        "chartConfig": { "type": "PIVOT_TABLE", "row_limit": 200 },
+        "minVersion": 1
+      }
+    }
+  ]
+}
