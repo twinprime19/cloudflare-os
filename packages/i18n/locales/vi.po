@@ -71,6 +71,18 @@ msgstr "{0} đã tạo {1, plural, other {gadget}} {createdTitles}"
 msgid "{0} discarded changes"
 msgstr "{0} đã loại bỏ thay đổi"
 
+#. placeholder {0}: (size / 1024).toFixed(1)
+msgid "{0} KB"
+msgstr "{0} KB"
+
+#. placeholder {0}: history.entries.length
+msgid "{0} loaded"
+msgstr "Đã tải {0}"
+
+#. placeholder {0}: (size / (1024 * 1024)).toFixed(1)
+msgid "{0} MB"
+msgstr "{0} MB"
+
 #. placeholder {0}: usage.remaining
 #. placeholder {1}: usage.dailyLimit
 msgid "{0} of {1, plural, one {# request} other {# requests}} remaining today"
@@ -89,6 +101,9 @@ msgstr "{DEFAULT_ACCENT_COLOR} (mặc định)"
 msgid "{filename} is being edited"
 msgstr "{filename} đang được chỉnh sửa"
 
+msgid "{initialRoom, plural, one {Only the first attachment was attached} other {Only the first # attachments were attached}}"
+msgstr "{initialRoom, plural, other {Chỉ # tệp đính kèm đầu tiên được thêm vào}}"
+
 msgid "{kept, plural, one {The message after the cut was kept in full.} other {The # messages after the cut were kept in full.}}"
 msgstr "{kept, plural, other {# tin nhắn sau điểm cắt được giữ lại đầy đủ.}}"
 
@@ -98,6 +113,9 @@ msgstr "{label}. Chuyển sang {nextMode}."
 #. placeholder {0}: bindingEntries.length
 msgid "{readyCount} of {0} ready. Suggestions are used automatically when they match one of your connected accounts."
 msgstr "{readyCount} trong {0} đã sẵn sàng. Gợi ý được sử dụng tự động khi khớp với một trong các tài khoản đã kết nối của bạn."
+
+msgid "{size} B"
+msgstr "{size} B"
 
 msgid "<0>AI Gateway mode:</0> built-in models are managed by your deployment. You can still add custom models with your own API tokens."
 msgstr "<0>Chế độ AI Gateway:</0> các mô hình tích hợp sẵn được quản lý bởi bản triển khai của bạn. Bạn vẫn có thể thêm mô hình tùy chỉnh bằng token API của riêng mình."
@@ -319,8 +337,17 @@ msgstr "tệp đính kèm"
 msgid "Attached file"
 msgstr "Tệp đính kèm"
 
+#. placeholder {0}: formatAttachmentSize(MAX_CHAT_ATTACHMENT_TOTAL_BYTES) ?? ""
+msgid "Attached files must total {0} or less"
+msgstr "Tổng dung lượng tệp đính kèm không được vượt quá {0}"
+
 msgid "Attached image"
 msgstr "Ảnh đính kèm"
+
+#. placeholder {0}: formatAttachmentSize(MAX_CHAT_ATTACHMENT_BYTES) ?? ""
+#. placeholder {0}: formatAttachmentSize(limit) ?? ""
+msgid "Attachments must be {0} or smaller."
+msgstr "Tệp đính kèm không được vượt quá {0}."
 
 msgid "Authenticating..."
 msgstr "Đang xác thực..."
@@ -445,6 +472,9 @@ msgstr "Trò chuyện"
 
 msgid "Check your connection and try refreshing the page."
 msgstr "Kiểm tra kết nối của bạn và thử tải lại trang."
+
+msgid "Checking for requests…"
+msgstr "Đang kiểm tra yêu cầu…"
 
 msgid "Choose \"None\" to create conversations without an agent."
 msgstr "Chọn \"Không có\" để tạo cuộc trò chuyện không có tác nhân."
@@ -674,6 +704,18 @@ msgstr "Sao chép tin nhắn"
 msgid "Copy user ID"
 msgstr "Sao chép ID người dùng"
 
+msgid "Could not check for requests"
+msgstr "Không thể kiểm tra yêu cầu"
+
+msgid "Could not check for requests — reload the page to try again."
+msgstr "Không thể kiểm tra yêu cầu — tải lại trang để thử lại."
+
+msgid "Could not finish checking for requests — reload the page to try again."
+msgstr "Không thể hoàn tất việc kiểm tra yêu cầu — tải lại trang để thử lại."
+
+msgid "Could not load activity"
+msgstr "Không thể tải hoạt động"
+
 msgid "Could not load auto-approval"
 msgstr "Không thể tải chế độ duyệt tự động"
 
@@ -692,6 +734,9 @@ msgstr "Không thể tải lệnh. {error}"
 
 msgid "Couldn't load deployment settings."
 msgstr "Không thể tải cài đặt triển khai."
+
+msgid "Couldn't load older activity"
+msgstr "Không thể tải hoạt động cũ hơn"
 
 msgid "Create"
 msgstr "Tạo"
@@ -1082,8 +1127,14 @@ msgstr "Hướng dẫn bổ sung được thêm vào system prompt của mọi t
 msgid "Failed"
 msgstr "Thất bại"
 
+msgid "Failed to add resource"
+msgstr "Không thể thêm tài nguyên"
+
 msgid "Failed to approve action"
 msgstr "Không thể duyệt hành động"
+
+msgid "Failed to create resource connection"
+msgstr "Không thể tạo kết nối tài nguyên"
 
 msgid "Failed to deny action"
 msgstr "Không thể từ chối hành động"
@@ -1094,8 +1145,14 @@ msgstr "Không thể tắt duyệt tự động"
 msgid "Failed to enable auto-approval"
 msgstr "Không thể bật duyệt tự động"
 
+msgid "Failed to encode image."
+msgstr "Không thể mã hóa hình ảnh."
+
 msgid "Failed to encode the logo as PNG."
 msgstr "Không thể mã hóa logo thành PNG."
+
+msgid "Failed to get 2D canvas context."
+msgstr "Không thể lấy ngữ cảnh 2D của canvas."
 
 msgid "Failed to load blueprint."
 msgstr "Không thể tải blueprint."
@@ -1109,8 +1166,14 @@ msgstr "Không thể tải mã của gadget này."
 msgid "Failed to prepare the logo image."
 msgstr "Không thể chuẩn bị hình ảnh logo."
 
+msgid "Failed to process attachment"
+msgstr "Không thể xử lý tệp đính kèm"
+
 msgid "Failed to read the selected image."
 msgstr "Không thể đọc hình ảnh đã chọn."
+
+msgid "Failed to upload attachment"
+msgstr "Không thể tải lên tệp đính kèm"
 
 msgid "Favorite"
 msgstr "Yêu thích"
@@ -1248,6 +1311,10 @@ msgstr "Tên dễ đọc được hiển thị trong giao diện"
 msgid "Icon"
 msgstr "Biểu tượng"
 
+#. placeholder {0}: formatAttachmentSize(MAX_CHAT_ATTACHMENT_SOURCE_IMAGE_BYTES) ?? ""
+msgid "Images must be {0} or smaller before resizing."
+msgstr "Hình ảnh không được vượt quá {0} trước khi thay đổi kích thước."
+
 #. placeholder {0}: owner.name
 msgid "In a workspace shared by {0}"
 msgstr "Trong không gian làm việc do {0} chia sẻ"
@@ -1326,6 +1393,9 @@ msgstr "Liên kết đã sẵn sàng"
 
 msgid "Link your accounts so your gadgets can access them. You can always add more later."
 msgstr "Liên kết tài khoản của bạn để các gadget có thể truy cập chúng. Bạn luôn có thể thêm sau."
+
+msgid "Load older"
+msgstr "Tải hoạt động cũ hơn"
 
 msgid "Loading accounts…"
 msgstr "Đang tải tài khoản…"
@@ -1636,6 +1706,9 @@ msgstr "Không có gì sau đó được giữ lại."
 msgid "Nothing can run automatically"
 msgstr "Không có gì có thể chạy tự động"
 
+msgid "Nothing in the most recent activity"
+msgstr "Không có gì trong hoạt động gần đây nhất"
+
 msgid "Nothing is available to offer spawned agents here. Create the agent from a gadget's Connections tab to give it access to that gadget and its resources."
 msgstr "Ở đây chưa có gì để cung cấp cho tác nhân được tạo. Tạo tác nhân từ tab Kết nối của gadget để cấp cho tác nhân quyền truy cập vào gadget đó và tài nguyên của gadget đó."
 
@@ -1835,6 +1908,9 @@ msgstr "Được tham chiếu trong mã dưới dạng: <0>{bindingName}</0>"
 
 msgid "Reload"
 msgstr "Tải lại"
+
+msgid "Reload the page to try again."
+msgstr "Tải lại trang để thử lại."
 
 msgid "Reload the Workshop to start again."
 msgstr "Tải lại Workshop để bắt đầu lại."
@@ -2044,14 +2120,14 @@ msgstr "Chọn ít nhất một tài nguyên để tiếp tục."
 msgid "Select model"
 msgstr "Chọn mô hình"
 
-msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {error} other {errors}} to chat"
-msgstr "Gửi {pendingConsoleLogCount} {pendingConsoleLogCount, plural, other {lỗi}} đã ghi nhận vào trò chuyện"
+msgid "Send {count} captured {count, plural, one {error} other {errors}} to chat"
+msgstr "Gửi {count} {count, plural, other {lỗi}} đã ghi nhận vào trò chuyện"
 
-msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {log} other {logs}} to chat"
-msgstr "Gửi {pendingConsoleLogCount} {pendingConsoleLogCount, plural, other {nhật ký}} đã ghi nhận vào trò chuyện"
+msgid "Send {count} captured {count, plural, one {log} other {logs}} to chat"
+msgstr "Gửi {count} {count, plural, other {nhật ký}} đã ghi nhận vào trò chuyện"
 
-msgid "Send {pendingConsoleLogCount} captured {pendingConsoleLogCount, plural, one {warning} other {warnings}} to chat"
-msgstr "Gửi {pendingConsoleLogCount} {pendingConsoleLogCount, plural, other {cảnh báo}} đã ghi nhận vào trò chuyện"
+msgid "Send {count} captured {count, plural, one {warning} other {warnings}} to chat"
+msgstr "Gửi {count} {count, plural, other {cảnh báo}} đã ghi nhận vào trò chuyện"
 
 msgid "Send message"
 msgstr "Gửi tin nhắn"
@@ -2204,6 +2280,9 @@ msgstr "Bắt đầu với"
 msgid "Status"
 msgstr "Trạng thái"
 
+msgid "Still checking older activity…"
+msgstr "Vẫn đang kiểm tra hoạt động cũ hơn…"
+
 msgid "Stop agent"
 msgstr "Dừng tác nhân"
 
@@ -2252,6 +2331,9 @@ msgstr "Gadget đã thay đổi kể từ khi bắt đầu bản nháp này"
 #. placeholder {0}: example!.modelId
 msgid "The model identifier as specified by the provider (e.g., '{0}')"
 msgstr "Mã định danh mô hình do nhà cung cấp chỉ định (ví dụ: '{0}')"
+
+msgid "The prompt changed before the resource could be added"
+msgstr "Prompt đã thay đổi trước khi tài nguyên được thêm vào"
 
 #. placeholder {0}: vendor.description.displayName
 msgid "The required resource type for this binding isn't offered by {0}."
@@ -2433,6 +2515,9 @@ msgstr "Tải lên .gadget"
 msgid "Upload a .gadget archive"
 msgstr "Tải lên tệp lưu trữ .gadget"
 
+msgid "Upload failed"
+msgstr "Tải lên thất bại"
+
 msgid "Upload file"
 msgstr "Tải lên tệp"
 
@@ -2582,6 +2667,9 @@ msgstr "Bạn đã đưa các thay đổi mới nhất của gadget vào bản n
 
 msgid "You brought the gadget's latest changes into this draft — {conflictCount} {conflictCount, plural, one {file has} other {files have}} conflicts marked in the code"
 msgstr "Bạn đã đưa các thay đổi mới nhất của gadget vào bản nháp này — {conflictCount} {conflictCount, plural, other {tệp có}} xung đột được đánh dấu trong mã"
+
+msgid "You can attach up to {MAX_COMPOSER_ATTACHMENTS} attachments"
+msgstr "Bạn có thể đính kèm tối đa {MAX_COMPOSER_ATTACHMENTS} tệp"
 
 msgid "You can copy it again anytime from Share links"
 msgstr "Bạn có thể sao chép lại bất cứ lúc nào từ Liên kết chia sẻ"

@@ -4,7 +4,7 @@ import {
   GatekeeperVendor as GatekeeperVendorIface, Gatekeeper, GatekeeperUserVerifier, VendorDescription,
   GatekeeperConnectCallback, GatekeeperConnectOptions, AccountDescription,
   SupportedResource, ResourceConfiguratorFrame, ResourceDescription, ApprovalQueue, ActionKind,
-  stripTrailingSlashes,
+  GitCache, stripTrailingSlashes,
 } from "@gadgets/workshop-shared/gatekeeper";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
 import {
@@ -569,7 +569,14 @@ export class CloudflareObservabilityGatekeeper
     // Strategy B verifies on each admission and retains no observer state to remove.
   }
 
-  async applyAction(_action: number): Promise<void> { throw new Error("This resource is read-only."); }
+  /**
+   * `_cache` is unused (a read-only resource applies nothing), but declaring it keeps the
+   * signature aligned with the `Gatekeeper` interface, which is also what lets the workerd test
+   * suite pass a stand-in cache through the class-typed facet stub.
+   */
+  async applyAction(_action: number, _cache: RpcStub<GitCache>): Promise<void> {
+    throw new Error("This resource is read-only.");
+  }
   async rejectAction(_action: number): Promise<void> { throw new Error("This resource is read-only."); }
   async revertAction(_action: number): Promise<void> { throw new Error("This resource is read-only."); }
 }

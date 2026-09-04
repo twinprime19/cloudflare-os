@@ -1,28 +1,45 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { access, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { after, before, describe, it } from "node:test";
 import ts from "typescript6"; // JS compiler API (decodeMappings); see build-gatekeeper-configurator.ts
 
+const { JSDOM } = createRequire(import.meta.url)("jsdom");
+
 const execFileAsync = promisify(execFile);
 const builder = resolve("scripts/build-gatekeeper-configurator.ts");
 const configuratorSource =
   'import { h } from "@gadgets/configurator-ui";\n' +
   'export default { render() { throw new Error("mapped configurator failure"); return <div />; } };\n';
+const checkboxConfiguratorSource =
+  'import { CheckboxList, h } from "@gadgets/configurator-ui";\n' +
+  'const options = Array.from({ length: 12 }, (_, index) => ({\n' +
+  '  value: `tool-${index}`, title: `Tool ${index}`,\n' +
+  '}));\n' +
+  'export default {\n' +
+  '  initial: { tools: null },\n' +
+  '  render({ values, setValues }) {\n' +
+  '    return <CheckboxList name="tools" value={values.tools} loadOptions={async () => options}\n' +
+  '      onChange={tools => setValues({ tools })} />;\n' +
+  '  },\n' +
+  '};\n';
 let fixtureDir: string;
 let disabledFixtureDir: string;
 let devModeFixtureDir: string;
 let devEnvWithoutDevFlagFixtureDir: string;
+let checkboxFixtureDir: string;
 
 // `envFile` is the `.env.*` file that enables reporting, so which one is written decides which build
 // mode picks it up. `staleArtifacts` pre-seeds the outputs a reporting-disabled build must remove.
-async function createFixture(prefix: string, { envFile, builderArgs = [], staleArtifacts = false }: {
+async function createFixture(prefix: string, { envFile, builderArgs = [], staleArtifacts = false, source }: {
   envFile?: string;
   builderArgs?: string[];
   staleArtifacts?: boolean;
+  source?: string;
 } = {}): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), prefix));
   await mkdir(join(directory, "src", "configurator"), { recursive: true });
@@ -37,7 +54,7 @@ async function createFixture(prefix: string, { envFile, builderArgs = [], staleA
   }
   await writeFile(join(directory, "node_modules", "capnweb", "dist", "index.js"),
     "export class RpcTarget {}\nexport function newMessagePortRpcSession() {}\n");
-  await writeFile(join(directory, "src", "configurator", "test-ui.tsx"), configuratorSource);
+  await writeFile(join(directory, "src", "configurator", "test-ui.tsx"), source ?? configuratorSource);
   await execFileAsync(process.execPath, [builder, directory, ...builderArgs]);
   return directory;
 }
@@ -48,6 +65,44 @@ async function readRuntime(directory: string): Promise<string> {
     /<script type="module" src="data:text\/javascript;charset=utf-8,([^"]+)"/);
   assert.ok(match, "generated HTML should contain its runtime module");
   return decodeURIComponent(match[1]);
+}
+
+async function runConfiguratorRuntime(directory: string) {
+  const dom = new JSDOM("<!DOCTYPE html><div id=\"root\"></div>", {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+  });
+  const runtime = (await readRuntime(directory)).replace(/^import .*;\n/gm, "");
+  Object.defineProperty(dom.window, "postMessage", { value: () => {} });
+  dom.window.eval(`
+    class MessageChannel {
+      constructor() { this.port1 = {}; this.port2 = {}; }
+    }
+    class ResizeObserver {
+      observe() {}
+      disconnect() {}
+    }
+    class RpcTarget {}
+    const CSS = { escape: value => String(value) };
+    function newMessagePortRpcSession() {
+      return {
+        gatekeeper: {},
+        getInitialResource: async () => null,
+        setSelectionReady() {},
+        resize() {},
+        forwardScroll() {},
+      };
+    }
+    ${runtime}
+  `);
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (dom.window.document.querySelector(".checkbox-rows")) return dom;
+    await new Promise(done => setTimeout(done, 0));
+  }
+  const error = dom.window.document.getElementById("root")?.textContent;
+  dom.window.close();
+  throw new Error(`Configurator did not render its checkbox list: ${error}`);
 }
 
 function readConfiguratorModule(runtime: string): string {
@@ -127,6 +182,8 @@ before(async () => {
     { envFile: ".env.development", builderArgs: ["--dev"] });
   devEnvWithoutDevFlagFixtureDir = await createFixture("configurator-dev-env-oneshot-",
     { envFile: ".env.development", staleArtifacts: true });
+  checkboxFixtureDir = await createFixture(
+    "configurator-checkbox-", { source: checkboxConfiguratorSource });
 });
 
 after(async () => {
@@ -134,6 +191,7 @@ after(async () => {
   await rm(disabledFixtureDir, { recursive: true, force: true });
   await rm(devModeFixtureDir, { recursive: true, force: true });
   await rm(devEnvWithoutDevFlagFixtureDir, { recursive: true, force: true });
+  await rm(checkboxFixtureDir, { recursive: true, force: true });
 });
 
 describe("generated configurator error reporting", () => {
@@ -300,6 +358,37 @@ describe("generated configurator option sanitizing", () => {
   });
 });
 
+describe("generated configurator checkbox behavior", () => {
+  it("keeps the tool list in place on selection and resets it when filtering", async () => {
+    const dom = await runConfiguratorRuntime(checkboxFixtureDir);
+    try {
+      const root = dom.window.document.getElementById("root");
+      const rows = root.querySelector(".checkbox-rows");
+      const checkbox = root.querySelectorAll('input[type="checkbox"]')[8];
+      assert.ok(rows);
+      assert.ok(checkbox);
+      rows.scrollTop = 176;
+
+      checkbox.click();
+
+      const rowsAfterSelection = root.querySelector(".checkbox-rows");
+      assert.notEqual(rowsAfterSelection, rows);
+      assert.equal(rowsAfterSelection?.scrollTop, 176);
+      assert.match(root.textContent, /1 of 12 selected/);
+
+      const filter = root.querySelector('input[type="search"]');
+      assert.ok(filter);
+      rowsAfterSelection.scrollTop = 176;
+      filter.value = "tool";
+      filter.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+
+      assert.equal(root.querySelector(".checkbox-rows")?.scrollTop, 0);
+    } finally {
+      dom.window.close();
+    }
+  });
+});
+
 // The builder reads its env through `loadEnv`, and the Vite+ task that runs it has to declare each
 // variable by name: a cached `vp run` executes a task with undeclared vars stripped *and* absent
 // from the fingerprint, so an undeclared read is silently `undefined` and a changed value silently
@@ -380,10 +469,25 @@ describe("configurator builder env declarations", () => {
     // separate silently.
     const task = taskDeclaration(taskConfig, "build:configurator");
     assert.ok(task, `expected a \`build:configurator\` task in ${configPath}`);
+
+    // The task reaches the builder by bin name, so the link runs through `scripts/package.json`'s
+    // `bin` map rather than being visible in the command string. Resolve it rather than matching the
+    // name literally: that way a bin renamed on one side but not the other fails here, and so does a
+    // bin quietly re-pointed at a different script.
+    const manifest = JSON.parse(await readFile(resolve("scripts/package.json"), "utf8")) as
+      { bin: Record<string, string> };
+    const builderBins = Object.entries(manifest.bin)
+      .filter(([, target]) => resolve("scripts", target) === builder)
+      .map(([name]) => name);
+    assert.equal(
+      builderBins.length, 1,
+      `expected exactly one bin in scripts/package.json pointing at ${basename(builder)}, ` +
+        `found ${builderBins.length}`);
     assert.ok(
-      task.includes(basename(builder)),
-      `${configPath}'s \`build:configurator\` no longer runs ${basename(builder)}, so its \`env\` ` +
-        "is not what reaches the builder. Point this assertion at the task that runs it.");
+      task.includes(builderBins[0]),
+      `${configPath}'s \`build:configurator\` no longer runs ${basename(builder)} (via the ` +
+        `\`${builderBins[0]}\` bin), so its \`env\` is not what reaches the builder. Point this ` +
+        "assertion at the task that runs it.");
 
     const declared = new Set(
       [...(task.match(/env:\s*\[([^\]]*)\]/)?.[1] ?? "")
@@ -412,6 +516,10 @@ async function configuratorPackages(): Promise<string[]> {
   return names;
 }
 
+// The module specifier every configurator gatekeeper re-exports the shared tasks from. Shared by
+// the routing guard and the SKELETON.md guard below so the docs cannot drift from the requirement.
+const SHARED_CONFIGURATOR_SPECIFIER = "@gadgets/scripts/gatekeeper-configurator";
+
 /**
  * The declaration above is worth nothing to a package that never reaches the task, and
  * `env-passthrough.test.ts` cannot see that: it discovers reads per directory, and these packages
@@ -422,6 +530,24 @@ async function configuratorPackages(): Promise<string[]> {
  * `gatekeeper-slack`: a local `vp run -F <pkg> build` still looks right, which is the trap.
  */
 describe("configurator task wiring", () => {
+  it("builds Google's configurators before either supported test route", async () => {
+    const manifest = JSON.parse(await readFile(
+      "packages/gatekeeper-google/package.json", "utf8",
+    ));
+    assert.equal(
+      manifest.scripts["test:run"],
+      "vp run -F @gadgets/google-gatekeeper build:configurator && " +
+        "vitest run && vitest run -c vitest.worker.config.ts && " +
+        "vitest run -c vitest.docs-worker.config.ts",
+    );
+
+    const config = await readFile("packages/gatekeeper-google/vite.config.ts", "utf8");
+    assert.match(
+      config,
+      /test:\s*\{\s*\.\.\.vitestTask\(\[[\s\S]*?\]\),\s*dependsOn:\s*\["build:configurator"\],?\s*\}/,
+    );
+  });
+
   it("routes every package the builder builds through the shared task", async () => {
     const names = await configuratorPackages();
     assert.ok(names.length > 0, "expected to find packages with configurator UI sources");
@@ -430,12 +556,33 @@ describe("configurator task wiring", () => {
       const config =
         await readFile(join("packages", name, "vite.config.ts"), "utf8").catch(() => null);
       assert.ok(
-        config?.includes("gatekeeper-configurator-vite-config"),
+        config?.includes(SHARED_CONFIGURATOR_SPECIFIER),
         `packages/${name} has configurator UI sources but no vite.config.ts re-exporting ` +
-          "gatekeeper-configurator-vite-config, so it declares no `build:configurator` task and " +
-          "`pnpm build` would strip VITE_FRONTEND_ERROR_REPORTING from the builder. Re-export the " +
-          "shared config (or declare the task with its own `env` and widen this assertion).");
+          `${SHARED_CONFIGURATOR_SPECIFIER}, so it declares no \`build:configurator\` task ` +
+          "and `pnpm build` would strip VITE_FRONTEND_ERROR_REPORTING from the builder. Re-export " +
+          "the shared config (or declare the task with its own `env` and widen this assertion).");
     }
+  });
+
+  // Nothing reads SKELETON.md but a human copying out of it, which is how the specifier there went
+  // stale and stayed shippable: the pre-`@gadgets/scripts` relative path still resolves from a real
+  // `packages/<name>/` directory, and the `gadgets-*` bins are on PATH via the workspace root, so a
+  // generated gatekeeper would build -- on an undeclared dependency -- and then fail the routing
+  // guard above. Pinning the copy-paste blocks to the same constant is what makes that impossible.
+  it("hands out the shared task specifier the routing guard requires", async () => {
+    const skeleton = await readFile(".agents/skills/write-gatekeeper/SKELETON.md", "utf8");
+
+    assert.ok(
+      skeleton.includes(SHARED_CONFIGURATOR_SPECIFIER),
+      "SKELETON.md's vite.config.ts block must re-export " +
+        `${SHARED_CONFIGURATOR_SPECIFIER}, the specifier the routing guard looks for.`);
+    assert.doesNotMatch(
+      skeleton, /\.\.\/\.\.\/scripts\/gatekeeper-configurator-vite-config/,
+      "SKELETON.md still hands out the pre-@gadgets/scripts relative path to the shared config.");
+    assert.match(
+      skeleton, /"@gadgets\/scripts":\s*"workspace:\*"/,
+      "SKELETON.md must show @gadgets/scripts in the new package's devDependencies: its bins are " +
+        "on PATH from the workspace root, so leaving it undeclared works until it doesn't.");
   });
 
   // deploy-scripts.test.ts holds the two general deploy invariants. Both pass vacuously on a

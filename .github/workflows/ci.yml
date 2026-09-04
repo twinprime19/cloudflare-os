@@ -38,7 +38,7 @@ jobs:
       # means they race to reserve the same lockfile-keyed entry.
       # TODO(someday): It would be great if the setup-vp action could share a cache key with the test job but disable writes to cache
       - name: Set up Vite+, Node.js and dependencies
-        uses: voidzero-dev/setup-vp@313600b80b104eadebb9111787d37a2e83e014ca # v1.17.0
+        uses: voidzero-dev/setup-vp@1b32467adbe183473499fd9d5d372c3ed9641754 # v1.18.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: false
@@ -57,6 +57,13 @@ jobs:
     # process (a spawned child that outlives its reap keeps `node --test` alive forever) burns the
     # 6-hour default instead of failing, on every run of the branch.
     timeout-minutes: 20
+    # The GitHub-hosted runners this repo gets have 2 CPUs, but scripts/vp/concurrency.ts floors its
+    # computed limit at Vite+'s default of 4, so four concurrent vitest fleets share two cores and
+    # starve workshop-backend's cold start (esbuild bundle + workerd boot) past the 60s idle watchdog
+    # in scripts/with-timeout.ts, killing the job before any test reports. Job-level so Build and Test
+    # both get it, and set here rather than in the formula, which is upstream's to own.
+    env:
+      VP_RUN_CONCURRENCY_LIMIT: "2"
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -72,7 +79,7 @@ jobs:
       # named in `packageManager` (integrity hash checked as Corepack does), so setup-node is not
       # needed.
       - name: Set up Vite+, Node.js and dependencies
-        uses: voidzero-dev/setup-vp@313600b80b104eadebb9111787d37a2e83e014ca # v1.17.0
+        uses: voidzero-dev/setup-vp@1b32467adbe183473499fd9d5d372c3ed9641754 # v1.18.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: true

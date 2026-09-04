@@ -23,17 +23,12 @@ export const IDENTITY_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
 ];
 
-/**
- * Scopes for sign-in only, where the resulting grant is transient. Identical to
- * {@link IDENTITY_SCOPES}: verifying an email needs no resource access.
- */
-export const AUTH_SCOPES = IDENTITY_SCOPES;
 
 /** A whole Gmail mailbox, optionally narrowed to one search or label. */
 export const GMAIL_RESOURCE: SupportedResource = {
   urlPattern: "https://mail.google.com/*",
   title: "Gmail Mailbox",
-  description: "Read emails and apply labels.",
+  description: "Read email and, after approval, send or manage messages, drafts, and labels.",
   grantable: true,
 };
 
@@ -57,7 +52,11 @@ export const GOOGLE_SHEETS_RESOURCE: SupportedResource = {
 export const GOOGLE_CALENDAR_RESOURCE: SupportedResource = {
   urlPattern: "https://calendar.google.com/calendar/:calendarId/*",
   title: "Google Calendar",
-  description: "Read and manage a Google Calendar.",
+  description:
+      "Read and manage one selected calendar. For scheduling across people, request one connection " +
+      "using https://calendar.google.com/calendar/primary/?availability=allVisible, then call " +
+      "checkAvailability once with up to 50 attendee email addresses. Do not request each " +
+      "attendee's calendar.",
   grantable: true,
 };
 
@@ -71,6 +70,38 @@ export const BIGQUERY_RESOURCE: SupportedResource = {
 };
 
 /**
+ * Files, folders, and read-only native Google Docs and Sheets available to the connected account.
+ *
+ * Whole-account, not just My Drive: listings set `includeItemsFromAllDrives`, so a shared drive the
+ * account belongs to is inside this grant.
+ */
+export const GOOGLE_DRIVE_RESOURCE: SupportedResource = {
+  urlPattern: "https://drive.google.com/drive/my-drive",
+  title: "Google Drive Account",
+  description:
+      "Find files and folders anywhere this Google account can read in Drive, including shared " +
+      "drives. Full-text search examines indexed file content, descriptions, and OCR text; search " +
+      "results contain metadata only, while native Google Docs and Sheets can be opened read-only.",
+  grantable: true,
+};
+
+/** Files, folders, and read-only native content in one Google Workspace shared drive. */
+export const GOOGLE_SHARED_DRIVE_RESOURCE: SupportedResource = {
+  urlPattern: "https://drive.google.com/drive/folders/:driveId",
+  title: "Google Workspace Shared Drive",
+  description: "Find files and folders, and read native Google Docs and Sheets, in one organization-owned shared drive.",
+  grantable: true,
+};
+
+/** Metadata and, when native, read-only content for one immutable Drive file ID. */
+export const GOOGLE_DRIVE_FILE_RESOURCE: SupportedResource = {
+  urlPattern: "https://drive.google.com/file/d/:fileId/view",
+  title: "Google Drive File",
+  description: "Read metadata and, for a native Google Doc or Sheet, content from one Drive file.",
+  grantable: true,
+};
+
+/**
  * The resources an account connected before per-resource scope tracking implicitly received.
  *
  * Frozen. Adding an entry short-circuits `ensureResources`, so a legacy account would be reported
@@ -79,6 +110,25 @@ export const BIGQUERY_RESOURCE: SupportedResource = {
 export const LEGACY_GRANTED_RESOURCE_URL_PATTERNS = [
   GMAIL_RESOURCE.urlPattern,
   GOOGLE_DOC_RESOURCE.urlPattern,
+  BIGQUERY_RESOURCE.urlPattern,
+];
+
+/**
+ * The resources whose grant may still be *inferred* from the OAuth scopes an account holds.
+ *
+ * Frozen, and for a sharper reason than the list above. Inference cannot tell a resource the user
+ * chose from one that merely shares a scope with it: `drive.metadata.readonly` is requested by the
+ * Docs and Sheets *pickers*, so inferring from it reports a whole-account Drive grant that nobody
+ * made — `ensureResources` then skips the consent screen and the account really does hold the
+ * scope to back it. Accounts connected since grants became recorded say what they consented to;
+ * this list is only the fallback for the ones that didn't, so every resource added after it must
+ * stay out.
+ */
+export const SCOPE_DERIVED_RESOURCE_URL_PATTERNS = [
+  GMAIL_RESOURCE.urlPattern,
+  GOOGLE_DOC_RESOURCE.urlPattern,
+  GOOGLE_SHEETS_RESOURCE.urlPattern,
+  GOOGLE_CALENDAR_RESOURCE.urlPattern,
   BIGQUERY_RESOURCE.urlPattern,
 ];
 
@@ -116,6 +166,33 @@ export const RESOURCE_SCOPES: {resource: SupportedResource, scopes: string[]}[] 
     ],
   },
   {
+    resource: GOOGLE_DRIVE_RESOURCE,
+    scopes: [
+      "https://www.googleapis.com/auth/drive.metadata.readonly",
+      "https://www.googleapis.com/auth/documents.readonly",
+      "https://www.googleapis.com/auth/spreadsheets.readonly",
+    ],
+  },
+  {
+    resource: GOOGLE_SHARED_DRIVE_RESOURCE,
+    // `drive.readonly` (not `drive.metadata.readonly`): the shared-drive picker and the binding's
+    // `getScope` use `drives.list`/`drives.get`, which accept nothing narrower. The same scope already
+    // authorizes native Docs and Sheets content, so do not add redundant API scopes. It is a
+    // restricted scope granting account-wide content access, strictly wider than the authority the
+    // shared-drive binding exercises. Narrowing it means dropping both calls: resolving a shared
+    // drive's name through `files.get` on the drive root instead, and giving up drive enumeration in
+    // the configurator.
+    scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+  },
+  {
+    resource: GOOGLE_DRIVE_FILE_RESOURCE,
+    scopes: [
+      "https://www.googleapis.com/auth/drive.metadata.readonly",
+      "https://www.googleapis.com/auth/documents.readonly",
+      "https://www.googleapis.com/auth/spreadsheets.readonly",
+    ],
+  },
+  {
     resource: BIGQUERY_RESOURCE,
     scopes: [
       // `bigquery` (not `bigquery.readonly`): dry-runs go through `jobs.insert` for scope
@@ -125,32 +202,36 @@ export const RESOURCE_SCOPES: {resource: SupportedResource, scopes: string[]}[] 
   },
 ];
 
+const DRIVE_RESOURCE_PATTERNS = new Set([
+  GOOGLE_DRIVE_RESOURCE.urlPattern,
+  GOOGLE_SHARED_DRIVE_RESOURCE.urlPattern,
+  GOOGLE_DRIVE_FILE_RESOURCE.urlPattern,
+]);
+
 /** Every grantable resource, in declaration order. */
 export const SUPPORTED_RESOURCES: SupportedResource[] = RESOURCE_SCOPES.map(entry => entry.resource);
+const KNOWN_RESOURCE_PATTERNS = new Set(SUPPORTED_RESOURCES.map(resource => resource.urlPattern));
+
+/** Whether an account's recorded grant includes any Google Drive resource. */
+export function hasDriveResourceGrant(resourceUrlPatterns: readonly string[]): boolean {
+  return resourceUrlPatterns.some(pattern => DRIVE_RESOURCE_PATTERNS.has(pattern));
+}
 
 /** Rejects any pattern that is not a known grantable resource. */
-export function validateResourceUrlPatterns(resourceUrlPatterns?: string[]): void {
-  if (resourceUrlPatterns === undefined) return;
-
-  let known = new Set(RESOURCE_SCOPES.map(entry => entry.resource.urlPattern));
-  let unknown = resourceUrlPatterns.filter(pattern => !known.has(pattern));
+export function validateResourceUrlPatterns(resourceUrlPatterns: readonly string[]): void {
+  let unknown = resourceUrlPatterns.filter(pattern => !KNOWN_RESOURCE_PATTERNS.has(pattern));
   if (unknown.length > 0) {
     throw new Error(`Unknown grantable resource URL pattern(s): ${unknown.join(", ")}`);
   }
 }
 
-/**
- * The OAuth scopes to request for the given grantable resource `urlPattern`s.
- *
- * `undefined` means every resource, which is distinct from `[]` (identity scopes only).
- */
-export function resourceUrlPatternsToOAuthScopes(resourceUrlPatterns?: string[]): string[] {
+/** The OAuth scopes required by the explicit grantable resource `urlPattern`s. */
+export function resourceUrlPatternsToOAuthScopes(resourceUrlPatterns: readonly string[]): string[] {
   validateResourceUrlPatterns(resourceUrlPatterns);
 
   let scopes = new Set<string>(IDENTITY_SCOPES);
   for (let entry of RESOURCE_SCOPES) {
-    if (resourceUrlPatterns === undefined ||
-        resourceUrlPatterns.includes(entry.resource.urlPattern)) {
+    if (resourceUrlPatterns.includes(entry.resource.urlPattern)) {
       for (let scope of entry.scopes) scopes.add(scope);
     }
   }
@@ -158,15 +239,66 @@ export function resourceUrlPatternsToOAuthScopes(resourceUrlPatterns?: string[])
 }
 
 /**
- * The resources fully covered by a set of granted scopes.
+ * The subset of `resourceUrlPatterns` whose every OAuth scope is present in `grantedOAuthScopes`.
  *
- * Fails closed: a resource whose scopes are only partially present is not reported as granted.
+ * Fails closed, so a scope the user declined at the consent screen, or dropped on a later
+ * reconnect, retracts the grant that needed it.
  */
-export function grantedResourcesFromScopes(grantedOAuthScopes: string[]): string[] {
+export function resourcesCoveredByScopes(
+    resourceUrlPatterns: readonly string[],
+    grantedOAuthScopes: readonly string[]): string[] {
   let granted = new Set(grantedOAuthScopes);
+  let requested = new Set(resourceUrlPatterns);
   return RESOURCE_SCOPES
-      .filter(entry => entry.scopes.every(scope => granted.has(scope)))
+      .filter(entry => requested.has(entry.resource.urlPattern) &&
+                       entry.scopes.every(scope => granted.has(scope)))
       .map(entry => entry.resource.urlPattern);
+}
+
+/**
+ * One connected account's recorded consent, as stored on its Durable Object.
+ *
+ * Three generations of account, newest first. An account that consented since grants became
+ * recorded states both fields. An account that recorded scopes but not resources states only
+ * `oauthScopes`. An account from before scope tracking states neither.
+ */
+export type RecordedResourceGrant = {
+  /** The resource `urlPattern`s the user chose, when the account recorded them. */
+  resourceUrlPatterns?: readonly string[];
+  /** The OAuth scopes Google returned, when the account recorded them. */
+  oauthScopes?: readonly string[];
+};
+
+/**
+ * Every resource this account is known to have consented to, as a reconnect must re-request it.
+ *
+ * This is the set a reconnect or scope expansion must ask Google for. Filtering a *recorded* intent
+ * through the current scopes would silently drop a resource whose scope requirements have grown
+ * since it was granted, and the consent screen would then request only what the account already
+ * holds, leaving that binding permanently unusable.
+ *
+ * The two fallbacks are the frozen lists above, for the account generations that recorded less. The
+ * scope-only generation is filtered by its own scopes, because there the list is an *inference* and
+ * not a statement of intent: unfiltered, a Gmail-only account reconnecting would be asked to grant
+ * writable Docs, writable Calendar, Sheets and BigQuery, and would have them recorded once it
+ * accepted. That generation cannot express an outgrown grant either — a resource whose scopes it no
+ * longer covers is indistinguishable from one it never held — so there is nothing to keep.
+ */
+export function recordedResourceUrlPatterns(grant: RecordedResourceGrant): string[] {
+  if (grant.resourceUrlPatterns !== undefined) return [...grant.resourceUrlPatterns];
+  if (grant.oauthScopes === undefined) return [...LEGACY_GRANTED_RESOURCE_URL_PATTERNS];
+  return resourcesCoveredByScopes(SCOPE_DERIVED_RESOURCE_URL_PATTERNS, grant.oauthScopes);
+}
+
+/**
+ * The subset of {@link recordedResourceUrlPatterns} whose every OAuth scope is currently held.
+ *
+ * This is what `ensureResources` decides against, so it fails closed: a scope the user declined,
+ * or one a resource gained after it was granted, retracts the grant that needed it and re-prompts.
+ */
+export function grantedResourceUrlPatterns(grant: RecordedResourceGrant): string[] {
+  if (grant.oauthScopes === undefined) return [...LEGACY_GRANTED_RESOURCE_URL_PATTERNS];
+  return resourcesCoveredByScopes(recordedResourceUrlPatterns(grant), grant.oauthScopes);
 }
 
 /** A resource URL resolved to the binding parameters its gatekeeper takes. */
@@ -175,7 +307,10 @@ export type ResourceTarget =
   | { kind: "doc"; documentId: string }
   | { kind: "sheets"; spreadsheetId: string }
   | { kind: "calendar"; calendarId: string; availabilityMode: CalendarAvailabilityMode }
-  | { kind: "bigquery"; projectId: string; datasetId?: string; tableId?: string };
+  | { kind: "bigquery"; projectId: string; datasetId?: string; tableId?: string }
+  | { kind: "driveAccount" }
+  | { kind: "sharedDrive"; driveId: string }
+  | { kind: "driveFile"; fileId: string };
 
 /** The grantable resource each {@link ResourceTarget} kind belongs to. */
 export const RESOURCE_BY_KIND: Record<ResourceTarget["kind"], SupportedResource> = {
@@ -184,6 +319,9 @@ export const RESOURCE_BY_KIND: Record<ResourceTarget["kind"], SupportedResource>
   sheets: GOOGLE_SHEETS_RESOURCE,
   calendar: GOOGLE_CALENDAR_RESOURCE,
   bigquery: BIGQUERY_RESOURCE,
+  driveAccount: GOOGLE_DRIVE_RESOURCE,
+  sharedDrive: GOOGLE_SHARED_DRIVE_RESOURCE,
+  driveFile: GOOGLE_DRIVE_FILE_RESOURCE,
 };
 
 /**
@@ -211,6 +349,7 @@ export function parseResourceUrl(url: string): ResourceTarget {
     case "docs.google.com": return parseDocsUrl(parsed);
     case "calendar.google.com": return parseCalendarUrl(parsed);
     case BIGQUERY_HOST: return parseBigQueryUrl(parsed);
+    case "drive.google.com": return parseDriveUrl(parsed);
   }
   throw new Error(`Unsupported Google resource URL host: ${parsed.hostname}`);
 }
@@ -231,8 +370,8 @@ function describeUrl(parsed: URL): string {
 /**
  * Gmail's own UI writes a hash of `#inbox`, `#search/<query>` or `#label/<name>`.
  *
- * The label is kept as an opaque name and resolved to an ID at session start, so label text can
- * never be interpreted as search syntax.
+ * The label is kept as an opaque name and resolved once to a persisted stable ID by the Gmail
+ * gatekeeper, so label text can never be interpreted as search syntax or retarget after a rename.
  */
 function parseGmailUrl(parsed: URL): ResourceTarget {
   let hash = parsed.hash;
@@ -285,6 +424,18 @@ function parseCalendarUrl(parsed: URL): ResourceTarget {
   let availabilityMode: CalendarAvailabilityMode =
       parsed.searchParams.get("availability") === "allVisible" ? "allVisible" : "thisCalendar";
   return { kind: "calendar", calendarId, availabilityMode };
+}
+
+function parseDriveUrl(parsed: URL): ResourceTarget {
+  if (/^\/drive\/my-drive\/?$/.test(parsed.pathname)) return { kind: "driveAccount" };
+
+  let sharedDrive = /^\/drive\/folders\/([^/]+)\/?$/.exec(parsed.pathname);
+  if (sharedDrive) return { kind: "sharedDrive", driveId: decodeURIComponent(sharedDrive[1]) };
+
+  let file = /^\/file\/d\/([^/]+)\/view\/?$/.exec(parsed.pathname);
+  if (file) return { kind: "driveFile", fileId: decodeURIComponent(file[1]) };
+
+  throw new Error(`Unsupported Google Drive resource URL: ${describeUrl(parsed)}`);
 }
 
 function parseBigQueryUrl(parsed: URL): ResourceTarget {

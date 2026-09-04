@@ -6,6 +6,9 @@ import {
   threeWayMerge,
 } from "../src/git-store";
 import { makeMockStorage } from "./mock-storage";
+import { decodeLooseObject, encodeLooseObject, parseGitCommitRefs, parseGitTree }
+  from "../src/git-codec";
+import { COMMIT_1, COMMIT_3, FIXTURE_OBJECTS, b64Bytes } from "./git-cache-fixtures";
 
 function makeObjects() {
   return createTypedStorage(makeMockStorage(), {
@@ -200,6 +203,153 @@ describe("GitStore", () => {
     let collision = new Map([["a", "file"], ["a/b", "dir entry"]]);
     await expect(store.writeFilesAsCommit(collision, options))
         .rejects.toThrow("conflicting file paths");
+  });
+});
+
+describe("writeChangedFilesAsCommit", () => {
+  // These tests run over the real-git fixture repo (git-cache-fixtures.ts) because its tree
+  // exercises all five entry modes -- the property under test is that a changed-files commit
+  // rebuilds only the touched subtrees and copies everything else through verbatim.
+
+  const OPTIONS = {
+    parents: [COMMIT_1],
+    author: ALICE,
+    message: "edit",
+    timestamp: new Date(1700001000_000),
+    treeBase: COMMIT_1,
+  };
+
+  function makeFixtureStore() {
+    let objects = makeObjects();
+    for (let object of FIXTURE_OBJECTS) {
+      objects.put({
+        oid: object.oid,
+        data: encodeLooseObject(object.type, b64Bytes(object.payload)),
+      });
+    }
+    return { objects, store: new GitStore(objects) };
+  }
+
+  // Decodes the entries of a commit's tree (or of a subdirectory of it) via the raw codec.
+  function entriesOf(objects: ReturnType<typeof makeObjects>, commitOid: string, path?: string) {
+    let read = (oid: string) => decodeLooseObject(objects.get(oid)!.data);
+    let treeOid = parseGitCommitRefs(read(commitOid).payload).tree;
+    for (let segment of path?.split("/") ?? []) {
+      let entry = parseGitTree(read(treeOid).payload).find(e => e.name === segment)!;
+      treeOid = entry.oid;
+    }
+    return { treeOid, entries: parseGitTree(read(treeOid).payload) };
+  }
+
+  it("applies edits while reusing unchanged subtree oids verbatim", async () => {
+    let { objects, store } = makeFixtureStore();
+    let commit = await store.writeChangedFilesAsCommit(new Map([
+      ["README.md", "rewritten\n"],
+      ["src/util.js", "export const answer = 43;\n"],
+    ]), OPTIONS);
+
+    expect(await store.changedPaths(COMMIT_1, commit))
+        .toStrictEqual(new Set(["README.md", "src/util.js"]));
+    // The untouched docs subtree is the *same object*, not an equal rebuild.
+    let base = entriesOf(objects, COMMIT_1);
+    let next = entriesOf(objects, commit);
+    expect(next.entries.find(e => e.name === "docs")!.oid)
+        .toBe(base.entries.find(e => e.name === "docs")!.oid);
+    // And the parent is as declared.
+    expect(parseGitCommitRefs(decodeLooseObject(objects.get(commit)!.data).payload).parents)
+        .toStrictEqual([COMMIT_1]);
+  });
+
+  it("separates treeBase from parents (squash semantics)", async () => {
+    let { objects, store } = makeFixtureStore();
+    let commit = await store.writeChangedFilesAsCommit(
+        new Map([["README.md", "squashed\n"]]),
+        { ...OPTIONS, parents: [COMMIT_3] });  // tree from COMMIT_1, parent COMMIT_3
+    expect(parseGitCommitRefs(decodeLooseObject(objects.get(commit)!.data).payload).parents)
+        .toStrictEqual([COMMIT_3]);
+    expect(await store.changedPaths(COMMIT_1, commit))
+        .toStrictEqual(new Set(["README.md"]));
+  });
+
+  it("preserves an edited executable's mode and defaults new files to 100644", async () => {
+    let { objects, store } = makeFixtureStore();
+    let commit = await store.writeChangedFilesAsCommit(new Map([
+      ["run.sh", "#!/bin/sh\necho changed\n"],
+      ["new.txt", "brand new\n"],
+    ]), OPTIONS);
+
+    let base = entriesOf(objects, COMMIT_1);
+    let next = entriesOf(objects, commit);
+    let runSh = next.entries.find(e => e.name === "run.sh")!;
+    expect(runSh.mode).toBe("100755");
+    expect(runSh.oid).not.toBe(base.entries.find(e => e.name === "run.sh")!.oid);
+    expect(next.entries.find(e => e.name === "new.txt")!.mode).toBe("100644");
+    // Untouched symlink and gitlink entries ride through with mode and oid intact.
+    expect(next.entries.find(e => e.name === "link.md"))
+        .toStrictEqual(base.entries.find(e => e.name === "link.md"));
+    expect(next.entries.find(e => e.name === "vendored"))
+        .toStrictEqual(base.entries.find(e => e.name === "vendored"));
+  });
+
+  it("rejects changes landing on non-regular-file entries", async () => {
+    let { store } = makeFixtureStore();
+    await expect(store.writeChangedFilesAsCommit(new Map([["link.md", "x"]]), OPTIONS))
+        .rejects.toThrow("cannot write link.md: not a regular file");
+    await expect(store.writeChangedFilesAsCommit(new Map([["vendored", "x"]]), OPTIONS))
+        .rejects.toThrow("cannot write vendored: not a regular file");
+    await expect(store.writeChangedFilesAsCommit(new Map([["src", "x"]]), OPTIONS))
+        .rejects.toThrow("cannot write src: not a regular file");
+    await expect(store.writeChangedFilesAsCommit(new Map([["src", null]]), OPTIONS))
+        .rejects.toThrow("cannot delete src: it is a directory");
+    await expect(store.writeChangedFilesAsCommit(new Map([["README.md/x", "y"]]), OPTIONS))
+        .rejects.toThrow("conflicting file paths at: README.md");
+  });
+
+  it("prunes directories emptied by deletions and creates new nested ones", async () => {
+    let { objects, store } = makeFixtureStore();
+    let commit = await store.writeChangedFilesAsCommit(new Map([
+      ["docs/naïve.md", null],
+      ["a/deep/new.txt", "nested\n"],
+    ]), OPTIONS);
+
+    let next = entriesOf(objects, commit);
+    expect(next.entries.find(e => e.name === "docs")).toBeUndefined();
+    expect(entriesOf(objects, commit, "a/deep").entries.map(e => e.name))
+        .toStrictEqual(["new.txt"]);
+    // The prune cascades: deleting a nested directory's last file drops every directory the
+    // deletion emptied, all the way up.
+    let cascade = await store.writeChangedFilesAsCommit(
+        new Map([["a/deep/new.txt", null]]),
+        { ...OPTIONS, treeBase: commit, parents: [commit] });
+    expect(entriesOf(objects, cascade).entries.find(e => e.name === "a")).toBeUndefined();
+    // Deleting an absent file is a no-op, not an error.
+    let again = await store.writeChangedFilesAsCommit(
+        new Map([["never-existed.txt", null]]), OPTIONS);
+    expect(await store.changedPaths(COMMIT_1, again)).toStrictEqual(new Set());
+  });
+
+  it("round-trips non-ASCII UTF-8 names byte-identically through parse + rebuild", async () => {
+    let { objects, store } = makeFixtureStore();
+    // Rewriting the same content rebuilds the docs tree through parse + re-serialize; landing
+    // on the identical oid proves the name (and everything else) survived byte-for-byte.
+    let commit = await store.writeChangedFilesAsCommit(
+        new Map([["docs/naïve.md", "naïve UTF-8 name\n"]]), OPTIONS);
+    let base = entriesOf(objects, COMMIT_1);
+    let next = entriesOf(objects, commit);
+    expect(next.entries.find(e => e.name === "docs")!.oid)
+        .toBe(base.entries.find(e => e.name === "docs")!.oid);
+    expect(next.treeOid).toBe(base.treeOid);
+  });
+
+  it("produces an empty tree when every file is deleted", async () => {
+    let objects = makeObjects();
+    let store = new GitStore(objects);
+    await writeFixtureHistory(store);
+    let commit = await store.writeChangedFilesAsCommit(
+        new Map([...INITIAL_FILES.keys()].map(path => [path, null])),
+        { parents: [INITIAL_COMMIT_OID], author: ALICE, message: "wipe",
+          timestamp: new Date(1700001000_000), treeBase: INITIAL_COMMIT_OID });
+    expect((await store.readCommitFiles(commit)).size).toBe(0);
   });
 });
 

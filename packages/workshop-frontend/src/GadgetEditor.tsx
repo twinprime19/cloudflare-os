@@ -25,7 +25,6 @@ import {
   AiChatAuthorInfo,
   ConsoleLogSubscriber,
   ConsoleLogEvent,
-  ActionLogEntry,
   WorkpieceId,
   WorkpieceSummary,
   BlueprintOutput,
@@ -58,7 +57,7 @@ import { GadgetPresence } from './components/GadgetPresence'
 import BlueprintModal from './BlueprintModal'
 import TopBarNotice from './TopBarNotice'
 import { WorkshopButton, WorkshopIconButton, WorkshopInput } from './components/WorkshopControls'
-import { useActions } from './useActions'
+import { useActionEntries, useActions } from './useActions'
 import DeleteConfirmationDialog from './components/DeleteConfirmationDialog'
 import ReconnectingChip from './components/ReconnectingChip'
 import WorkspaceOpenErrorPage from './components/WorkspaceOpenErrorPage'
@@ -629,7 +628,10 @@ export default function GadgetEditor() {
   const [_hasBindings, setHasBindings] = useState(false)
   const [isAgentActive, setIsAgentActive] = useState(false)
   const [hasAnyProposedChanges, setHasAnyProposedChanges] = useState(false)
-  const [selectedChatHasProposedChanges, setSelectedChatHasProposedChanges] = useState(false)
+  // The workpieces the selected chat proposes changes to (see
+  // AiChatMetadata.proposedChangeWorkpieces): drives per-gadget draft previews below.
+  const [selectedChatProposedWorkpieces, setSelectedChatProposedWorkpieces] =
+    useState<readonly WorkpieceId[]>([])
   const selectedChatId = urlChatId
   const chatListReady = chatCount !== null
   const singleInitialChat = chatCount === 1 && hasChatZero
@@ -752,16 +754,24 @@ export default function GadgetEditor() {
       ? streamingActiveFile.filename
       : undefined
 
-  const { actionsById } = useActions(overseer?.stub ?? null)
-  // Hook bindings change once in a while, but `actionsById` is a fresh Map on every action-log
-  // frame. Track just the bindHook enable states so the refetch isn't driven at animation rate.
-  const hookSignature = useMemo(() => {
-    const parts: string[] = []
-    for (const record of actionsById.values()) {
-      if (record.type === 'bindHook') parts.push(`${record.hookId}:${record.enabled}`)
-    }
-    return parts.join()
-  }, [actionsById])
+  const overseerStub = overseer?.stub ?? null
+  const { pending: pendingActions } = useActions(overseerStub)
+  // Hook bindings change once in a while; fold the entry stream into a signature over just the
+  // bindHook enable states, in state only when it changes, so the refetch below isn't driven at
+  // animation rate. listHooks() is the authoritative initial source; entries only trigger
+  // refetches. useActionEntries replays already-received entries on mount, repopulating the ref
+  // after the reset when the stub changes.
+  const hookStatesRef = useRef(new Map<number, string>())
+  const [hookSignature, setHookSignature] = useState('')
+  useEffect(() => {
+    hookStatesRef.current = new Map()
+    setHookSignature('')
+  }, [overseerStub])
+  useActionEntries(overseerStub, record => {
+    if (record.type !== 'bindHook') return
+    hookStatesRef.current.set(record.id, `${record.hookId}:${record.enabled}`)
+    setHookSignature([...hookStatesRef.current.values()].join())
+  })
   const [hookedGadgetIds, setHookedGadgetIds] = useState<ReadonlySet<WorkpieceId>>(NO_GADGETS)
   useEffect(() => {
     if (!overseer || metadata === null || isUseOnly) return
@@ -774,14 +784,7 @@ export default function GadgetEditor() {
     // Clear on teardown so a workspace switch never shows the previous workspace's indicators.
     return () => { cancelled = true; setHookedGadgetIds(NO_GADGETS) }
   }, [overseer, hookSignature, metadata !== null, isUseOnly])
-  const pendingActions = useMemo(() => {
-    const pending: ActionLogEntry[] = []
-    for (const record of actionsById.values()) {
-      if (record.state === 'pending') pending.push(record)
-    }
-    return pending
-  }, [actionsById])
-  const pendingActionsCount = pendingActions.length
+  const pendingActionCount = pendingActions.length
 
   // Whether the *selected* gadget has code. When no gadget is selected, the code interface is
   // unmounted and raw `hasCode` can't update, but a gadget-less workspace has no code to show.
@@ -824,8 +827,13 @@ export default function GadgetEditor() {
     ? 'transition-[width,opacity] duration-200 ease-out'
     : ''
 
+  // Show the selected chat's draft only when it proposes changes to the *selected* gadget: a
+  // chat that touched some other gadget would otherwise run this one as a needlessly separate
+  // chat-scoped instance with identical code (the backend applies the same per-gadget rule in
+  // getGadgetFacetFetcher).
   const previewChatId =
-    selectedChatHasProposedChanges && effectiveSelectedChatId !== null
+    effectiveSelectedChatId !== null && selectedGadgetId !== null &&
+        selectedChatProposedWorkpieces.includes(selectedGadgetId)
       ? effectiveSelectedChatId
       : undefined
 
@@ -1027,7 +1035,7 @@ export default function GadgetEditor() {
     setChatCount(null)
     setHasChatZero(false)
     setHasAnyProposedChanges(false)
-    setSelectedChatHasProposedChanges(false)
+    setSelectedChatProposedWorkpieces([])
     setWorkspaceView(getStoredWorkspaceView(id))
     openedWorkpieceParamRef.current = null
     activityReturnViewRef.current = null
@@ -1472,11 +1480,7 @@ export default function GadgetEditor() {
             </span>
           )}
 
-          <ActivityNotifications
-            overseer={overseer.stub}
-            pendingActions={pendingActions}
-            onViewActivity={openActivity}
-          />
+          <ActivityNotifications overseer={overseer.stub} onViewActivity={openActivity} />
 
           {showReconnecting && <ReconnectingChip />}
 
@@ -1547,14 +1551,14 @@ export default function GadgetEditor() {
         </button>
         <button
           type="button"
-          onClick={() => openActivity(pendingActionsCount > 0 ? 'review' : 'history')}
+          onClick={() => openActivity(pendingActionCount > 0 ? 'review' : 'history')}
           aria-current={paneShowsActivity ? 'page' : undefined}
           className={`relative flex h-9 min-w-0 flex-1 items-center justify-center rounded-lg px-3 text-[14px] font-medium ${
             paneShowsActivity ? 'bg-kumo-tint text-kumo-default' : 'text-kumo-subtle'
           }`}
         >
           <Trans>Activity</Trans>
-          {pendingActionsCount > 0 && (
+          {pendingActionCount > 0 && (
             <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-kumo-brand" />
           )}
         </button>
@@ -1689,7 +1693,7 @@ export default function GadgetEditor() {
                   onAgentActiveChange={handleAgentActiveChange}
                   onAutoApproveChange={() => setAutoApproveReloadTrigger(count => count + 1)}
                   onHasAnyCodeChange={setHasAnyProposedChanges}
-                  onSelectedChatHasProposedChangesChange={setSelectedChatHasProposedChanges}
+                  onSelectedChatProposedChangesChange={setSelectedChatProposedWorkpieces}
                   onOpenGadget={handleSelectWorkpiece}
                   outputOfWorkpiece={outputOfWorkpiece}
                 />
@@ -1762,7 +1766,7 @@ export default function GadgetEditor() {
                       key={tab.value}
                       active={activityView === tab.value}
                       label={tab.label}
-                      count={tab.value === 'review' ? pendingActionsCount : undefined}
+                      count={tab.value === 'review' ? pendingActionCount : undefined}
                       onClick={() => setActivityView(tab.value)}
                     />
                   ))
@@ -1815,7 +1819,7 @@ export default function GadgetEditor() {
                     key={tab.value}
                     active={activityView === tab.value}
                     label={tab.label}
-                    count={tab.value === 'review' ? pendingActionsCount : undefined}
+                    count={tab.value === 'review' ? pendingActionCount : undefined}
                     onClick={() => setActivityView(tab.value)}
                   />
                 ))}
@@ -1930,8 +1934,8 @@ export default function GadgetEditor() {
               onExpandedChange={handleWorkpieceRailExpandedChange}
               onSelect={handleSelectWorkpiece}
               onRename={handleRenameWorkpiece}
-              pendingActivityCount={pendingActionsCount}
-              onOpenActivity={() => openActivity(pendingActionsCount > 0 ? 'review' : 'history')}
+              pendingActivityCount={pendingActionCount}
+              onOpenActivity={() => openActivity(pendingActionCount > 0 ? 'review' : 'history')}
             />
           </div>
         )}
