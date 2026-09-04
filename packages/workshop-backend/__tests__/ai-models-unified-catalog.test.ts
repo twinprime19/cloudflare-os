@@ -2,11 +2,12 @@
 // through Cloudflare's account-level AI REST endpoint, rather than the AI Gateway's workers-ai
 // route, which only hosts `@cf/` models.
 //
-// Two things are pinned. The deployment's suggested Cloudflare catalog is exactly one such model
-// with a published context window that other code (compaction budgets above all) computes from.
-// And getModel() routes that id to the REST endpoint, refusing up front when the deployment has
-// only the Workers AI binding -- a transport that cannot carry that endpoint, and would otherwise
-// fail per turn, mid-stream, instead of at configuration time.
+// Two things are pinned. The deployment's suggested Cloudflare catalog is the Workers-AI-hosted
+// pair (GLM 5.3 Flash first, so it is the default) with the published windows other code
+// (compaction budgets above all) computes from. And getModel() still routes a non-@cf id to the
+// REST endpoint -- a path a shared/custom model can still take -- refusing up front when the
+// deployment has only the Workers AI binding, a transport that cannot carry that endpoint and
+// would otherwise fail per turn, mid-stream, instead of at configuration time.
 //
 // Same conventions as ai-models.test.ts: the real pi-ai stack, no module mocks, routing asserted
 // on the handle's descriptor and request-level behaviour by driving `stream` with a fetch stub.
@@ -18,6 +19,8 @@ import { getModel, type ModelHandle } from "../src/ai-models.js";
 
 const INITIATOR: AiChatAuthorInfo = { type: "user", id: "user-123", name: "User" };
 
+// Representative unified-catalog id. It is not in SUGGESTED_MODELS; the routing is keyed on the
+// id shape (non-@cf under provider "cloudflare"), not on the suggested catalog.
 const UNIFIED_MODEL_ID = "alibaba/qwen3.7-plus";
 
 const UNIFIED_CONFIG: AiModelConfig = {
@@ -63,13 +66,22 @@ async function captureRequest(handle: ModelHandle): Promise<CapturedRequest> {
 }
 
 describe("suggested Cloudflare catalog", () => {
-  // The window is the vendor's published 1M held back by 8%, and agent-compaction.ts computes its
-  // trigger from this number -- so it is published state, not a tunable.
-  it("offers exactly one Cloudflare model, the unified-catalog Qwen with its published window",
-      () => {
+  // Published windows, and agent-compaction.ts computes its trigger from these numbers -- so
+  // they are published state, not a tunable. GLM is first: that is the default a new chat
+  // starts on when the admin has not set one.
+  it("offers GLM 5.3 Flash first, then DeepSeek V4 Flash, with their published windows", () => {
+    expect(Object.keys(SUGGESTED_MODELS.cloudflare)).toEqual([
+      "@cf/zai-org/glm-5.3-flash",
+      "@cf/deepseek-ai/deepseek-v4-flash-0731",
+    ]);
     expect(SUGGESTED_MODELS.cloudflare).toEqual({
-      [UNIFIED_MODEL_ID]: {
-        name: "Qwen 3.7 Plus", contextWindow: 917504, outputLimit: WORKERS_AI_OUTPUT_LIMIT,
+      "@cf/zai-org/glm-5.3-flash": {
+        name: "GLM 5.3 Flash (Workers AI)", contextWindow: 1048576,
+        outputLimit: WORKERS_AI_OUTPUT_LIMIT,
+      },
+      "@cf/deepseek-ai/deepseek-v4-flash-0731": {
+        name: "DeepSeek V4 Flash (Workers AI)", contextWindow: 1310720,
+        outputLimit: WORKERS_AI_OUTPUT_LIMIT,
       },
     });
   });
@@ -99,8 +111,9 @@ describe("getModel unified-catalog routing", () => {
     expect(handle.model.provider).toBe("cloudflare-workers-ai");
     expect(handle.model.baseUrl).toBe(
         "https://api.cloudflare.com/client/v4/accounts/gateway-account-id/ai/v1");
-    // Published window and output limit, from the suggested catalog rather than pi's.
-    expect(handle.model.contextWindow).toBe(917504);
+    // Not in SUGGESTED_MODELS, and not in pi's Workers AI catalog, so the conservative
+    // fallback window applies. Cloudflare still withholds the Workers AI response cap.
+    expect(handle.model.contextWindow).toBe(128_000);
     expect(handle.model.maxTokens).toBe(WORKERS_AI_OUTPUT_LIMIT);
     expect(handle.aiGatewayLogRoute).toEqual({
       gateway: "platform-gateway",
