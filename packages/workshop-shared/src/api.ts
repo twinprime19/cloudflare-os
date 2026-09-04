@@ -1256,11 +1256,15 @@ export const SUGGESTED_MODELS: Record<
   Record<string, {name: string, contextWindow: number, outputLimit?: number}>
 > = {
   "cloudflare": {
-    // Unified-catalog id (not Workers-AI-hosted): served through the AI REST endpoint and billed
-    // via AI Gateway credits. The catalog card publishes no window, so this is the vendor's
-    // published 1M held back by 8% -- a buffer against a figure the card doesn't confirm.
-    "alibaba/qwen3.7-plus": {
-      name: "Qwen 3.7 Plus", contextWindow: 917504, outputLimit: WORKERS_AI_OUTPUT_LIMIT,
+    // Hosted on Workers AI. First entry is the model a new chat starts on when the admin has
+    // not set a default -- callers take the first listModels() result.
+    "@cf/zai-org/glm-5.3-flash": {
+      name: "GLM 5.3 Flash (Workers AI)", contextWindow: 1048576,
+      outputLimit: WORKERS_AI_OUTPUT_LIMIT,
+    },
+    "@cf/deepseek-ai/deepseek-v4-flash-0731": {
+      name: "DeepSeek V4 Flash (Workers AI)", contextWindow: 1310720,
+      outputLimit: WORKERS_AI_OUTPUT_LIMIT,
     },
   },
   "anthropic": {
