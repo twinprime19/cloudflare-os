@@ -5704,8 +5704,8 @@ class OverseerImpl implements AgentHooks {
   // attachments an agent pulled through a gatekeeper.
   //
   // The bytes travel the whole user-upload chain unchanged: validateChatAttachmentUpload
-  // (Markdown conversion, magic-number and OOXML checks, provider support, per-file cap, sharing
-  // lockdown), stage, canonicalize, commit. Nothing is validated here that uploads do not
+  // (Markdown conversion, magic-number and container checks, provider support, per-file cap,
+  // sharing lockdown), stage, canonicalize, commit. Nothing is validated here that uploads do not
   // validate, so an imported file is indistinguishable from an uploaded one in storage shape,
   // client hydration and model replay, and every upload rejection reaches the caller verbatim.
   //
