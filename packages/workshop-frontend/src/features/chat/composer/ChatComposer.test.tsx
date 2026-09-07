@@ -7,6 +7,7 @@ import type { RpcStub } from "capnweb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Overseer } from "@gadgets/workshop-shared/api";
 import { createI18nRoot } from "../../../testI18nRoot";
+import { isConnectionPaused, pauseConnection } from "../../../connectionPause";
 
 const testState = vi.hoisted(() => ({
   addToast: vi.fn<(toast: unknown) => void>(),
@@ -81,11 +82,14 @@ describe("ChatComposer", () => {
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
     });
 
+    // Sending is the deliberate request that wakes a paused workspace.
+    pauseConnection();
     await act(async () => {
       textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       await Promise.resolve();
     });
 
+    expect(isConnectionPaused()).toBe(false);
     expect(onSend).toHaveBeenCalledWith(
       "Build a dashboard",
       "model-a",
