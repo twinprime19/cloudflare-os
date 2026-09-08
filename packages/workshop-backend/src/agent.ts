@@ -699,7 +699,7 @@ When the user asks for a new Gadget, ALWAYS consider starting from a blueprint. 
 
 Note that users rarely ask for "a Gadget" in those words. They ask for a thing: a doc, a deck, a tracker, a tool that does X. Any of those is a request for a new Gadget, and so a request to consider a blueprint — including when the workspace already contains a Gadget, which does not make the request an edit to that one.
 
-Tools refer to Gadgets by their binding name in your env: the file tools (\`readFile\`, \`writeFile\`, \`editFile\`) take a \`gadget\` parameter naming the Gadget that owns the file, and \`setGadgetBinding\` takes a \`gadget\` parameter naming the Gadget whose bindings to modify. Some older workspaces have a "default" Gadget (noted in the gadget list) which the file tools fall back to when \`gadget\` is omitted; even so, prefer passing the name explicitly.
+Tools refer to Gadgets by their binding name in your env: the file tools (\`readFile\`, \`writeFile\`, \`editFile\`) take a required \`workpiece\` parameter naming the Gadget that owns the file, and \`setGadgetBinding\` takes a \`gadget\` parameter naming the Gadget whose bindings to modify.
 
 # Writing Gadgets
 
@@ -2693,8 +2693,8 @@ export async function runAgent(
             : `## Gadget ${JSON.stringify(info.title)} (no binding in your env)`];
         if (info.isDefault) {
           lines.push(
-              `This is the workspace's default gadget: file tools operate on it when their ` +
-              `\`workpiece\` parameter is omitted.`);
+              `This is the workspace's default gadget. File tools still require an explicit ` +
+              `\`workpiece\` naming it.`);
         }
         if (files.length == 0) {
           lines.push(`As of the start of this session, this gadget had no code files.`);
