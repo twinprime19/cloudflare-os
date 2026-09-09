@@ -56,31 +56,35 @@ export function assertChatMessageWithinBudget(
   throw new Error("Message is too big. Shorten the message or attach fewer documents.");
 }
 
-/**
- * Upper bound on images described per converted document. Each described image costs two Workers
- * AI model calls (object detection, then image-to-text) that the upload request waits on, and
- * every description adds text that counts against the message budget.
- *
- * Reaches PDF and DOCX only: those are the only converted formats with an embedded-image setting
- * in the Workers AI `ConversionOptions` type, whose keys are `html`, `docx`, `image` and `pdf`.
- * Spreadsheet formats (.xlsx/.xls/.ods/.numbers) have no key there, so neither this bound nor the
- * opt-in itself reaches them -- their embedded images follow the Workers AI default, in either
- * direction, and are not bounded by us.
- */
-const MAX_DESCRIBED_IMAGES_PER_DOCUMENT = 20;
-
 /** MIME type of the Markdown stored in place of a converted document. */
 export const CONVERTED_ATTACHMENT_MIME_TYPE = "text/markdown";
 
 const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const XLS_MIME_TYPE = "application/vnd.ms-excel";
+const XLSM_MIME_TYPE = "application/vnd.ms-excel.sheet.macroenabled.12";
+const XLSB_MIME_TYPE = "application/vnd.ms-excel.sheet.binary.macroenabled.12";
+const ODT_MIME_TYPE = "application/vnd.oasis.opendocument.text";
+const ODS_MIME_TYPE = "application/vnd.oasis.opendocument.spreadsheet";
 
-// Office formats built on the OOXML ZIP container. Their bytes are checked for the container's
-// manifest entry before conversion (see assertOoxmlContainer).
-const OOXML_MIME_TYPES = new Set([DOCX_MIME_TYPE, XLSX_MIME_TYPE]);
-
-// Documents accepted for conversion to Markdown. PDF is conditional -- see shouldConvertUpload.
-const CONVERTIBLE_MIME_TYPES = new Set([PDF_MIME_TYPE, DOCX_MIME_TYPE, XLSX_MIME_TYPE]);
+// Documents accepted for conversion to Markdown: Cloudflare's free toMarkdown() format list minus
+// the image types (converting one is an image-to-text model call), minus the text-like types,
+// which are stored as they arrive, and minus Apple Numbers, whose accepted MIME type no browser
+// sends -- macOS reports `application/x-iwork-numbers-sffnumbers` and Windows reports nothing, so
+// an entry for it would never match an upload. Text extraction for everything here costs no model
+// usage. PDF is conditional -- see shouldConvertUpload. The frontend keeps a byte-identical copy
+// of this set in prepareChatAttachment.ts so the picker applies the same limit before an upload
+// starts.
+const CONVERTIBLE_MIME_TYPES = new Set([
+  PDF_MIME_TYPE,
+  DOCX_MIME_TYPE,
+  XLSX_MIME_TYPE,
+  XLS_MIME_TYPE,
+  XLSM_MIME_TYPE,
+  XLSB_MIME_TYPE,
+  ODT_MIME_TYPE,
+  ODS_MIME_TYPE,
+]);
 
 // Presentations have no toMarkdown() support, so they get a rejection that says what to do
 // instead of the generic unsupported-type error.
@@ -99,15 +103,26 @@ const IMAGE_SIGNATURES = new Map<string, readonly (number | null)[]>([
   ]],
 ]);
 
+// The ZIP local-file header every ZIP-based document container starts with. Shared by OOXML and
+// OpenDocument packages alike, so on its own it proves nothing beyond "this is some ZIP" --
+// assertZipContainerMarker adds the format-specific check.
+const ZIP_LOCAL_FILE_HEADER = [0x50, 0x4B, 0x03, 0x04];
+
+// The OLE2 compound-file header that legacy Excel workbooks (.xls) start with.
+const OLE2_HEADER = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+
 // Magic-number prefixes checked at upload. Like the image signatures, these only stop mislabeled
-// uploads at the door; nothing here parses the content. The OOXML entries are the generic ZIP
-// local-file header, which every ZIP container shares and which therefore proves nothing beyond
-// "this is some ZIP" -- assertOoxmlContainer adds the format-specific check.
+// uploads at the door; nothing here parses the content.
 const CONTENT_SIGNATURES = new Map<string, readonly (number | null)[]>([
   ...IMAGE_SIGNATURES,
   [PDF_MIME_TYPE, [0x25, 0x50, 0x44, 0x46, 0x2D]],
-  [DOCX_MIME_TYPE, [0x50, 0x4B, 0x03, 0x04]],
-  [XLSX_MIME_TYPE, [0x50, 0x4B, 0x03, 0x04]],
+  [DOCX_MIME_TYPE, ZIP_LOCAL_FILE_HEADER],
+  [XLSX_MIME_TYPE, ZIP_LOCAL_FILE_HEADER],
+  [XLSM_MIME_TYPE, ZIP_LOCAL_FILE_HEADER],
+  [XLSB_MIME_TYPE, ZIP_LOCAL_FILE_HEADER],
+  [ODT_MIME_TYPE, ZIP_LOCAL_FILE_HEADER],
+  [ODS_MIME_TYPE, ZIP_LOCAL_FILE_HEADER],
+  [XLS_MIME_TYPE, OLE2_HEADER],
 ]);
 
 const isTextOrImageMime = (mimeType: string) =>
@@ -209,17 +224,36 @@ function containsBytes(haystack: Uint8Array, needle: Uint8Array): boolean {
   return false;
 }
 
-const OOXML_MANIFEST_ENTRY = new TextEncoder().encode("[Content_Types].xml");
+// Every OOXML package names its content-type manifest in the archive.
+const OOXML_MANIFEST_MARKER = new TextEncoder().encode("[Content_Types].xml");
 
-// Every OOXML package names its content-type manifest in the archive, so its absence means the
-// upload is some other ZIP wearing a .docx/.xlsx MIME type. This is a sanity check on mislabeled
-// uploads, NOT a security boundary: it does not inspect the archive's structure and does not stop
-// a hostile archive. Resource abuse is bounded elsewhere -- by the raw size cap, and by
-// toMarkdown() parsing on Workers AI infrastructure rather than in this isolate, where a failure
-// is just a rejected upload.
-function assertOoxmlContainer(attachment: ChatAttachmentUpload): void {
-  if (!OOXML_MIME_TYPES.has(attachment.mimeType)) return;
-  if (containsBytes(attachment.content, OOXML_MANIFEST_ENTRY)) return;
+// Every OpenDocument package stores its `mimetype` entry first and uncompressed, so the entry name
+// is immediately followed by the ODF media type in the raw bytes. Only the prefix every ODF format
+// shares is matched, so one marker covers .odt and .ods alike.
+const ODF_MEDIA_TYPE_MARKER = new TextEncoder().encode(
+  "mimetypeapplication/vnd.oasis.opendocument",
+);
+
+// Byte sequence that identifies a ZIP-based package as the format its MIME type claims. A type
+// with no entry here is checked against its magic number alone.
+const ZIP_CONTAINER_MARKERS = new Map<string, Uint8Array>([
+  [DOCX_MIME_TYPE, OOXML_MANIFEST_MARKER],
+  [XLSX_MIME_TYPE, OOXML_MANIFEST_MARKER],
+  [XLSM_MIME_TYPE, OOXML_MANIFEST_MARKER],
+  [XLSB_MIME_TYPE, OOXML_MANIFEST_MARKER],
+  [ODT_MIME_TYPE, ODF_MEDIA_TYPE_MARKER],
+  [ODS_MIME_TYPE, ODF_MEDIA_TYPE_MARKER],
+]);
+
+// A missing marker means the upload is some other ZIP wearing an office MIME type. This is a
+// sanity check on mislabeled uploads, NOT a security boundary: it does not inspect the archive's
+// structure and does not stop a hostile archive. Resource abuse is bounded elsewhere -- by the raw
+// size cap, and by toMarkdown() parsing on Workers AI infrastructure rather than in this isolate,
+// where a failure is just a rejected upload.
+function assertZipContainerMarker(attachment: ChatAttachmentUpload): void {
+  let marker = ZIP_CONTAINER_MARKERS.get(attachment.mimeType);
+  if (!marker) return;
+  if (containsBytes(attachment.content, marker)) return;
   throw new Error("Chat attachment content does not match its MIME type.");
 }
 
@@ -240,7 +274,7 @@ async function convertUploadToMarkdown(
     throw new Error("Documents must be 10 MB or smaller.");
   }
   assertContentMatchesMimeType(attachment);
-  assertOoxmlContainer(attachment);
+  assertZipContainerMarker(attachment);
 
   if (!getConversionEnv) {
     throw new Error("Documents cannot be read in this context.");
@@ -253,10 +287,6 @@ async function convertUploadToMarkdown(
     bytes: attachment.content,
     mimeType: convertedFrom,
     name: attachment.name ?? "document",
-    // Uploads are user-initiated and bounded, so images inside the document are described rather
-    // than dropped -- charts and diagrams would otherwise vanish from the agent's view of it.
-    describeImages: true,
-    maxConvertedImages: MAX_DESCRIBED_IMAGES_PER_DOCUMENT,
     gatewayMetadata: { tool: "chatAttachment", automated: false },
   });
 

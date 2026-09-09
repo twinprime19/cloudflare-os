@@ -4,10 +4,10 @@
 // support for POST/PUT/DELETE/PATCH or for forwarding credentials.
 //
 // Document-to-Markdown conversion is delegated to the shared helper in doc-to-markdown.ts,
-// which wraps Cloudflare Workers AI's `env.WORKERS_AI.toMarkdown()`. Description of images
-// embedded in fetched documents is intentionally left off: this tool runs automatically against
-// arbitrary third-party URLs, and describing images costs paid Workers AI model usage on every
-// fetch. Plain-text, JSON, and other unknown content types pass through unconverted.
+// which wraps Cloudflare Workers AI's `env.WORKERS_AI.toMarkdown()`. That helper never describes
+// images embedded in a document, for any call site -- description is the one part of conversion
+// that costs paid Workers AI model usage, and this tool runs automatically against arbitrary
+// third-party URLs. Plain-text, JSON, and other unknown content types pass through unconverted.
 //
 // SSRF protection: relies on workerd's post-DNS-lookup IP address filtering. The
 // `global_fetch_strictly_public` compatibility flag (set in wrangler.jsonc) restricts

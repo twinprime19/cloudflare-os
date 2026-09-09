@@ -185,7 +185,7 @@ describe("webFetch document conversion", () => {
     expect(toMarkdown).toHaveBeenCalledTimes(1);
     expect(toMarkdown.mock.calls[0][0].blob.type).toBe("application/pdf");
     // Cost boundary: describing images embedded in a fetched document would spend Workers AI
-    // models on every fetch of arbitrary third-party URLs. Chat uploads opt in; this must not.
+    // models on every fetch of arbitrary third-party URLs. No call site converts them.
     const conversionOptions = toMarkdown.mock.calls[0][1].conversionOptions;
     expect(conversionOptions.pdf.images.convert).toBe(false);
     expect(conversionOptions.docx.images.convert).toBe(false);

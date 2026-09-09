@@ -11,15 +11,22 @@ export const MAX_CHAT_ATTACHMENT_TOTAL_BYTES = 8 * 1024 * 1024;
 export const MAX_CONVERTIBLE_DOCUMENT_BYTES = 10 * 1024 * 1024; // 10 MiB
 
 /**
- * Documents the server may convert to Markdown instead of storing as-is. They are allowed to be
- * far larger than a stored attachment because only the extracted text is kept. Whether a PDF
- * actually converts depends on the selected model's provider, which the server decides -- a large
- * PDF sent to a provider that reads PDFs natively is rejected there, by the stored-as-is cap.
+ * Documents the server may convert to Markdown instead of storing as-is. This set mirrors
+ * CONVERTIBLE_MIME_TYPES in packages/workshop-backend/src/chat-attachment-validation.ts and must
+ * change together with it. They are allowed to be far larger than a stored attachment because only
+ * the extracted text is kept. Whether a PDF actually converts depends on the selected model's
+ * provider, which the server decides -- a large PDF sent to a provider that reads PDFs natively is
+ * rejected there, by the stored-as-is cap.
  */
 export const CONVERTIBLE_DOCUMENT_MIME_TYPES = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",       // .xlsx
+  "application/vnd.ms-excel",                                                // .xls
+  "application/vnd.ms-excel.sheet.macroenabled.12",                          // .xlsm
+  "application/vnd.ms-excel.sheet.binary.macroenabled.12",                   // .xlsb
+  "application/vnd.oasis.opendocument.text",                                 // .odt
+  "application/vnd.oasis.opendocument.spreadsheet",                          // .ods
 ]);
 const MAX_CHAT_ATTACHMENT_SOURCE_IMAGE_BYTES = 25 * 1024 * 1024;
 const CHAT_ATTACHMENT_IMAGE_MAX_EDGE = 1568;
@@ -36,14 +43,17 @@ const canvasToBlob = (canvas: HTMLCanvasElement, type: string, quality?: number)
 export const prepareChatAttachment = async (
   file: File,
 ): Promise<{ blob: Blob; mimeType: string }> => {
-  if (!file.type.startsWith("image/")) {
-    const limit = CONVERTIBLE_DOCUMENT_MIME_TYPES.has(file.type)
+  // Mirrors the server's sanitizeChatAttachmentMimeType, so a file is classified here against the
+  // same string the upload pipeline will classify it against.
+  const mimeType = file.type.split(";", 1)[0].trim().toLowerCase() || "application/octet-stream";
+  if (!mimeType.startsWith("image/")) {
+    const limit = CONVERTIBLE_DOCUMENT_MIME_TYPES.has(mimeType)
       ? MAX_CONVERTIBLE_DOCUMENT_BYTES
       : MAX_CHAT_ATTACHMENT_BYTES;
     if (file.size > limit) {
       throw new Error(t`Attachments must be ${formatAttachmentSize(limit) ?? ""} or smaller.`);
     }
-    return { blob: file, mimeType: file.type || "application/octet-stream" };
+    return { blob: file, mimeType };
   }
   if (file.size > MAX_CHAT_ATTACHMENT_SOURCE_IMAGE_BYTES) {
     throw new Error(
