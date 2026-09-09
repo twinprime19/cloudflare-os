@@ -25,6 +25,7 @@ import type {
   SlashCommandRequest,
 } from "@gadgets/workshop-shared/api";
 import { isTransientRpcError } from "../../../rpcErrors";
+import { resumeConnection } from "../../../connectionPause";
 import {
   parseSlashCommandInput, slashCommandTokenKey,
 } from "../../../components/chat/slash-command-input";
@@ -447,6 +448,10 @@ export const ChatComposer = ({
 
   const handleSend = async () => {
     if (sendInFlightRef.current || isSending || isBlocked) return;
+    // A send is the deliberate request that wakes a paused workspace -- even one refused below
+    // for an unfinished upload, since that upload is waiting on the same connection. A send
+    // blocked on a pending action or connection request wakes it from the approve / deny path.
+    resumeConnection();
     setSendHiccup(null);
     const attachmentsSnapshot = pendingAttachments;
     const readyAttachments = attachmentsSnapshot

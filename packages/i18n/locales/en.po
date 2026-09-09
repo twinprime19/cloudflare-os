@@ -1811,6 +1811,9 @@ msgstr "Owner"
 msgid "Password"
 msgstr "Password"
 
+msgid "Paused — click to reconnect"
+msgstr "Paused — click to reconnect"
+
 msgid "Pending changes"
 msgstr "Pending changes"
 

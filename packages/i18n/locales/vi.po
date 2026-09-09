@@ -1811,6 +1811,9 @@ msgstr "Chủ sở hữu"
 msgid "Password"
 msgstr "Mật khẩu"
 
+msgid "Paused — click to reconnect"
+msgstr "Đã tạm dừng — nhấn để kết nối lại"
+
 msgid "Pending changes"
 msgstr "Thay đổi đang chờ"
 
