@@ -9,9 +9,8 @@ import {
   type SetStateAction,
 } from "react";
 import { t } from "@lingui/core/macro";
-import { Trans } from "@lingui/react/macro";
 import { DropdownMenu, useKumoToastManager } from "@cloudflare/kumo";
-import { Brain, File as FileIcon, Plug, Plus } from "@phosphor-icons/react";
+import { Brain, DotsThree, File as FileIcon } from "@phosphor-icons/react";
 import { RpcStub } from "capnweb";
 import type {
   AiChatAuthorInfo,
@@ -26,9 +25,7 @@ import type {
 } from "@gadgets/workshop-shared/api";
 import { isTransientRpcError } from "../../../rpcErrors";
 import { resumeConnection } from "../../../connectionPause";
-import {
-  parseSlashCommandInput, slashCommandTokenKey,
-} from "../../../components/chat/slash-command-input";
+import { slashCommandTokenKey } from "./slash-commands/slashCommandInput";
 import {
   ComposerMirror, composerTextareaClass, type ComposerMirrorHandle, type MirrorToken,
 } from "./inline-items/ComposerMirror";
@@ -44,7 +41,7 @@ import { WorkshopIconButton } from "../../../components/WorkshopControls";
 import { handlePickerKeyDown } from "../../../pickerNavigation";
 import { useAuthenticatedApi } from "../../../AuthContext";
 import { useVendorBranding } from "../../../useVendorBranding";
-import { useSlashCommandPicker } from "../../../components/chat/SlashCommandPicker";
+import { useSlashCommandPicker } from "./slash-commands/SlashCommandPicker";
 import { isImeComposing } from "../../../keyboardEvent";
 import { ComposerAttachmentTray } from "./attachments/ComposerAttachmentTray";
 import { useComposerAttachmentDrop } from "./attachments/useComposerAttachmentDrop";
@@ -53,6 +50,7 @@ import {
   useComposerAttachments,
 } from "./attachments/useComposerAttachments";
 import { CapturedConsoleLogsPrompt } from "./CapturedConsoleLogsPrompt";
+import ComposerAddMenu from "./ComposerAddMenu";
 import { ComposerModelSelector } from "./ComposerModelSelector";
 import { useComposerDraft } from "./draft/useComposerDraft";
 import { buildComposerSubmission } from "./composerSubmission";
@@ -101,7 +99,6 @@ export const ChatComposer = ({
   seedText,
   seedNonce,
   draftStorageKey,
-  attachLabel,
   draftUpdateBanner,
   blockedReason,
   chatKey,
@@ -204,6 +201,7 @@ export const ChatComposer = ({
     }));
   };
   const [isSending, setIsSending] = useState(false);
+  const [catalogVersion, setCatalogVersion] = useState(0);
   // The chat the "may not have been sent" hint belongs to; the render condition scopes it, and
   // leaving the chat dismisses it.
   const [sendHiccup, setSendHiccup] = useState<{ chatKey?: number | null } | null>(null);
@@ -240,6 +238,7 @@ export const ChatComposer = ({
   const promptCardRef = useRef<HTMLDivElement>(null);
   const mirrorRef = useRef<ComposerMirrorHandle>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const connectionCreatedRef = useRef<() => void>(() => {});
 
   // Keep inputValue in a ref so handleCursorChange can read it without re-binding.
   const inputValueRef = useRef(inputValue);
@@ -262,6 +261,7 @@ export const ChatComposer = ({
     capsuleTokenText: (description, vendorId) =>
       (vendorId && vendorBranding.get(vendorId)?.logoUrl ? CAPSULE_LOGO_SLOT : "") +
       description.title,
+    onConnectionCreated: () => connectionCreatedRef.current(),
     onSelectionRequest: (selection, documentRevision) => {
       requestAnimationFrame(() => {
         if (getDocumentSnapshot().documentRevision !== documentRevision) return;
@@ -446,6 +446,11 @@ export const ChatComposer = ({
     chatExists: !newChat,
   });
 
+  connectionCreatedRef.current = () => {
+    slashCommandPicker.invalidateCatalog();
+    setCatalogVersion((current) => current + 1);
+  };
+
   const handleSend = async () => {
     if (sendInFlightRef.current || isSending || isBlocked) return;
     // A send is the deliberate request that wakes a paused workspace -- even one refused below
@@ -478,49 +483,8 @@ export const ChatComposer = ({
     setIsSending(true);
     const draftSend = beginDraftSend();
     try {
-      let documentForSubmission = composerDocument;
-      if (!documentForSubmission.command && documentForSubmission.text.startsWith("//")) {
-        documentForSubmission = {
-          ...documentForSubmission,
-          text: documentForSubmission.text.slice(1),
-          capsules: documentForSubmission.capsules.map((capsule) => ({
-            ...capsule,
-            start: Math.max(0, capsule.start - 1),
-          })),
-          formats: documentForSubmission.formats.map((format) => ({
-            ...format,
-            start: Math.max(0, format.start - 1),
-          })),
-        };
-      } else if (!documentForSubmission.command && documentForSubmission.text.startsWith("/")) {
-        const parsed = parseSlashCommandInput(documentForSubmission.text, 1);
-        if (!parsed) {
-          toasts.add({ title: "Slash command is invalid", variant: "error" });
-          return;
-        }
-        let match: SlashCommandChoice | null;
-        try {
-          match = await slashCommandPicker.resolveExact(parsed);
-        } catch (error) {
-          console.error("Failed to resolve slash command:", error);
-          toasts.add({ title: "Couldn't load slash commands", variant: "error" });
-          return;
-        }
-        if (!match) {
-          toasts.add({ title: "Choose a slash command", variant: "error" });
-          return;
-        }
-        documentForSubmission = {
-          ...documentForSubmission,
-          command: {
-            choice: match,
-            start: parsed.tokenStart,
-            length: parsed.tokenEnd - parsed.tokenStart,
-          },
-        };
-      }
       const submissionResult = buildComposerSubmission({
-        document: documentForSubmission,
+        document: composerDocument,
         hasAttachments: readyAttachments.length > 0,
       });
       if (!submissionResult.ok) {
@@ -565,6 +529,18 @@ export const ChatComposer = ({
   const handleAttachOpen = () => {
     const position = composerTextareaRef.current?.selectionStart ?? inputValueRef.current.length;
     openAttachModal(snapCaretOutOfRanges(position, currentTokenRanges(), "nearest"));
+  };
+
+  const addMenuCaretRef = useRef(0);
+  const rememberAddMenuCaret = () => {
+    const position = composerTextareaRef.current?.selectionStart ?? inputValueRef.current.length;
+    addMenuCaretRef.current = snapCaretOutOfRanges(position, currentTokenRanges(), "nearest");
+  };
+
+  const selectSkillFromAddMenu = (choice: SlashCommandChoice) => {
+    if (selectedSlashCommandRef.current) return;
+    const position = Math.min(addMenuCaretRef.current, inputValueRef.current.length);
+    applySlashCommandSelection(choice, position, position);
   };
 
   const handleInputChange = (newValue: string, editCursorPos?: number) => {
@@ -658,6 +634,10 @@ export const ChatComposer = ({
       kind: "command" as const,
       start: selectedSlashCommand.start,
       length: selectedSlashCommand.length,
+      label: selectedSlashCommand.choice.name,
+      description: selectedSlashCommand.choice.description,
+      providerLabel: selectedSlashCommand.choice.providerLabel,
+      resourceLabel: selectedSlashCommand.choice.resourceLabel,
     }] : []),
     ...formatTokens.map(({start, length, logo}) => ({
       kind: "capsule" as const,
@@ -681,7 +661,7 @@ export const ChatComposer = ({
     // captured-log floating chip with z-10, the textarea/mirror with z-[1])
     // so they can't paint on top of body-level portaled popovers like the
     // model picker dropdown opening above the composer.
-    <div className={`relative isolate px-2 py-2 sm:px-4 sm:py-4 ${styles.chatInputRoot}`}>
+    <div className="relative isolate px-2 py-2 sm:px-4 sm:py-4">
       <input
         ref={attachmentInputRef}
         type="file"
@@ -926,15 +906,27 @@ export const ChatComposer = ({
         {/* Footer row: connection/options left, model + send right */}
         <div className="flex items-center justify-between gap-1.5 px-3 pb-1.5">
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <DropdownMenu>
+            <ComposerAddMenu
+              anchorRef={promptCardRef}
+              catalogVersion={catalogVersion}
+              disabled={isBlocked}
+              getOverseer={getOverseer}
+              chatExists={!newChat}
+              skillSelected={selectedSlashCommand !== null}
+              onOpen={rememberAddMenuCaret}
+              onUpload={() => attachmentInputRef.current?.click()}
+              onAddConnection={handleAttachOpen}
+              onSelectSkill={selectSkillFromAddMenu}
+            />
+            {(canChooseFormat || onToggleThinkingTraces) && <DropdownMenu>
               <DropdownMenu.Trigger
                 render={
                   <button
                     type="button"
                     className="group flex h-10 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-lg text-kumo-inactive transition-[background-color,color,transform] duration-150 ease-out hover:bg-kumo-tint hover:text-kumo-subtle focus-visible:bg-kumo-tint focus-visible:text-kumo-subtle focus-visible:outline-none active:scale-[0.96] data-[popup-open]:bg-kumo-tint data-[popup-open]:text-kumo-subtle sm:h-8 sm:w-8"
-                    aria-label={t`Open chat options`}
+                    aria-label={t`More chat options`}
                   >
-                    <Plus size={18} />
+                    <DotsThree size={18} weight="bold" />
                   </button>
                 }
               />
@@ -942,7 +934,10 @@ export const ChatComposer = ({
                 {/* The deployment's standard formats. Picking one drops its name into the message at
                     the caret; the agent is told what to build from it. */}
                 {canChooseFormat && (
-                  <ComposerFormatMenuItems onSelect={(format) => void chooseFormat(format)} />
+                  <ComposerFormatMenuItems
+                    onSelect={(format) => void chooseFormat(format)}
+                    showTrailingSeparator={onToggleThinkingTraces !== undefined}
+                  />
                 )}
                 {onToggleThinkingTraces && (
                   <DropdownMenu.Item
@@ -957,25 +952,8 @@ export const ChatComposer = ({
                     </span>
                   </DropdownMenu.Item>
                 )}
-                <DropdownMenu.Item
-                  onClick={() => attachmentInputRef.current?.click()}
-                  className="!h-auto rounded-xl !px-2 !py-1.5 text-[12px] leading-4 font-normal tracking-[-0.15px] text-kumo-subtle transition-colors data-highlighted:bg-kumo-tint/70 data-highlighted:text-kumo-default"
-                >
-                  <span className="mr-2 inline-flex h-4 w-4 items-center justify-center text-kumo-inactive">
-                    <FileIcon size={14} />
-                  </span>
-                  <span className="flex-1"><Trans>Upload file</Trans></span>
-                </DropdownMenu.Item>
               </DropdownMenu.Content>
-            </DropdownMenu>
-            <button
-              type="button"
-              onClick={handleAttachOpen}
-              className="inline-flex h-10 flex-shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-[14px] leading-none text-kumo-inactive transition-[background-color,color,transform] duration-150 ease-out hover:bg-kumo-tint hover:text-kumo-subtle focus-visible:bg-kumo-tint focus-visible:text-kumo-subtle focus-visible:outline-none active:scale-[0.97] sm:h-8 sm:text-[13px]"
-            >
-              <Plug size={15} className="flex-shrink-0" />
-              <span className={`leading-none ${styles.attachLabelText}`}>{attachLabel ?? t`Add resource`}</span>
-            </button>
+            </DropdownMenu>}
           </div>
 
           {/* Right actions */}

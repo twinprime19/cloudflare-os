@@ -40,7 +40,14 @@
   background-position: left 0.12em center;
   background-size: 0.9em auto;
 }
-.command { color: var(--color-kumo-brand); }
+.command {
+  color: var(--color-kumo-brand);
+  background-color: color-mix(in srgb, var(--color-kumo-brand) 12%, transparent);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-kumo-brand) 12%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
 .hovered {
   background-color: var(--color-kumo-tint);
   box-shadow: 0 0 0 1px var(--color-kumo-tint);

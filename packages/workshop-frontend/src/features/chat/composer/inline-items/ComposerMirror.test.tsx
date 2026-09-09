@@ -45,6 +45,15 @@ describe("ComposerMirror geometry", () => {
     expect(mirrorRef.current!.tokenAtPoint(40, 5)).toBeNull();
   });
 
+  it("decorates commands without replacing their text", async () => {
+    await renderMirror();
+    const token = container!.querySelector<HTMLElement>("[data-token-start]")!;
+
+    expect(token.textContent).toBe("/cmd");
+    expect(token.childNodes).toHaveLength(1);
+    expect(token.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+  });
+
   it("measures offsets in plain text segments", async () => {
     const mirrorRef = await renderMirror();
     let measuredOffset: number | undefined;

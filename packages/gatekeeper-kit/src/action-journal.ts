@@ -1,18 +1,37 @@
 /** Durable action lifecycle storage for approval, simulation, retry, and retention. */
 
 import type { KvScannable } from "./kv";
+import { reservedObserverOverlap } from "./observer-keys";
 import { requirePositiveInt } from "./positive-int";
 
 /** The Durable Object KV surface used by the action journal. */
 export type ActionJournalKv = KvScannable;
 
-/** Storage keys, overridable so a port keeps reading the records it already wrote. */
-export type JournalKeys = {
-  /** Stores the next unused ID, never the last issued ID. */
-  nextIdKey?: string;
-  /** Must not contain `nextIdKey`, which would then be scanned as a record. */
-  recordPrefix?: string;
-};
+/**
+ * Where one journal's records live. Two journals over one Durable Object must not share a
+ * keyspace: they would share ids and capacity while each bound action set serializes apply and
+ * reject on its own in-memory queue, so nothing would order their provider calls against each
+ * other.
+ *
+ * `namespace` derives every key and is what new code passes. `legacyKeys` is the escape hatch for
+ * a port that must keep reading records it already wrote; the two are mutually exclusive.
+ */
+export type JournalKeys =
+  | {
+    /** Distinguishes this journal's keys from every other journal over the same storage. */
+    namespace: string;
+    legacyKeys?: never;
+  }
+  | {
+    namespace?: never;
+    /** The exact pre-kit key layout. Only a port with existing records passes this. */
+    legacyKeys: {
+      /** Stores the next unused ID, never the last issued ID. */
+      nextIdKey: string;
+      /** Must not contain `nextIdKey`, which would then be scanned as a record. */
+      recordPrefix: string;
+    };
+  };
 
 /**
  * Journal lifecycle state. Applied records live only in retained storage; claimed records have a
@@ -20,22 +39,60 @@ export type JournalKeys = {
  */
 type JournalState = "staged" | "pending" | "claimed" | "failed" | "applied";
 
-/** A stored action. Failed records always include a reason. */
+/**
+ * The authority an action was staged under, opaque and equality-only. Nothing may be inferred from
+ * its content or ordering, and the journal never interprets it: a kind the set declares
+ * `"authority"` is staged with one and apply refuses a record whose value has changed.
+ *
+ * The field is named `generation` because the common fence is the connection generation, which
+ * makes a `CredentialRead` structurally an `ActionFence`. A consumer wanting account-scoped rather
+ * than connection-scoped fencing stores its own stable provider account id here instead, and
+ * passes that same id at apply.
+ */
+export type ActionFence = { generation: string };
+
+/**
+ * A stored action. Failed records always include a reason, and classify whether the provider
+ * effect is known not to have landed or is simply unknown.
+ */
 export type JournalRecord<A> =
-  | { state: Exclude<JournalState, "failed">; action: A; error?: never }
-  | { state: "failed"; action: A; error: string };
+  | {
+    state: Exclude<JournalState, "failed">; action: A; fence?: ActionFence; error?: never;
+    undispatched?: never; outcome?: never;
+  }
+  | {
+    state: "failed"; action: A; fence?: ActionFence; error: string;
+    /** The apply refused before the handler ran, so a rejection still owes its cleanup. */
+    undispatched?: true;
+    /**
+     * Whether the provider effect is known absent. `"unknown"` means the handler may have
+     * committed it: the record is never replayed, never pruned, and strands no dependents, since
+     * the reference it provides may in fact exist. Absent reads as `"not-applied"`, which is the
+     * only classification a record written before this field could have had.
+     */
+    outcome?: "not-applied" | "unknown";
+  };
 
 /** An action ID and payload used by simulation. */
 export type JournalEntry<A> = { readonly id: number; readonly action: A };
+
+/** One storage-bounded page of retained actions. */
+export type RetainedActionPage<A> = {
+  /** Valid applied records found in this storage page. */
+  entries: JournalEntry<A>[];
+  /** Opaque position for the next scan; absent once storage returned a short page. */
+  nextCursor?: string;
+};
 
 // Reads project pending and claimed actions; staged is not yet proven submitted, and failed is terminal.
 const PROJECTED: readonly JournalState[] = ["pending", "claimed"];
 
 const UNDECIDED: readonly JournalState[] = ["pending"];
 
-// The version distinguishes kit records from legacy rows that may have the same shape.
-// Unmarked rows must go through `upgradeRecord`.
-const JOURNAL_VERSION = 1;
+// The version distinguishes kit records from legacy rows that may have the same shape, so it skips
+// 1: a port whose own pre-kit rows carry `v: 1` would have them read as kit records, bypassing
+// `upgradeRecord`. Unmarked rows must go through it.
+const JOURNAL_VERSION = 2;
 
 type StoredJournalRecord<A> = JournalRecord<A> & { v: typeof JOURNAL_VERSION };
 
@@ -48,6 +105,9 @@ const FAILURE_REASON_LOST = "This action failed, and the reason was not recorded
 
 // Bound the reason so a post-provider storage write cannot exceed DO limits.
 const MAX_FAILURE_REASON = 1024;
+
+// Keeps a derived key unambiguous: no separator that could forge a prefix boundary.
+const JOURNAL_NAMESPACE = /^[A-Za-z0-9_-]+$/;
 
 export type ActionJournalOptions<A> = JournalKeys & {
   /**
@@ -69,7 +129,7 @@ export type ActionJournalOptions<A> = JournalKeys & {
  *
  * @example
  * ```ts
- * const journal = new ActionJournal<PendingAction>(ctx.storage.kv);
+ * const journal = new ActionJournal<PendingAction>(ctx.storage.kv, { namespace: "calendar" });
  * const pending = createSimulationView(
  *   journal.listPending(),
  *   action => action.projectIds,
@@ -89,12 +149,16 @@ export class ActionJournal<A> {
   /**
    * Creates an action journal.
    * @param kv Durable Object storage for journal records.
-   * @param options Storage keys, migration, and capacity settings.
+   * @param options `namespace` (or a port's `legacyKeys`), migration, and capacity settings.
    */
-  constructor(kv: ActionJournalKv, options: ActionJournalOptions<A> = {}) {
+  constructor(kv: ActionJournalKv, options: ActionJournalOptions<A>) {
     this.#kv = kv;
-    this.#nextIdKey = options.nextIdKey ?? "pending:nextActionId";
-    this.#prefix = options.recordPrefix ?? "pending:action:";
+    const keys = options.legacyKeys ?? {
+      nextIdKey: `${options.namespace}:nextActionId`,
+      recordPrefix: `${options.namespace}:action:`,
+    };
+    this.#nextIdKey = keys.nextIdKey;
+    this.#prefix = keys.recordPrefix;
     // Outside the pending prefix, not beneath it: a retained record must fall out of that scan.
     this.#retainedPrefix = `retained:${this.#prefix}`;
     // One key, not a tier: the non-numeric suffix keeps it out of every id scan.
@@ -102,8 +166,13 @@ export class ActionJournal<A> {
     this.#upgradeRecord = options.upgradeRecord;
     this.#maxPending = requirePositiveInt("maxPending", options.maxPending ?? DEFAULT_MAX_PENDING);
 
-    // Only ports pass these, and a silent overlap corrupts the keyspace: a counter under the record
-    // prefix is scanned as a record, and a record prefix under the retained one un-tiers the scan.
+    if (options.legacyKeys === undefined && !JOURNAL_NAMESPACE.test(options.namespace ?? "")) {
+      throw new Error(
+        `Journal namespace "${options.namespace}" must match ${JOURNAL_NAMESPACE.source}.`);
+    }
+    // A silent overlap corrupts the keyspace: a counter under the record prefix is scanned as a
+    // record, and a record prefix under the retained one un-tiers the scan. Only reachable through
+    // `legacyKeys`, since a derived pair cannot collide.
     if (!this.#prefix) throw new Error("recordPrefix must not be empty.");
     if (this.#nextIdKey.startsWith(this.#prefix) || this.#prefix.startsWith(this.#nextIdKey)
       || this.#nextIdKey.startsWith(this.#retainedPrefix)
@@ -113,14 +182,22 @@ export class ActionJournal<A> {
     if (this.#retainedPrefix.startsWith(this.#prefix)) {
       throw new Error(`recordPrefix "${this.#prefix}" would contain its own retained tier.`);
     }
+    // Observer storage is scanned by prefix, so records landing inside it come back as verifiers
+    // or as an unsettled withheld read -- type-confused ACL checks, and sharing fenced for good.
+    const observerOverlap = reservedObserverOverlap(this.#prefix)
+      ?? reservedObserverOverlap(this.#nextIdKey);
+    if (observerOverlap !== undefined) {
+      throw new Error(`Journal keys overlap the reserved observer prefix "${observerOverlap}".`);
+    }
   }
 
   /**
    * Reserves and stages the next action.
    * @param action Payload to store.
+   * @param fence Connection generation the staging operation ran under.
    * @returns Allocated action ID.
    */
-  allocate(action: A): number {
+  allocate(action: A, fence?: ActionFence): number {
     this.#requireCapacity();
     const id = this.#kv.get<number>(this.#nextIdKey) ?? 1;
     // Occupancy or retired-id memory at this id means the counter is behind -- a port pointed
@@ -132,7 +209,8 @@ export class ActionJournal<A> {
         + `"${this.#nextIdKey}" must hold the next unused id, not the last issued one.`);
     }
     this.#kv.put(this.#nextIdKey, id + 1);
-    this.#write(this.#pendingKey(id), { state: "staged", action });
+    this.#write(this.#pendingKey(id),
+      { state: "staged", action, ...(fence ? { fence: { generation: fence.generation } } : {}) });
     return id;
   }
 
@@ -164,14 +242,28 @@ export class ActionJournal<A> {
    * Records a terminal failure and removes the action from simulation.
    * @param id Action ID that failed.
    * @param error Display-safe failure reason.
+   * @param options `undispatched` when the apply refused before reaching the handler; `outcome`
+   * classifies whether the provider effect is known absent, defaulting to `"not-applied"`.
    */
-  markFailed(id: number, error: string): void {
+  markFailed(
+    id: number,
+    error: string,
+    options: { undispatched?: boolean; outcome?: "not-applied" | "unknown" } = {},
+  ): void {
     const record = this.#transitionable(id, ["staged", "pending", "claimed"]);
     if (record) {
       const reason = error.length > MAX_FAILURE_REASON
         ? `${error.slice(0, MAX_FAILURE_REASON)}\u2026`
         : error;
-      this.#write(this.#pendingKey(id), { state: "failed", action: record.action, error: reason });
+      this.#write(this.#pendingKey(id), {
+        state: "failed",
+        action: record.action,
+        error: reason,
+        ...(options.undispatched ? { undispatched: true } as const : {}),
+        // Only the non-default is stored, so a record carries no key for the ordinary case.
+        ...(options.outcome === "unknown" ? { outcome: "unknown" } as const : {}),
+        ...(record.fence ? { fence: record.fence } : {}),
+      });
     }
   }
 
@@ -205,6 +297,7 @@ export class ActionJournal<A> {
     this.#write(this.#retainedKey(id), {
       state: "applied",
       action: action ?? record.action,
+      ...(record.fence ? { fence: record.fence } : {}),
     });
     this.#kv.delete(this.#pendingKey(id));
   }
@@ -220,16 +313,20 @@ export class ActionJournal<A> {
 
   /**
    * Removes an applied action, remembering the id so a replayed resolution settles instead of
-   * erroring or mislabeling it. Memory is bounded to the prunable allowance.
+   * erroring or mislabeling it. Idempotent, so an interrupted retire can be finished by the next
+   * apply. Memory is bounded to the prunable allowance.
    * @param id Action ID to retire.
    */
   retire(id: number): void {
-    const ids = this.#kv.get<number[]>(this.#appliedIdsKey) ?? [];
-    ids.push(id);
-    // Removal first: split writes then degrade to a retryable unknown id, never to a remembered
-    // apply whose record still projects.
+    const ids = this.#appliedIds();
+    // Tombstone first: split writes then degrade to a stale record the scans below filter out and
+    // the next apply retires, never to a remembered apply whose record still projects. A failed
+    // tombstone write leaves the record applicable again, which at-least-once apply already owns.
+    if (!ids.includes(id)) {
+      ids.push(id);
+      this.#kv.put(this.#appliedIdsKey, ids.slice(-this.#maxPending * PRUNABLE_RECORD_FACTOR));
+    }
     this.remove(id);
-    this.#kv.put(this.#appliedIdsKey, ids.slice(-this.#maxPending * PRUNABLE_RECORD_FACTOR));
   }
 
   /**
@@ -238,7 +335,17 @@ export class ActionJournal<A> {
    * @returns Whether the id is within the retired-action memory.
    */
   wasApplied(id: number): boolean {
-    return (this.#kv.get<number[]>(this.#appliedIdsKey) ?? []).includes(id);
+    return this.#appliedIds().includes(id);
+  }
+
+  /** @returns The action IDs held in the retired-action memory. */
+  #appliedIds(): number[] {
+    return this.#kv.get<number[]>(this.#appliedIdsKey) ?? [];
+  }
+
+  /** @returns The retired-action memory as a set, for scans that test many ids. */
+  #appliedSet(): Set<number> {
+    return new Set(this.#appliedIds());
   }
 
   /**
@@ -248,6 +355,51 @@ export class ActionJournal<A> {
    */
   isRetained(id: number): boolean {
     return this.#read(this.#retainedKey(id)) !== undefined;
+  }
+
+  /**
+   * Lists one storage-bounded page of retained actions. Invalid or non-applied rows are omitted
+   * (and a row an interrupted `retire` left behind is deleted) but still consume the storage limit,
+   * so an empty `entries` array may carry `nextCursor`. Keep calling with the returned opaque
+   * cursor until it is absent. Call `retire(id)` to remove a retained action while preserving
+   * applied-id replay memory.
+   * @param options Storage page size and the previous page's opaque cursor.
+   * @returns Retained actions from this storage page and its continuation position.
+   */
+  listRetained(
+    options: { limit: number; cursor?: string },
+  ): RetainedActionPage<A> {
+    const limit = requirePositiveInt("limit", options.limit);
+    const entries: JournalEntry<A>[] = [];
+    // A `retire` whose delete threw leaves a tombstoned row here. Finish that delete rather than
+    // hide the row: the tombstone memory is bounded, so a row merely omitted would resurface --
+    // and hand the consumer a finished action twice -- once later retires evict its id.
+    const applied = this.#appliedSet();
+    const stale: string[] = [];
+    let scanned = 0;
+    let lastKey: string | undefined;
+    for (const [key, raw] of this.#kv.list<unknown>({
+      prefix: this.#retainedPrefix,
+      ...(options.cursor === undefined ? {} : { startAfter: options.cursor }),
+      limit,
+    })) {
+      scanned++;
+      lastKey = key;
+      const id = this.#idFrom(key, this.#retainedPrefix);
+      if (id === undefined) continue;
+      if (applied.has(id)) {
+        stale.push(key);
+        continue;
+      }
+      const record = this.#coerce(raw);
+      if (record?.state === "applied") entries.push({ id, action: record.action });
+    }
+    // After the walk, so the scan never deletes under the live list iterator.
+    for (const key of stale) this.#kv.delete(key);
+    return {
+      entries,
+      ...(scanned === limit && lastKey !== undefined ? { nextCursor: lastKey } : {}),
+    };
   }
 
   /** @returns Actions visible to simulation, ordered by ID. */
@@ -267,13 +419,14 @@ export class ActionJournal<A> {
    */
   #scan(states: readonly JournalState[]): JournalEntry<A>[] {
     const found: JournalEntry<A>[] = [];
+    const applied = this.#appliedSet();
     for (const [key, raw] of this.#kv.list<unknown>({ prefix: this.#prefix })) {
       const record = this.#coerce(raw);
       if (record === undefined || !states.includes(record.state)) continue;
       const id = this.#idFrom(key);
-      // A record left behind by an interrupted `retain` is applied, not pending: projecting it
-      // would simulate an effect the provider has already made real.
-      if (id === undefined || this.isRetained(id)) continue;
+      // A record left behind by an interrupted `retain` or `retire` is applied, not pending:
+      // projecting it would simulate an effect the provider has already made real.
+      if (id === undefined || applied.has(id) || this.isRetained(id)) continue;
       found.push({ id, action: record.action });
     }
     return found.toSorted((a, b) => a.id - b.id);
@@ -284,18 +437,25 @@ export class ActionJournal<A> {
     let unresolved = 0;
     const staged: number[] = [];
     const failed: number[] = [];
+    const applied = this.#appliedSet();
     for (const [key, raw] of this.#kv.list<unknown>({ prefix: this.#prefix })) {
       // A key this journal cannot name an id for is not its record: counting one would hold a slot
       // no approval can clear, and pruning one would delete a stranger's key.
       const id = this.#idFrom(key);
       if (id === undefined) continue;
-      const state = this.#coerce(raw)?.state;
-      // An interrupted `retain` leaves a stale source record here, whatever its state; the retained
-      // tier decides, as it does for `get` and `listPending`.
-      if (state === undefined || this.isRetained(id)) continue;
-      if (state === "staged") staged.push(id);
-      else if (state === "failed") failed.push(id);
-      else unresolved += 1;
+      const record = this.#coerce(raw);
+      // An interrupted `retain` or `retire` leaves a stale source record here, whatever its state;
+      // the retained tier and the retired-id memory decide, as they do for `get` and `listPending`.
+      if (record === undefined || applied.has(id) || this.isRetained(id)) continue;
+      if (record.state === "staged") staged.push(id);
+      // An undispatched failure holds a slot rather than joining the prunable set: only a
+      // rejection can release what its staging set up, so discarding the record would strand
+      // those artifacts for good. An unknown outcome holds one for the opposite reason -- it is
+      // the only record saying the provider may already have changed, and pruning it would evict
+      // that warning first. Blocking is recoverable -- the user rejects it.
+      else if (record.state !== "failed" || record.undispatched
+        || record.outcome === "unknown") unresolved += 1;
+      else failed.push(id);
     }
     if (unresolved >= this.#maxPending) {
       throw new Error(
@@ -333,10 +493,11 @@ export class ActionJournal<A> {
   /**
    * Parses a canonical action ID from a storage key.
    * @param key Scanned storage key.
+   * @param prefix Prefix preceding the id.
    * @returns The action ID, or `undefined` for an unrelated key.
    */
-  #idFrom(key: string): number | undefined {
-    const suffix = key.slice(this.#prefix.length);
+  #idFrom(key: string, prefix = this.#prefix): number | undefined {
+    const suffix = key.slice(prefix.length);
     return /^[1-9]\d*$/.test(suffix) ? Number(suffix) : undefined;
   }
 
@@ -359,7 +520,13 @@ export class ActionJournal<A> {
    */
   #transition(id: number, from: readonly JournalState[], next: Exclude<JournalState, "failed">) {
     const record = this.#transitionable(id, from);
-    if (record) this.#write(this.#pendingKey(id), { state: next, action: record.action });
+    if (record) {
+      this.#write(this.#pendingKey(id), {
+        state: next,
+        action: record.action,
+        ...(record.fence ? { fence: record.fence } : {}),
+      });
+    }
   }
 
   /**
@@ -399,13 +566,21 @@ export class ActionJournal<A> {
     if ("v" in raw && raw.v === JOURNAL_VERSION) {
       // The marker is storage detail; callers see the record only. One fallback here, not one per
       // reader, keeps the type's promise that a failed record explains itself.
-      const { state, action, error } = raw as StoredJournalRecord<A>;
+      const { state, action, error, fence, undispatched, outcome } =
+        raw as StoredJournalRecord<A>;
+      const carried = fence ? { fence: { generation: fence.generation } } : {};
       return state === "failed"
-        ? { state, action, error: error ?? FAILURE_REASON_LOST }
-        : { state, action };
+        ? {
+          state, action, error: error ?? FAILURE_REASON_LOST, ...carried,
+          ...(undispatched ? { undispatched: true } as const : {}),
+          // A record written before this field existed reads as the default, `"not-applied"`.
+          ...(outcome === "unknown" ? { outcome: "unknown" } as const : {}),
+        }
+        : { state, action, ...carried };
     }
     // Anything else was written by whatever this gatekeeper stored before adopting the journal,
-    // and since it only kept records awaiting approval, it was pending.
+    // and since it only kept records awaiting approval, it was pending. An upgraded record carries
+    // no fence: nothing staged it under a generation this journal recorded.
     const upgraded = this.#upgradeRecord?.(raw);
     return upgraded === undefined ? undefined : { state: "pending", action: upgraded };
   }

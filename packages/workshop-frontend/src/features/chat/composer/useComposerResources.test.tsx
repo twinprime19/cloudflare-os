@@ -80,6 +80,7 @@ describe("useComposerResources", () => {
       selection: ComposerSelection,
       documentRevision: number,
     ) => void>();
+    const onConnectionCreated = vi.fn<() => void>();
     const onError = vi.fn<(message: string) => void>();
     let controls: {
       draft: ReturnType<typeof useComposerDraft>;
@@ -95,6 +96,7 @@ describe("useComposerResources", () => {
         getDocumentSnapshot: draft.getDocumentSnapshot,
         commitDocumentEdit: draft.commitDocumentEdit,
         capsuleTokenText: (resource) => resource.title,
+        onConnectionCreated,
         onSelectionRequest,
         onError,
       });
@@ -104,7 +106,12 @@ describe("useComposerResources", () => {
     container = document.createElement("div");
     root = createRoot(container);
     await act(async () => root!.render(<Harness />));
-    return { get controls() { return controls; }, onError, onSelectionRequest };
+    return {
+      get controls() { return controls; },
+      onConnectionCreated,
+      onError,
+      onSelectionRequest,
+    };
   };
 
   it("commits and disposes a resource created from the active URL", async () => {
@@ -132,6 +139,7 @@ describe("useComposerResources", () => {
     });
     expect(gatekeeper.dispose).toHaveBeenCalledOnce();
     expect(gatekeeper.remove).not.toHaveBeenCalled();
+    expect(harness.onConnectionCreated).toHaveBeenCalledOnce();
     expect(harness.onSelectionRequest).toHaveBeenCalledWith(
       { start: 5, end: 5 },
       expect.any(Number),
@@ -164,6 +172,7 @@ describe("useComposerResources", () => {
     expect(harness.controls.draft.document).toEqual(emptyDocument("new prompt"));
     expect(gatekeeper.dispose).toHaveBeenCalledOnce();
     expect(gatekeeper.remove).toHaveBeenCalledOnce();
+    expect(harness.onConnectionCreated).not.toHaveBeenCalled();
     expect(harness.onSelectionRequest).not.toHaveBeenCalled();
     expect(harness.onError).toHaveBeenCalledWith(
       "The prompt changed before the resource could be added",
@@ -305,6 +314,7 @@ describe("useComposerResources", () => {
     expect(harness.controls.draft.document.capsules).toHaveLength(1);
     expect(remove).not.toHaveBeenCalled();
     expect(dispose).toHaveBeenCalledOnce();
+    expect(harness.onConnectionCreated).toHaveBeenCalledOnce();
     expect(harness.onError).not.toHaveBeenCalled();
   });
 
@@ -333,6 +343,7 @@ describe("useComposerResources", () => {
 
     expect(dispose).toHaveBeenCalledOnce();
     expect(remove).toHaveBeenCalledOnce();
+    expect(harness.onConnectionCreated).not.toHaveBeenCalled();
     expect(harness.onError).not.toHaveBeenCalled();
   });
 });

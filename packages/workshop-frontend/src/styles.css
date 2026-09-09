@@ -899,3 +899,8 @@ html {
 body:has([role="dialog"], [role="alertdialog"]) .app-header {
   z-index: 0;
 }
+
+/* Kumo applies Tooltip className to its trigger, so target this richer popup by its content. */
+.kumo-tooltip-popup:has([data-skill-tooltip]) {
+  border-radius: 10px;
+}
