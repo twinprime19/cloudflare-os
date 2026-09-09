@@ -185,6 +185,9 @@ msgstr "Thêm {0}"
 msgid "Add a model to get started"
 msgstr "Thêm mô hình để bắt đầu"
 
+msgid "Add a new connection"
+msgstr "Thêm kết nối mới"
+
 msgid "Add a provider to start building workspaces with AI."
 msgstr "Thêm nhà cung cấp để bắt đầu xây dựng không gian làm việc bằng AI."
 
@@ -222,11 +225,11 @@ msgstr "Thêm ảnh"
 msgid "Add provider"
 msgstr "Thêm nhà cung cấp"
 
-msgid "Add resource"
-msgstr "Thêm tài nguyên"
-
 msgid "Add the apps and accounts your workspaces can use. Connect once, then wire them into anything you build."
 msgstr "Thêm ứng dụng và tài khoản mà không gian làm việc của bạn có thể sử dụng. Kết nối một lần, sau đó tích hợp chúng vào bất kỳ thứ gì bạn xây dựng."
+
+msgid "Add to conversation"
+msgstr "Thêm vào cuộc trò chuyện"
 
 msgid "Add to library"
 msgstr "Thêm vào thư viện"
@@ -569,9 +572,6 @@ msgstr "Thu gọn thanh bên"
 msgid "Command palette"
 msgstr "Bảng lệnh"
 
-msgid "Commands"
-msgstr "Lệnh"
-
 msgid "Compacting…"
 msgstr "Đang nén…"
 
@@ -737,6 +737,9 @@ msgstr "Không thể tải cài đặt triển khai."
 
 msgid "Couldn't load older activity"
 msgstr "Không thể tải hoạt động cũ hơn"
+
+msgid "Couldn’t load skills."
+msgstr "Không thể tải kỹ năng."
 
 msgid "Create"
 msgstr "Tạo"
@@ -1199,6 +1202,9 @@ msgstr "Tên tệp"
 msgid "Files"
 msgstr "Tệp"
 
+msgid "Files, connections, and skills"
+msgstr "Tệp, kết nối và kỹ năng"
+
 msgid "Filter conversations"
 msgstr "Lọc cuộc trò chuyện"
 
@@ -1451,6 +1457,9 @@ msgstr "Đang tải hình ảnh…"
 msgid "Loading profile…"
 msgstr "Đang tải hồ sơ…"
 
+msgid "Loading skills…"
+msgstr "Đang tải kỹ năng…"
+
 msgid "Loading usage…"
 msgstr "Đang tải mức sử dụng…"
 
@@ -1511,6 +1520,9 @@ msgstr "Đã sửa đổi"
 
 msgid "More blueprint actions"
 msgstr "Hành động khác cho blueprint"
+
+msgid "More chat options"
+msgstr "Tùy chọn trò chuyện khác"
 
 msgid "More workspace views and actions"
 msgstr "Chế độ xem và hành động khác cho không gian làm việc"
@@ -1682,6 +1694,9 @@ msgstr "Không có dịch vụ nào khả dụng"
 msgid "No services available to connect."
 msgstr "Không có dịch vụ nào khả dụng để kết nối."
 
+msgid "No skills match your search."
+msgstr "Không có kỹ năng nào khớp với tìm kiếm của bạn."
+
 msgid "No standard formats yet"
 msgstr "Chưa có định dạng chuẩn nào"
 
@@ -1749,9 +1764,6 @@ msgstr "Mở một cuộc trò chuyện và xây dựng cùng tác nhân, các t
 #. placeholder {0}: metadata.title
 msgid "Open blueprint {0}"
 msgstr "Mở blueprint {0}"
-
-msgid "Open chat options"
-msgstr "Mở tùy chọn trò chuyện"
 
 #. placeholder {0}: blueprint.metadata.title
 msgid "Open featured blueprint {0}"
@@ -2095,6 +2107,12 @@ msgstr "Tìm kiếm nhà cung cấp…"
 
 msgid "Search services, apps, data sources..."
 msgstr "Tìm kiếm dịch vụ, ứng dụng, nguồn dữ liệu..."
+
+msgid "Search skills"
+msgstr "Tìm kiếm kỹ năng"
+
+msgid "Search skills…"
+msgstr "Tìm kiếm kỹ năng…"
 
 msgid "Search workspaces and actions…"
 msgstr "Tìm kiếm không gian làm việc và hành động…"
@@ -2521,8 +2539,8 @@ msgstr "Tải lên tệp lưu trữ .gadget"
 msgid "Upload failed"
 msgstr "Tải lên thất bại"
 
-msgid "Upload file"
-msgstr "Tải lên tệp"
+msgid "Upload files or photos"
+msgstr "Tải lên tệp hoặc ảnh"
 
 msgid "Upload logo"
 msgstr "Tải lên logo"
