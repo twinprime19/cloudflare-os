@@ -6,7 +6,8 @@ import worker, { GatekeeperVendor, UserAccount } from "../src/microsoft";
 
 const TENANT = "11111111-2222-3333-4444-555555555555";
 const BASE_URL = "https://gatekeeper.example/gatekeeper/microsoft";
-const IDENTITY_SCOPES = ["openid", "profile", "email", "User.Read", "offline_access"];
+const AUTH_SCOPES = ["openid", "profile", "email", "User.Read"];
+const IDENTITY_SCOPES = [...AUTH_SCOPES, "offline_access"];
 const DO_ID = "a".repeat(64);
 const INITIATION_NONCE = "n".repeat(64);
 
@@ -90,6 +91,23 @@ describe("authorization request", () => {
     // only have come from the token endpoint.
     expect(location.searchParams.get("response_type")).toBe("code");
     expect(location.searchParams.get("response_mode")).toBe("query");
+    // A persistent connection links the account the user is already signed in with, so the
+    // browser's Microsoft session may complete it silently.
+    expect(location.searchParams.has("prompt")).toBe(false);
+  });
+
+  it("asks Microsoft for the account picker on a sign-in-only flow", async () => {
+    await account.setCallback({} as never, INITIATION_NONCE, AUTH_SCOPES, true);
+
+    const response = await worker.fetch(
+      get(`/${DO_ID}/${INITIATION_NONCE}`), env as never, executionContext as never);
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("Location")!);
+    expect(location.searchParams.get("scope")).toBe(AUTH_SCOPES.join(" "));
+    // Signing out of Cloudflare OS leaves the Microsoft session alive; without the picker Entra
+    // would silently re-issue a code and sign the user straight back in.
+    expect(location.searchParams.get("prompt")).toBe("select_account");
   });
 
   it("shows the configuration page when the tenant is not set", async () => {
