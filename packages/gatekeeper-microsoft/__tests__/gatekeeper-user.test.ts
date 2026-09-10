@@ -97,6 +97,7 @@ beforeEach(() => {
       UserAccount: { idFromString: (id: string) => id, get: () => account },
       MicrosoftVerifier: vi.fn((init: unknown) => ({ verifierStub: init })),
       OutlookMailGatekeeperImpl: vi.fn((init: unknown) => ({ gatekeeperStub: init })),
+      TeamsGatekeeperImpl: vi.fn((init: unknown) => ({ teamsGatekeeperStub: init })),
     },
   };
   user = new GatekeeperUserImpl(userContext as never, env as never);
@@ -322,14 +323,14 @@ describe("getAuthenticatedProfile", () => {
 });
 
 const MAIL_PATTERN = "https://outlook.office.com/mail/*";
+const TEAMS_PATTERN = "https://teams.microsoft.com/*";
 
 describe("resource surface", () => {
-  it("offers the Outlook mailbox as the one grantable resource", async () => {
+  it("offers the mailbox and Teams as the grantable resources", async () => {
     const resources = await user.getSupportedResources();
 
-    expect(resources).toHaveLength(1);
-    expect(resources[0].urlPattern).toBe(MAIL_PATTERN);
-    expect(resources[0].grantable).toBe(true);
+    expect(resources.map(resource => resource.urlPattern)).toEqual([MAIL_PATTERN, TEAMS_PATTERN]);
+    expect(resources.every(resource => resource.grantable)).toBe(true);
   });
 
   it("routes a mailbox URL to the Outlook gatekeeper", async () => {
@@ -361,14 +362,44 @@ describe("resource surface", () => {
       .resolves.toBeDefined();
   });
 
-  it("serves the mailbox configurator frame", async () => {
-    const frame = await user.startResourceConfigurator(MAIL_PATTERN);
+  it("routes any path on the Teams host to the Teams gatekeeper", async () => {
+    // Teams is a whole-instance resource: a deep link to a channel, a chat, or a single message is
+    // the same connected surface, so the path is not consulted.
+    for (const url of [
+      "https://teams.microsoft.com/",
+      "https://teams.microsoft.com",
+      "https://teams.microsoft.com/v2/",
+      "https://teams.microsoft.com/l/channel/19:abc/General?groupId=xyz",
+    ]) {
+      const result = await user.getGatekeeperClassFor(url);
 
+      expect(result.resource.urlPattern).toBe(TEAMS_PATTERN);
+      expect(result.class).toEqual({
+        teamsGatekeeperStub: { props: { userObjectId: DO_ID } },
+      });
+    }
+  });
+
+  it("refuses a lookalike Teams host", async () => {
+    // The host is matched exactly, so a suffix or a path that merely mentions it binds nothing.
+    await expect(user.getGatekeeperClassFor("https://teams.microsoft.com.evil.com/"))
+      .rejects.toThrow(/cannot connect this URL/i);
+    await expect(user.getGatekeeperClassFor("https://evil.example/teams.microsoft.com/"))
+      .rejects.toThrow(/cannot connect this URL/i);
+    await expect(user.getGatekeeperClassFor("https://not-teams.microsoft.com/"))
+      .rejects.toThrow(/cannot connect this URL/i);
+  });
+
+  it("serves a configurator frame per resource", async () => {
     // The generated configurator HTML is a Text module the worker bundler inlines; under vitest the
     // import resolves to the module reference instead, so this asserts the wiring, not the markup.
-    expect(typeof frame.iframeHtml).toBe("string");
-    expect(frame.iframeHtml.length).toBeGreaterThan(0);
-    expect(frame.ui).toBeDefined();
+    for (const pattern of [MAIL_PATTERN, TEAMS_PATTERN]) {
+      const frame = await user.startResourceConfigurator(pattern);
+
+      expect(typeof frame.iframeHtml).toBe("string");
+      expect(frame.iframeHtml.length).toBeGreaterThan(0);
+      expect(frame.ui).toBeDefined();
+    }
     await expect(user.startResourceConfigurator("https://example.com/*"))
       .rejects.toThrow(/Unsupported resource configurator/i);
   });
@@ -385,6 +416,18 @@ describe("resource surface", () => {
       "https://graph.microsoft.com/Mail.readwrite", "User.Read",
     ]);
     await expect(user.ensureResources([MAIL_PATTERN])).resolves.toEqual({});
+  });
+
+  it("expands a mail-only grant to cover Teams without narrowing it", async () => {
+    context.storage.kv.put("grantedScopes", ["Mail.ReadWrite", "User.Read"]);
+
+    const expansion = await user.ensureResources([TEAMS_PATTERN]);
+
+    expect(expansion.url).toContain(`/gatekeeper/microsoft/${DO_ID}/`);
+    // The reconnect re-requests the union, so the mailbox is not dropped on the way to adding Teams.
+    const requested = context.storage.kv.get<string[]>("requestedScopes")!;
+    expect(requested).toContain("Mail.ReadWrite");
+    expect(requested).toContain("ChannelMessage.Read.All");
   });
 
   it("rejects unknown resource patterns", async () => {

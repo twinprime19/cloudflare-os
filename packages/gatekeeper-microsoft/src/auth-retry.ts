@@ -51,6 +51,30 @@ export type AccessTokenProvider = (opts?: AccessTokenRequest) => Promise<string>
  */
 export type CredentialsRejectedReporter = (detail: string) => Promise<void>;
 
+/**
+ * How long this client will sit out a throttling `Retry-After`, and what to do when the server asks
+ * for longer.
+ *
+ * Without a policy, a `Retry-After` is clamped to `MAX_DELAY_MS` and the request is replayed anyway.
+ * That is right for an endpoint that asks for seconds, and wrong for one that asks for a minute:
+ * replaying early lands back in the same throttle and spends another request on it. A client whose
+ * endpoints throttle in minutes therefore sets a real ceiling and fails fast beyond it — telling the
+ * caller how long to stay away is worth more than another rejected request.
+ *
+ * This applies to a 429 only. A `Retry-After` on a 5xx is a hint about an outage rather than a wait
+ * the server is enforcing, so it keeps the clamp-and-replay behavior and never fails fast: a
+ * temporary error should not be reported to the caller as throttling.
+ */
+export type RetryAfterPolicy = {
+  /** Longest server-requested wait this client will actually wait out, in milliseconds. */
+  maxWaitMs: number;
+  /**
+   * The error thrown instead of retrying, when the server asks for longer than `maxWaitMs`. Given
+   * the requested wait so it can be reported to whoever has to decide when to come back.
+   */
+  tooLong: (requestedMs: number) => Error;
+};
+
 export type FetchWithAuthRetryOptions = {
   /**
    * Total attempts for transient failures, including the first. Defaults to 3. The one-shot 401
@@ -61,6 +85,11 @@ export type FetchWithAuthRetryOptions = {
   timeoutMs?: number;
   /** Invoked once when a 401 carries a claims challenge. */
   onCredentialsRejected?: CredentialsRejectedReporter;
+  /**
+   * How a long `Retry-After` is handled. Omitted keeps the clamp-and-replay behavior described on
+   * `RetryAfterPolicy`.
+   */
+  retryAfter?: RetryAfterPolicy;
 };
 
 const BASE_DELAY_MS = 500;
@@ -99,13 +128,22 @@ function canRetry(status: number, method: string): boolean {
   return false;
 }
 
+/**
+ * The wait a `Retry-After` header asks for, in milliseconds, or undefined when it asks for nothing
+ * this code can act on. Only the delta-seconds form is parsed; the HTTP-date form yields NaN and
+ * leaves the caller on exponential backoff, which is fine.
+ */
+function retryAfterMs(retryAfter: string | null): number | undefined {
+  if (!retryAfter) return undefined;
+  let seconds = parseInt(retryAfter, 10);
+  if (Number.isNaN(seconds)) return undefined;
+  return Math.max(seconds, 0) * 1000;
+}
+
 function backoffDelayMs(attempt: number, retryAfter: string | null): number {
-  // Prefer the server's Retry-After when present, capped. Only the delta-seconds form is parsed;
-  // the HTTP-date form yields NaN and falls through to exponential backoff, which is fine.
-  if (retryAfter) {
-    let seconds = parseInt(retryAfter, 10);
-    if (!Number.isNaN(seconds)) return Math.min(seconds * 1000, MAX_DELAY_MS);
-  }
+  // Prefer the server's Retry-After when present, capped.
+  let requested = retryAfterMs(retryAfter);
+  if (requested !== undefined) return Math.min(requested, MAX_DELAY_MS);
   // Exponential backoff with full jitter.
   let capped = Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
   return Math.random() * capped;
@@ -193,7 +231,20 @@ export async function fetchWithAuthRetry(
     }
 
     if (replayable && canRetry(response.status, method) && attempt < retries - 1) {
-      let delay = backoffDelayMs(attempt, response.headers.get("Retry-After"));
+      let header = response.headers.get("Retry-After");
+      let requested = retryAfterMs(header);
+      // The ceiling is a throttling policy: only a 429 states a wait the server will hold the
+      // caller to. A 5xx stays on the default backoff, which cannot fail fast.
+      let policy = response.status === 429 ? opts.retryAfter : undefined;
+      if (policy && requested !== undefined && requested > policy.maxWaitMs) {
+        // Waiting this out would hold the caller for longer than it agreed to, and replaying sooner
+        // just re-enters the throttle, so the wait is reported instead of served.
+        await response.body?.cancel();
+        throw policy.tooLong(requested);
+      }
+      let delay = policy && requested !== undefined
+          ? Math.min(requested, policy.maxWaitMs)
+          : backoffDelayMs(attempt, header);
       await response.body?.cancel();
       await new Promise(resolve => setTimeout(resolve, delay));
       attempt++;

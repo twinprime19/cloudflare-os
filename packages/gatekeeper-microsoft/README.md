@@ -6,9 +6,18 @@ Microsoft Entra ID (Azure AD) integration for Gadgets. It serves two purposes:
   Microsoft" appears on the login page. Sign-in requests only the identity scopes (`openid`,
   `profile`, `email`, `User.Read`) to read the account's **verified email**, which becomes the
   user's identity. The sign-in grant is transient (discarded right after the email is read).
-- **Connections:** when a user connects Microsoft, `Mail.ReadWrite` (plus `offline_access`) is
-  requested for the Outlook mailbox at `https://outlook.office.com/mail/`, so gadgets can read,
-  organize, and draft replies to mail on the user's behalf.
+- **Connections:** when a user connects Microsoft, scopes are requested for the grantable resources
+  they enable (plus `offline_access`):
+  - **Outlook mailbox** at `https://outlook.office.com/mail/` — `Mail.ReadWrite`, so gadgets can
+    read, organize, and draft replies to mail on the user's behalf.
+  - **Microsoft Teams** at `https://teams.microsoft.com/` — five read-only scopes, so gadgets can
+    read the teams, channels, chats, members, and messages the user can already see. Nothing in
+    this resource writes: there is no method that posts, edits, deletes, marks read, joins, or
+    leaves.
+
+  A connect flow that names no resources requests **every** resource's scopes, which is what the
+  generic "Connect Account" button does. Both resources' permissions must therefore be consented
+  before that button works — see [Step 2](#step-2-grant-the-api-permissions).
 
 A single Entra app registration is used for both, and it is pinned to **one tenant** — the worker
 needs `CLIENT_ID`, `CLIENT_SECRET`, and `TENANT_ID` before it will answer anything.
@@ -31,6 +40,27 @@ via a size ladder — `/me/photos/240x240/$value` → `/me/photo/$value` → `/m
 accepting only JPEG/PNG bodies up to 100 KB. No additional OAuth scopes or tenant admin consent are
 needed: `User.Read`, already granted for sign-in (see Step 2 in the app registration below), covers
 both `/me` and `/me/photos/…`.
+
+## Microsoft Teams: the limits of this version
+
+What the Teams resource serves is the read side of the account's own membership: joined teams, their
+channels and rosters, channel messages and replies, the user's chats with their members and
+messages, and a search across them with on-demand hydration of a hit. Three limits are worth
+knowing before enabling it, because none of them is a setting a deployment can change.
+
+- **A Teams-bound gadget is single-user.** A connection covers every team, channel, and private chat
+  the connected account takes part in, and no second user can be shown to have access to all of
+  that — so `addObserver` throws, and the gadget is observable only by the account that connected
+  it. Sharing would mean verifying each observer against their own Teams membership through their
+  own delegated token and serving only the channels they belong to (private chats could never be
+  shared). That is a later change, not a configuration.
+- **A grant cannot be narrowed afterwards.** Reconnecting an account re-requests its full breadth,
+  so there is no "keep the mailbox, drop Teams". Shedding Teams means disconnecting the Microsoft
+  account altogether and connecting again naming only the mailbox.
+- **Nothing is live.** Reads happen when a gadget asks for them; no arriving message wakes anything.
+  Change notifications would need a public subscription endpoint renewed every few days, and the
+  bulk `getAllMessages` / `/delta` feeds are application permissions — neither fits a delegated,
+  on-demand gatekeeper. An agent therefore sees what it looks at, when it looks.
 
 ## Setting up the Entra app registration
 
@@ -57,16 +87,53 @@ both `/me` and `/me/photos/…`.
 Under **API permissions** > **Add a permission** > **Microsoft Graph** > **Delegated permissions**,
 add:
 
-| Permission | Why |
-| --- | --- |
-| `openid`, `profile`, `email` | sign-in and the id token claims the email is read from |
-| `offline_access` | refresh tokens, so a connected mailbox survives past the first hour |
-| `User.Read` | the signed-in user's profile, and the tenant's verified domain list |
-| `Mail.ReadWrite` | read messages and folders, flip read state, move messages, draft replies |
+| Permission | Admin consent | Why |
+| --- | --- | --- |
+| `openid`, `profile`, `email` | no | sign-in and the id token claims the email is read from |
+| `offline_access` | no | refresh tokens, so a connected mailbox survives past the first hour |
+| `User.Read` | no | the signed-in user's profile, and the tenant's verified domain list |
+| `Mail.ReadWrite` | no | read messages and folders, flip read state, move messages, draft replies |
+| `Team.ReadBasic.All` | no | list the teams the user has joined, and read a team's name |
+| `Channel.ReadBasic.All` | no | list and read the channels of those teams |
+| `TeamMember.Read.All` | **yes** | read a team's roster |
+| `ChannelMessage.Read.All` | **yes** | read channel messages and their replies |
+| `Chat.Read` | no* | read the user's chats, their members, and their messages |
 
 Then click **Grant admin consent for &lt;tenant&gt;**. Many tenants block user consent; without
 admin consent those users hit `AADSTS65001` ("The user or administrator has not consented") on
 their first sign-in and can never get past it.
+
+**\*The "admin consent" column is Microsoft's static classification of the permission, not a
+prediction about this tenant.** Under "Secure by Default" (message center post `MC1163922`) it is
+the tenant's **consent policy** that decides what a user may agree to, and the default policy
+withholds permissions that read other people's data. A "no" row can therefore still stop at a
+prompt only an administrator can complete — `Chat.Read` most of all, since chat messages are by
+definition other people's. Granting admin consent for the whole table once makes the distinction
+moot, which is why the step above is not optional. **Record this tenant's actual posture here**
+when the permissions are added: one line saying whether a user could consent unaided, or the
+administrator had to.
+
+**Consent all of a resource's permissions or none.** A resource counts as granted only when the
+grant covers *every* one of its scopes, so declining one Teams permission leaves Teams unavailable
+rather than partly working — and the symptom is a connect flow that keeps offering a reconnect link.
+When that happens the worker logs the shortfall at `warn` with
+`event: "microsoft.consent.resource.ungranted"`, naming the resource and the missing scopes; check
+the logs before re-running the consent. To recover: consent the permissions the log names, then have
+the user **connect Microsoft again**. A grant records what it covered at the moment it was issued,
+so an account that connected during the shortfall stays without that resource until it reconnects —
+fixing the consent alone changes nothing for the accounts already connected.
+
+**Order of operations.** Because a connect flow that names no resources asks for every resource's
+scopes, the permissions above must be consented in the tenant **before** a build carrying a new
+resource reaches users. Otherwise the generic "Connect Account" button fails with `AADSTS65001` for
+everyone, including users who only wanted mail.
+
+**Adding permissions to a registration that is already deployed.** Same place — **API
+permissions** > **Add a permission** > **Microsoft Graph** > **Delegated permissions** — add the
+five Teams permissions, then click **Grant admin consent for &lt;tenant&gt;** again; consent covers
+the whole list, and re-granting does not disturb the mailbox grants already in use. No redeploy is
+needed for the consent itself, and none should happen before it: the build carrying the new
+resource comes after, per the order of operations above.
 
 ### Step 3: Create a client secret — and diarize its expiry
 
@@ -212,7 +279,10 @@ The token exchange failed. Open the pop-up's error text before it closes, or che
 - `AADSTS7000222` — the client secret has expired. See the rotation runbook above.
 - `AADSTS7000215` — the client secret value is wrong (a Secret ID was copied instead of the Value,
   or the secret was rotated without updating the deployment).
-- `AADSTS65001` — admin consent was never granted for the delegated permissions (Step 2).
+- `AADSTS65001` — admin consent was never granted for the delegated permissions (Step 2). It is
+  also what a generic "Connect Account" looks like while a newly added resource is unconsented:
+  that flow names no resource, so it asks for every resource's scopes and fails for everyone,
+  including a user who only wanted mail.
 - `AADSTS9002325` — the app's redirect URI is registered under the "Single-page application"
   platform instead of "Web". Delete the SPA platform entry in the app registration and register the
   URI under "Web" platform only.
@@ -226,6 +296,15 @@ One of `CLIENT_ID`, `CLIENT_SECRET`, `TENANT_ID` is missing. In dev, check all t
 
 The app registration's **Web** redirect URI must match `${PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth`
 exactly — no trailing slash, and `http` (not `https`) for `localhost`.
+
+### Every Graph call fails while the account still looks connected
+
+Conditional Access — or continuous access evaluation — rejected the token's claims, and Graph
+answers `401` with `WWW-Authenticate: Bearer … error="insufficient_claims"`. Minting again cannot
+help, since the refresh token produces a token with the same claims, so the gatekeeper does not
+retry: it reports the credentials as dead, which is what raises the reconnect prompt. The user
+reconnects and satisfies whatever the policy now asks for (MFA, a compliant device). This is one
+shared request path, so Teams behaves exactly as mail does here.
 
 ### Sign-in is refused for a user who exists in the directory
 
@@ -248,3 +327,28 @@ After completing the sign-in flow, verify success in two places:
 ```
 pnpm --filter @gadgets/microsoft-gatekeeper build
 ```
+
+## Durable Object migrations, and how to back out a resource
+
+Each resource type has its own Durable Object class, and every class is registered by a `migrations`
+tag in `wrangler.jsonc` — `v0` for `UserAccount` and `OutlookMailGatekeeperImpl`, `v1` for
+`TeamsGatekeeperImpl`. Tags are appended, never edited: rewriting an applied tag makes the next
+deploy disagree with the migration history the account already holds.
+
+**A deployment that has applied `v1` cannot be rolled back past it.** `wrangler rollback` refuses to
+cross a Durable Object migration, and redeploying a pre-`v1` pin fails the same way, because the
+account's history records a class the older bundle does not declare. Recovery is therefore forward,
+not backward.
+
+**To withdraw a resource from users without redeploying an older build**, remove three things and
+ship that:
+
+1. its entry in `RESOURCE_SCOPES` (`src/microsoft.ts`) — it stops being offered, stops being
+   consented for, and disappears from the connect UI;
+2. its branch in `getGatekeeperClassFor` — no URL routes to it;
+3. its branch in `startResourceConfigurator` — no frame is served for it.
+
+**Keep the Durable Object class exported and keep its migration tag in place.** They are what the
+migration history refers to; dropping either turns the next deploy into the same mismatch a rollback
+would have caused. The resource is then invisible to users, existing objects are inert, and the
+other resources are untouched.
