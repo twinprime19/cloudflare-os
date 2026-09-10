@@ -3,11 +3,27 @@ import {
   assertChatMessageWithinBudget,
   validateChatAttachmentUpload,
 } from "../src/chat-attachment-validation.js";
+import { isToMarkdownSupportedMimeType } from "../src/doc-to-markdown.js";
 import type { DocToMarkdownEnv } from "../src/doc-to-markdown.js";
 
+const PDF_MIME_TYPE = "application/pdf";
 const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const XLS_MIME_TYPE = "application/vnd.ms-excel";
+const XLSM_MIME_TYPE = "application/vnd.ms-excel.sheet.macroenabled.12";
+const XLSB_MIME_TYPE = "application/vnd.ms-excel.sheet.binary.macroenabled.12";
+const ODT_MIME_TYPE = "application/vnd.oasis.opendocument.text";
+const ODS_MIME_TYPE = "application/vnd.oasis.opendocument.spreadsheet";
 const PPTX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const DOC_MIME_TYPE = "application/msword";
+
+// The ZIP local-file header every ZIP-based document format starts with, and nothing else: bytes
+// that look like some archive but carry no marker identifying the format they claim to be.
+function zipBytes(totalBytes = 64): Uint8Array {
+  const bytes = new Uint8Array(totalBytes);
+  bytes.set([0x50, 0x4b, 0x03, 0x04]);
+  return bytes;
+}
 
 // Minimal bytes that pass the pre-conversion content checks: the ZIP local-file header every
 // OOXML package starts with, followed by the manifest entry name that identifies it as OOXML.
@@ -17,6 +33,25 @@ function ooxmlBytes(totalBytes = 64): Uint8Array {
   const bytes = new Uint8Array(Math.max(totalBytes, header.length + marker.length));
   bytes.set(header);
   bytes.set(marker, header.length);
+  return bytes;
+}
+
+// An OpenDocument package stores its `mimetype` entry first and uncompressed, so the entry name
+// followed by the ODF media type appears literally in the raw bytes. Only the media-type prefix
+// shared by every ODF format is checked, so one fixture stands in for .odt and .ods alike.
+function odfBytes(totalBytes = 64): Uint8Array {
+  const header = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+  const marker = new TextEncoder().encode("mimetypeapplication/vnd.oasis.opendocument.text");
+  const bytes = new Uint8Array(Math.max(totalBytes, header.length + marker.length));
+  bytes.set(header);
+  bytes.set(marker, header.length);
+  return bytes;
+}
+
+// The OLE2 compound-file header that legacy Excel workbooks start with.
+function oleBytes(totalBytes = 64): Uint8Array {
+  const bytes = new Uint8Array(totalBytes);
+  bytes.set([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
   return bytes;
 }
 
@@ -42,13 +77,25 @@ function makeConversionEnv(markdown = "# Converted\n\nBody text.") {
 }
 
 describe("document upload conversion", () => {
-  it("converts DOCX and XLSX for every provider", async () => {
+  it("converts every office document for every provider", async () => {
+    // No provider has a native input for these formats, so the conversion decision cannot depend
+    // on the model -- unlike PDF, which has native paths and is covered separately below.
+    const documents: readonly (readonly [string, Uint8Array, string])[] = [
+      [DOCX_MIME_TYPE, ooxmlBytes(), "quarterly.docx"],
+      [XLSX_MIME_TYPE, ooxmlBytes(), "quarterly.xlsx"],
+      [XLS_MIME_TYPE, oleBytes(), "quarterly.xls"],
+      [XLSM_MIME_TYPE, ooxmlBytes(), "quarterly.xlsm"],
+      [XLSB_MIME_TYPE, ooxmlBytes(), "quarterly.xlsb"],
+      [ODT_MIME_TYPE, odfBytes(), "quarterly.odt"],
+      [ODS_MIME_TYPE, odfBytes(), "quarterly.ods"],
+    ];
+
     for (const provider of ["cloudflare", "ollama", "anthropic", "openai", "google"] as const) {
-      for (const mimeType of [DOCX_MIME_TYPE, XLSX_MIME_TYPE]) {
+      for (const [mimeType, content, name] of documents) {
         const { toMarkdown, getEnv } = makeConversionEnv();
 
         const result = await validateChatAttachmentUpload(
-          { mimeType, content: ooxmlBytes(), name: "quarterly.docx" },
+          { mimeType, content: new Uint8Array(content), name },
           provider,
           getEnv,
         );
@@ -56,7 +103,7 @@ describe("document upload conversion", () => {
         expect(toMarkdown).toHaveBeenCalledTimes(1);
         expect(result.convertedFrom).toBe(mimeType);
         expect(result.attachment.mimeType).toBe("text/markdown");
-        expect(result.attachment.name).toBe("quarterly.docx");
+        expect(result.attachment.name).toBe(name);
         expect(new TextDecoder().decode(result.attachment.content)).toContain("# Converted");
       }
     }
@@ -216,9 +263,9 @@ describe("document upload conversion", () => {
     )).rejects.toThrow("This document produced too much text to attach.");
   });
 
-  it("describes images embedded in uploaded documents", async () => {
-    // The cost boundary: uploads pay for image description, and web-fetch must not (see
-    // web-fetch.test.ts for the other half of this pair).
+  it("never describes images embedded in uploaded documents", async () => {
+    // Describing an embedded image is the only part of conversion that spends Workers AI models,
+    // and it makes the upload wait on those calls. Text extraction alone is free and fast.
     const { toMarkdown, getEnv } = makeConversionEnv();
 
     await validateChatAttachmentUpload(
@@ -228,8 +275,67 @@ describe("document upload conversion", () => {
     );
 
     const options = toMarkdown.mock.calls[0][1];
-    expect(options.conversionOptions.docx.images).toEqual({ convert: true, maxConvertedImages: 20 });
-    expect(options.conversionOptions.pdf.images).toEqual({ convert: true, maxConvertedImages: 20 });
+    expect(options.conversionOptions.docx.images).toEqual({ convert: false });
+    expect(options.conversionOptions.pdf.images).toEqual({ convert: false });
+    expect(options.conversionOptions.html.images.convert).toBe(false);
+  });
+
+  it("rejects legacy Word documents", async () => {
+    // Cloudflare's toMarkdown() has no .doc converter, so the bytes must never reach it.
+    const { toMarkdown, getEnv } = makeConversionEnv();
+
+    await expect(validateChatAttachmentUpload(
+      { mimeType: DOC_MIME_TYPE, content: oleBytes(), name: "legacy.doc" },
+      "cloudflare",
+      getEnv,
+    )).rejects.toThrow("Unsupported file type");
+    expect(toMarkdown).not.toHaveBeenCalled();
+  });
+
+  it("rejects bytes that are not the legacy workbook container", async () => {
+    const { toMarkdown, getEnv } = makeConversionEnv();
+
+    await expect(validateChatAttachmentUpload(
+      { mimeType: XLS_MIME_TYPE, content: new Uint8Array(64), name: "book.xls" },
+      "cloudflare",
+      getEnv,
+    )).rejects.toThrow("Chat attachment content does not match its MIME type.");
+    expect(toMarkdown).not.toHaveBeenCalled();
+  });
+
+  it("rejects a ZIP without the OpenDocument marker", async () => {
+    const { toMarkdown, getEnv } = makeConversionEnv();
+
+    await expect(validateChatAttachmentUpload(
+      { mimeType: ODT_MIME_TYPE, content: zipBytes(), name: "notes.odt" },
+      "cloudflare",
+      getEnv,
+    )).rejects.toThrow("Chat attachment content does not match its MIME type.");
+    expect(toMarkdown).not.toHaveBeenCalled();
+  });
+
+  it("rejects a macro-enabled workbook without the OOXML manifest", async () => {
+    const { toMarkdown, getEnv } = makeConversionEnv();
+
+    await expect(validateChatAttachmentUpload(
+      { mimeType: XLSM_MIME_TYPE, content: zipBytes(), name: "macros.xlsm" },
+      "cloudflare",
+      getEnv,
+    )).rejects.toThrow("Chat attachment content does not match its MIME type.");
+    expect(toMarkdown).not.toHaveBeenCalled();
+  });
+
+  it("converts only types toMarkdown accepts", () => {
+    // The convertible set is a subset of Cloudflare's supported-format list; a type outside it
+    // would be accepted at upload and then fail in the converter.
+    const convertible = [
+      PDF_MIME_TYPE, DOCX_MIME_TYPE, XLSX_MIME_TYPE, XLS_MIME_TYPE, XLSM_MIME_TYPE,
+      XLSB_MIME_TYPE, ODT_MIME_TYPE, ODS_MIME_TYPE,
+    ];
+
+    for (const mimeType of convertible) {
+      expect(isToMarkdownSupportedMimeType(mimeType)).toBe(true);
+    }
   });
 
   it("refuses conversion when no conversion environment is available", async () => {

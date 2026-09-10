@@ -14,6 +14,7 @@ import './styles.css'
 import FrontendErrorBoundary from './FrontendErrorBoundary'
 import { installWorkshopErrorReporting, reportIssue } from './errorReporting'
 import { applySiteFavicon, cacheBustSiteLogoUrl } from './siteLogoUtils'
+import { installDropSocketHandler, isConnectionPaused, waitWhilePaused } from './connectionPause'
 
 // ---------------------------------------------------------------------------
 // Dev auto-login: if VITE_DEV_AUTO_LOGIN=true, automatically create/login
@@ -113,6 +114,8 @@ async function reconnect(): Promise<RpcStub<PublicApi>> {
   let skipSleep = Date.now() - lastConnectTime >= INITIAL_BACKOFF_MS;
   let backoff = INITIAL_BACKOFF_MS;
   for (;;) {
+    // A deliberate pause (idle tab) parks here instead of dialing; on resume, dial at once.
+    if (await waitWhilePaused()) skipSleep = true;
     if (!skipSleep) {
       await sleep(backoff * (0.85 + 0.3 * Math.random()));  // jittered against stampedes
       backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
@@ -127,6 +130,9 @@ async function reconnect(): Promise<RpcStub<PublicApi>> {
       disposeQuietly(candidate);
       continue;
     }
+
+    // A pause that landed while this probe was in flight must not end with a live socket.
+    if (isConnectionPaused()) { disposeQuietly(candidate); continue; }
 
     lastProvenAt = Date.now();
     isConnectionLost = false;
@@ -182,6 +188,9 @@ window.addEventListener('online', () => void probeOnWake());
 // Current stub. handleBroken() will replace this on disconnect.
 installWorkshopErrorReporting()
 let currentStub = startConnection();
+// Disposal fires onRpcBroken → handleBroken, the same path probeOnWake uses; during an outage the
+// placeholder is already published and the parked loop is all that is needed.
+installDropSocketHandler(() => { if (!isConnectionLost) disposeQuietly(currentStub); });
 
 const router = createRouter()
 applyStoredThemeMode()

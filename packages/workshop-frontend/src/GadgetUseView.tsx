@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Hexagon } from '@phosphor-icons/react'
 import { FormatGlyph } from './components/format/FormatVisuals'
@@ -41,6 +42,8 @@ type Props = {
   metadata: GadgetMetadata
   authenticatedApi: RpcStub<AuthenticatedApi>
   currentUserId: string | null
+  // Paused / reconnecting chip from the editor; the only resume affordance on this route.
+  connectionChip?: ReactNode
 }
 
 // Matches the top bar height used by the full editor (and the home page header).
@@ -55,6 +58,7 @@ export default function GadgetUseView({
   metadata,
   authenticatedApi,
   currentUserId,
+  connectionChip,
 }: Props) {
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-kumo-base">
@@ -111,6 +115,7 @@ export default function GadgetUseView({
 
         {/* Right: presence and user menu */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          {connectionChip}
           <GadgetExportMenu
             gadget={gadget}
             gadgetTitle={gadgets.find(g => g.id === selectedGadgetId)?.title ?? 'Gadget'}

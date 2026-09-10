@@ -33,6 +33,7 @@ export type VitestTask = {
   command: string | string[]
   input: (GlobWithBase | { auto: boolean })[]
   output: (GlobWithBase | { auto: boolean })[]
+  env: string[]
 }
 
 /** A Vite+ config carrying a `run.tasks` map. */
@@ -104,9 +105,23 @@ const DEFAULT_SCRATCH_EXCLUSIONS: GlobWithBase[] = [
 ]
 
 /**
+ * A command for one of the builders below: the bare string for the default watchdog thresholds, or
+ * the object form for a suite whose healthy silences run longer than `IDLE_TIMEOUT_SECONDS`.
+ *
+ * Overriding via the command keeps `withTestTimeout` unary, which it must be:
+ * `vitestTaskWithExclusions` passes it to `Array.prototype.map`, so a second positional parameter
+ * would silently receive the index.
+ */
+export type TestCommand = string | { command: string; idleSeconds: number }
+
+/**
  * Seconds of silence after which a command is considered wedged. A healthy `vitest run` prints a
  * line per completed test file, so silence -- not wall clock -- is what distinguishes a hang from a
  * slow suite.
+ *
+ * That holds only where files complete more often than this. A suite dominated by import rather than
+ * execution is quiet for longer, and raises the threshold for itself with the object form of
+ * `TestCommand`.
  */
 const IDLE_TIMEOUT_SECONDS = 60
 
@@ -130,11 +145,32 @@ const TOTAL_TIMEOUT_SECONDS = 600
  * The thresholds are baked into the string rather than read from the environment for the same
  * fingerprint reason: a cached `vp` run strips undeclared env vars, so an override would silently
  * not apply (and would owe `scripts/env-passthrough.test.ts` an entry). Here a policy change is a
- * visible, fingerprinted change.
+ * visible, fingerprinted change -- including a per-command `idleSeconds`, which lands in the command
+ * string like any other.
+ *
+ * Only the idle threshold is overridable: `TOTAL_TIMEOUT_SECONDS` is the backstop against a real
+ * hang, and a command able to opt out of it would be unbounded again.
+ *
+ * The off switch, `TESTS_WITH_TIMEOUT_ENV`, is the one variable read, and it is declared in `env` so
+ * that it is fingerprinted too.
  */
-export const withTestTimeout = (command: string): string =>
-  `gadgets-with-timeout` +
-  ` --idle ${IDLE_TIMEOUT_SECONDS} --max ${TOTAL_TIMEOUT_SECONDS} -- ${command}`
+export const withTestTimeout = (command: TestCommand): string => {
+  const { command: argv, idleSeconds } =
+    typeof command === 'string' ? { command, idleSeconds: IDLE_TIMEOUT_SECONDS } : command
+  return `gadgets-with-timeout --idle ${idleSeconds} --max ${TOTAL_TIMEOUT_SECONDS} -- ${argv}`
+}
+
+/**
+ * The `env` every task wrapping `withTestTimeout` must declare, if it is cached.
+ *
+ * `TESTS_WITH_TIMEOUT_DISABLE`, set to anything non-empty, turns the watchdog off (see the header of
+ * `with-timeout.ts`). A cached `vp` task sees none of the ambient environment unless the task
+ * declares a variable; `env` both passes it through and fingerprints it, so a supervised run never
+ * replays an unsupervised one. The builders below add it to every vitest `test` task; a
+ * hand-declared task that wraps `withTestTimeout` spreads it itself, and `scripts/vitest-task.test.ts`
+ * checks that each one either does so or is `cache: false`.
+ */
+export const TESTS_WITH_TIMEOUT_ENV: string[] = ['TESTS_WITH_TIMEOUT_DISABLE']
 
 /**
  * The `test` task for a package, given the vitest invocation its `test` script used to hold.
@@ -149,7 +185,7 @@ export const withTestTimeout = (command: string): string =>
  * unbounded.
  */
 export function vitestTask(
-  command: string | string[],
+  command: TestCommand | TestCommand[],
   extraExclusions: GlobWithBase[] = [],
 ): VitestTask {
   return vitestTaskWithExclusions(command, [...DEFAULT_SCRATCH_EXCLUSIONS, ...extraExclusions])
@@ -164,13 +200,14 @@ export function vitestTask(
  * Excluding it would leave the task with no backend information at all.
  */
 export function vitestTaskWithExclusions(
-  command: string | string[],
+  command: TestCommand | TestCommand[],
   exclusions: GlobWithBase[],
 ): VitestTask {
   return {
     command: Array.isArray(command) ? command.map(withTestTimeout) : withTestTimeout(command),
     input: [{ auto: true }, ...exclusions],
     output: [{ auto: true }, ...exclusions],
+    env: TESTS_WITH_TIMEOUT_ENV,
   }
 }
 
@@ -179,7 +216,7 @@ export function vitestTaskWithExclusions(
  * Packages that do use `withVitestTask()` or `vitestTask()` instead.
  */
 export default function vitestTaskViteConfig(
-  command: string | string[],
+  command: TestCommand | TestCommand[],
   extraExclusions: GlobWithBase[] = [],
 ): { run: { tasks: { test: VitestTask } } } {
   return {
@@ -197,7 +234,7 @@ export default function vitestTaskViteConfig(
  */
 export function withVitestTask<T extends RunTasksConfig>(
   config: T,
-  command: string | string[],
+  command: TestCommand | TestCommand[],
 ): T & { run: { tasks: Record<string, unknown> } } {
   return {
     ...config,

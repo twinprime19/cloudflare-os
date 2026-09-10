@@ -1,0 +1,15 @@
+# Workspace idle pause
+
+An open workspace tab keeps its Overseer Durable Object (and the user's UserDurableObject) in memory through the live RPC WebSocket, and idle tabs were 94% of billed DO duration. The frontend now closes that socket on purpose when nobody is using the tab, then reconnects through the ordinary outage path. No server code changed.
+
+**What pauses.** The whole RPC socket, for the workspace route (`/workspace/<id>`; `/gadget/<id>` redirects there), never individual stubs. The home page is not covered. The Worker session ends, every DO stub behind it is released, and the Overseer and User DOs go idle within their normal grace period. Calls issued while paused queue on the placeholder stub and flush on resume, so chat history, the composer draft, and the gadget iframe (with its in-frame state) all survive.
+
+**Thresholds.** Hidden tab: 5 minutes. Visible tab with no input: 15 minutes. Mouse movement is not input; clicks, keys, touch, wheel, scroll, and focus inside the gadget iframe defer the pause. No pause while the selected chat is streaming or the server is waiting on a client-hosted observer callback. Constants live in `packages/workshop-frontend/src/useWorkspaceIdle.ts`; the pause flag and reconnect parking live in `connectionPause.ts`, hooked into `main.tsx` and `GadgetUI.tsx`.
+
+**Resume is deliberate.** Nothing wakes a paused workspace by itself: not the tab becoming visible, not clicking around, not typing. Reading what is already on screen costs nothing, and a revived Durable Object stays awake until the next threshold. What resumes: sending from the composer (the message goes out after the reconnect), approving or denying an action or connection request, clicking the Paused chip, or leaving the workspace. Anything else done while paused (a gadget button, a code edit, opening another gadget view) queues until one of those happens; the chip is the hint, and it is present on the use-only view too.
+
+**What the user sees.** While paused, the top-bar chip reads "Paused — click to reconnect" and is a button. The usual "Reconnecting…" chip appears only during the resume itself.
+
+**Verifying on staging.** Query `durableObjectsPeriodicGroups` with dimensions `namespaceId, objectId` (objectId equals the `<id>` in the workspace URL) and sum `duration, activeTime, subrequests, inboundWebsocketMsgCount`. A paused workspace's `activeTime` flatlines within about two minutes; the user's UserDurableObject too. Full query: `plans/reports/durable-objects-cost-consult-260904-1306-do-billing-attribution-report.md`.
+
+**Known limit.** The hook runs only while the tab's JavaScript runs. Frozen tabs (Edge sleeping tabs, Chrome memory saver) and a laptop asleep with the workspace visible never reach a threshold; only Cloudflare's own idle WebSocket close releases those, same as before this change. Rule: if the staging query still shows Overseers awake with 0 subrequests and 0 inbound messages 24–48 h after deploy, that residual is frozen or asleep tabs, and the next step is a Worker-side idle close (a server change). Decide then, with data.

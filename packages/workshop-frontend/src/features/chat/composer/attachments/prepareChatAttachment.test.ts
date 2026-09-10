@@ -56,4 +56,35 @@ describe("prepareChatAttachment", () => {
       "Attachments must be 10.0 MB or smaller.",
     );
   });
+
+  it.each([
+    "application/vnd.ms-excel",
+    "application/vnd.ms-excel.sheet.macroenabled.12",
+    "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+    "application/vnd.oasis.opendocument.text",
+    "application/vnd.oasis.opendocument.spreadsheet",
+  ])("applies the document limit to every convertible office type: %s", async (mimeType) => {
+    const file = new File(
+      [new Uint8Array(MAX_CHAT_ATTACHMENT_BYTES + 1)],
+      "workbook",
+      { type: mimeType },
+    );
+
+    await expect(prepareChatAttachment(file)).resolves.toEqual({ blob: file, mimeType });
+  });
+
+  // The Blob constructor lowercases `type`, so the platform values a picker can hand through --
+  // camel-cased on Windows, parameterised on some Linux desktops -- have to be set on the file.
+  it.each([
+    [
+      "application/vnd.ms-excel.sheet.macroEnabled.12",
+      "application/vnd.ms-excel.sheet.macroenabled.12",
+    ],
+    ["application/vnd.ms-excel; charset=binary", "application/vnd.ms-excel"],
+  ])("normalizes %s before classifying it", async (rawType, expected) => {
+    const file = new File([new Uint8Array(MAX_CHAT_ATTACHMENT_BYTES + 1)], "workbook");
+    Object.defineProperty(file, "type", { value: rawType });
+
+    await expect(prepareChatAttachment(file)).resolves.toEqual({ blob: file, mimeType: expected });
+  });
 });

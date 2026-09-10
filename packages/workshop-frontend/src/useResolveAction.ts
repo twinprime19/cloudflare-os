@@ -3,6 +3,7 @@ import { useKumoToastManager } from '@cloudflare/kumo'
 import type { RpcStub } from 'capnweb'
 import { t } from '@lingui/core/macro'
 import type { ActionState, Overseer } from '@gadgets/workshop-shared/api'
+import { resumeConnection } from './connectionPause'
 
 type ActionDecision = 'approve' | 'deny'
 
@@ -16,6 +17,7 @@ export function useResolveAction(
   onResolvedRef.current = onResolved
 
   return useCallback(async (actionId: number, decision: ActionDecision) => {
+    resumeConnection()  // deciding an action is a request; a paused workspace wakes for it
     setProcessing(previous => new Set(previous).add(actionId))
     try {
       if (decision === 'approve') await overseer.approveAction(actionId)

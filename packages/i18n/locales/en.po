@@ -185,6 +185,9 @@ msgstr "Add {0}"
 msgid "Add a model to get started"
 msgstr "Add a model to get started"
 
+msgid "Add a new connection"
+msgstr "Add a new connection"
+
 msgid "Add a provider to start building workspaces with AI."
 msgstr "Add a provider to start building workspaces with AI."
 
@@ -222,11 +225,11 @@ msgstr "Add photo"
 msgid "Add provider"
 msgstr "Add provider"
 
-msgid "Add resource"
-msgstr "Add resource"
-
 msgid "Add the apps and accounts your workspaces can use. Connect once, then wire them into anything you build."
 msgstr "Add the apps and accounts your workspaces can use. Connect once, then wire them into anything you build."
+
+msgid "Add to conversation"
+msgstr "Add to conversation"
 
 msgid "Add to library"
 msgstr "Add to library"
@@ -569,9 +572,6 @@ msgstr "Collapse sidebar"
 msgid "Command palette"
 msgstr "Command palette"
 
-msgid "Commands"
-msgstr "Commands"
-
 msgid "Compacting…"
 msgstr "Compacting…"
 
@@ -737,6 +737,9 @@ msgstr "Couldn't load deployment settings."
 
 msgid "Couldn't load older activity"
 msgstr "Couldn't load older activity"
+
+msgid "Couldn’t load skills."
+msgstr "Couldn’t load skills."
 
 msgid "Create"
 msgstr "Create"
@@ -1199,6 +1202,9 @@ msgstr "Filename"
 msgid "Files"
 msgstr "Files"
 
+msgid "Files, connections, and skills"
+msgstr "Files, connections, and skills"
+
 msgid "Filter conversations"
 msgstr "Filter conversations"
 
@@ -1451,6 +1457,9 @@ msgstr "Loading image…"
 msgid "Loading profile…"
 msgstr "Loading profile…"
 
+msgid "Loading skills…"
+msgstr "Loading skills…"
+
 msgid "Loading usage…"
 msgstr "Loading usage…"
 
@@ -1511,6 +1520,9 @@ msgstr "Modified"
 
 msgid "More blueprint actions"
 msgstr "More blueprint actions"
+
+msgid "More chat options"
+msgstr "More chat options"
 
 msgid "More workspace views and actions"
 msgstr "More workspace views and actions"
@@ -1682,6 +1694,9 @@ msgstr "No services available"
 msgid "No services available to connect."
 msgstr "No services available to connect."
 
+msgid "No skills match your search."
+msgstr "No skills match your search."
+
 msgid "No standard formats yet"
 msgstr "No standard formats yet"
 
@@ -1750,9 +1765,6 @@ msgstr "Open a conversation and build with the agent, and its accepted files wil
 msgid "Open blueprint {0}"
 msgstr "Open blueprint {0}"
 
-msgid "Open chat options"
-msgstr "Open chat options"
-
 #. placeholder {0}: blueprint.metadata.title
 msgid "Open featured blueprint {0}"
 msgstr "Open featured blueprint {0}"
@@ -1810,6 +1822,9 @@ msgstr "Owner"
 
 msgid "Password"
 msgstr "Password"
+
+msgid "Paused — click to reconnect"
+msgstr "Paused — click to reconnect"
 
 msgid "Pending changes"
 msgstr "Pending changes"
@@ -2092,6 +2107,12 @@ msgstr "Search providers…"
 
 msgid "Search services, apps, data sources..."
 msgstr "Search services, apps, data sources..."
+
+msgid "Search skills"
+msgstr "Search skills"
+
+msgid "Search skills…"
+msgstr "Search skills…"
 
 msgid "Search workspaces and actions…"
 msgstr "Search workspaces and actions…"
@@ -2518,8 +2539,8 @@ msgstr "Upload a .gadget archive"
 msgid "Upload failed"
 msgstr "Upload failed"
 
-msgid "Upload file"
-msgstr "Upload file"
+msgid "Upload files or photos"
+msgstr "Upload files or photos"
 
 msgid "Upload logo"
 msgstr "Upload logo"

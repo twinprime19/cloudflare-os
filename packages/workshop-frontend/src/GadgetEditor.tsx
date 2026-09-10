@@ -62,6 +62,8 @@ import DeleteConfirmationDialog from './components/DeleteConfirmationDialog'
 import ReconnectingChip from './components/ReconnectingChip'
 import WorkspaceOpenErrorPage from './components/WorkspaceOpenErrorPage'
 import { useWorkspaceOpen } from './useWorkspaceOpen'
+import { useWorkspaceIdle } from './useWorkspaceIdle'
+import { resumeConnection } from './connectionPause'
 import { reportIssue } from './errorReporting'
 import GadgetExportMenu from './GadgetExportMenu'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER, MENU_POSITIONER_STYLE } from './components/menuStyles'
@@ -627,6 +629,13 @@ export default function GadgetEditor() {
   const [hasChatZero, setHasChatZero] = useState(false)
   const [_hasBindings, setHasBindings] = useState(false)
   const [isAgentActive, setIsAgentActive] = useState(false)
+  // Idle tabs drop their socket so the workspace's Durable Objects can go idle; never while the
+  // selected chat is streaming or the server is waiting on a client-hosted observer callback.
+  // Nothing resumes by itself: sending from the composer does, and so does this chip.
+  const paused = useWorkspaceIdle(isAgentActive || observerConfig !== null)
+  const connectionChip = paused
+    ? <ReconnectingChip onClick={resumeConnection}><Trans>Paused — click to reconnect</Trans></ReconnectingChip>
+    : showReconnecting ? <ReconnectingChip /> : null
   const [hasAnyProposedChanges, setHasAnyProposedChanges] = useState(false)
   // The workpieces the selected chat proposes changes to (see
   // AiChatMetadata.proposedChangeWorkpieces): drives per-gadget draft previews below.
@@ -1376,6 +1385,7 @@ export default function GadgetEditor() {
         metadata={metadata}
         authenticatedApi={authenticatedApi}
         currentUserId={userInfo?.id ?? null}
+        connectionChip={connectionChip}
       />
     )
   }
@@ -1482,7 +1492,7 @@ export default function GadgetEditor() {
 
           <ActivityNotifications overseer={overseer.stub} onViewActivity={openActivity} />
 
-          {showReconnecting && <ReconnectingChip />}
+          {connectionChip}
 
           <WorkshopIconButton
             onClick={() => setShareModalOpen(true)}
@@ -1514,7 +1524,7 @@ export default function GadgetEditor() {
 
         </div>
         <div className="ml-1 flex shrink-0 items-center gap-2">
-          <span className="md:hidden">{showReconnecting && <ReconnectingChip />}</span>
+          <span className="md:hidden">{connectionChip}</span>
           {/* Desktop reaches Export from the gadget pane's tab bar, which is hidden on phones. */}
           <span className="md:hidden">
             <GadgetExportMenu
@@ -1924,7 +1934,7 @@ export default function GadgetEditor() {
         </div>
 
         {showOutputRail && (
-          <div className="max-md:hidden">
+          <div className="flex flex-shrink-0 max-md:hidden">
             <WorkpiecePicker
               gadgets={allGadgets}
               selectedId={null}
