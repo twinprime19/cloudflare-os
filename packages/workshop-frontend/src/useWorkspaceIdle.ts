@@ -21,8 +21,15 @@ const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scrol
 
 // Module scope, not effect scope: the gadget iframe reports its input through
 // `noteWorkspaceActivity()` rather than through this window's listeners. The effect re-initialises
-// it on mount so a stale value from a previous workspace cannot shorten the first window.
+// both clocks on mount so a stale value from a previous workspace cannot shorten the first window.
+//
+// Two clocks. `lastActivityAt` drives this hook's own visible threshold and is also reset when
+// the tab becomes visible, so a user returning to a tab gets a full window to read. `lastInputAt`
+// moves only on real input and decides whether a server idle close parks the tab: a frozen tab
+// runs its queued close event right after the visibility event that thawed it, and treating that
+// visibility as input would dial the Durable Object back up for someone who merely looked.
 let lastActivityAt = Date.now()
+let lastInputAt = Date.now()
 
 /**
  * Records input this window cannot observe. The sandboxed gadget iframe forwards its own
@@ -31,6 +38,7 @@ let lastActivityAt = Date.now()
  */
 export function noteWorkspaceActivity(): void {
   lastActivityAt = Date.now()
+  lastInputAt = Date.now()
 }
 
 /**
@@ -63,7 +71,7 @@ export function useWorkspaceIdle(busy: boolean): boolean {
         return
       }
       hiddenAt = null
-      noteWorkspaceActivity()
+      lastActivityAt = Date.now()
     }
     const tick = () => {
       if (isConnectionPaused() || busyRef.current) return
@@ -87,8 +95,9 @@ export function useWorkspaceIdle(busy: boolean): boolean {
     const interval = setInterval(tick, IDLE_TICK_MS)
     // Park only when this hook would have paused anyway: not busy and no input for the visible
     // threshold; a tab whose user is still typing or clicking in the gadget dials back instead.
+    // Input only, never visibility (see the clocks above).
     installIdleClosePolicy(
-      () => !busyRef.current && Date.now() - lastActivityAt >= VISIBLE_IDLE_PAUSE_MS)
+      () => !busyRef.current && Date.now() - lastInputAt >= VISIBLE_IDLE_PAUSE_MS)
 
     return () => {
       for (const type of ACTIVITY_EVENTS) {

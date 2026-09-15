@@ -205,6 +205,21 @@ describe('useWorkspaceIdle', () => {
     expect(shouldPauseOnIdleClose()).toBe(false)
   })
 
+  it('keeps parking on a server idle close after the tab merely became visible', async () => {
+    await mount()
+    elapse(VISIBLE_IDLE_PAUSE_MS)
+    expect(shouldPauseOnIdleClose()).toBe(true)
+
+    // A thawed tab fires visibilitychange before the close event it queued while frozen; looking
+    // at the tab is not input, so the close still parks it.
+    setVisibility('hidden')
+    setVisibility('visible')
+    expect(shouldPauseOnIdleClose()).toBe(true)
+
+    act(() => noteWorkspaceActivity())
+    expect(shouldPauseOnIdleClose()).toBe(false)
+  })
+
   it('resumes the connection when unmounted while paused', async () => {
     await mount()
     setVisibility('hidden')
