@@ -10,6 +10,8 @@ import {
   authorizeEndpoint, exchangeAuthCode, fetchAvatarDataUrl, fetchGraphProfile, fetchProfilePhoto,
   fetchVerifiedDomains, grantCoversScopes, normalizeScope, refreshAccessToken, resolveVerifiedEmail,
 } from "./microsoft-api";
+import { GraphApiError } from "./graph-api";
+import { GraphSharePointApi } from "./graph-sharepoint-api";
 import type { OutlookMailGatekeeperImplProps } from "./outlook-mail";
 import type { TeamsGatekeeperImplProps } from "./teams";
 import type {
@@ -1089,16 +1091,52 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
 //
 // Opaque capability standing for "this account", handed to Gatekeeper.addObserver() and passed back
 // to this same gatekeeper, which may therefore trust what it reports. It carries the account id in
-// props so any future access check runs against the observer's own Microsoft token rather than the
-// resource owner's. No resource type consults it yet, so it exposes no checks.
+// props so every access check runs against the observer's own Microsoft token rather than the
+// resource owner's.
 
 type MicrosoftVerifierProps = {
   userObjectId: string;
 };
 
+/**
+ * The non-standard method the SharePoint list gatekeeper calls on its own verifier (see its
+ * addObserver). Not part of the generic GatekeeperUserVerifier contract, which has no methods: the
+ * overseer only promises to hand a verifier back to the gatekeeper whose account minted it, which is
+ * what makes calling a private method on it sound.
+ */
+export interface SharePointVerifierApi extends GatekeeperUserVerifier {
+  hasListAccess(siteId: string, listId: string): Promise<boolean>;
+}
+
 @validateRpc()
 export class MicrosoftVerifier extends WorkerEntrypoint<Env, MicrosoftVerifierProps>
-    implements GatekeeperUserVerifier {
+    implements SharePointVerifierApi {
+  #account(): DurableObjectStub<UserAccount> {
+    let id = this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId);
+    return this.ctx.exports.UserAccount.get(id);
+  }
+
+  /**
+   * Can this account open that list?
+   *
+   * Reading the list's own metadata is the cheapest question SharePoint answers with the permission
+   * the observer would need. A refusal and a list that is invisible to them are the same answer
+   * here: no. Anything else is an outage or a misconfiguration, not a verdict, and is reported as
+   * such — deliberately without ids or provider text, because the message is shown to whoever tried
+   * to add the collaborator.
+   */
+  async hasListAccess(siteId: string, listId: string): Promise<boolean> {
+    let api = new GraphSharePointApi(
+        async opts => (await this.#account().getAccessToken(opts)).token);
+    try {
+      await api.describeList(siteId, listId);
+      return true;
+    } catch (err) {
+      if (err instanceof GraphApiError && (err.status === 403 || err.status === 404)) return false;
+      // The cause carries the provider's own words for the logs; the message deliberately does not.
+      throw new Error("Could not verify SharePoint access right now.", { cause: err });
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

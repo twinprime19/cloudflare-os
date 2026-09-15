@@ -26,6 +26,7 @@ import {
 } from "@gadgets/workshop-shared/gatekeeper";
 import { AccessTokenCache, AccessTokenRequest } from "./auth-retry";
 import { GraphMailApi, MAX_REPLY_BODY_BYTES, validateSearchQuery } from "./graph-api";
+import { MAX_PENDING_ACTIONS, PendingActionStore } from "./pending-actions";
 import type {
   OutlookAttachmentInfo, OutlookFolder, OutlookFolderEntry, OutlookFolderInfo, OutlookMailSession,
   OutlookMessage, OutlookMessageEntry, OutlookMessageInfo,
@@ -39,9 +40,6 @@ export const OUTLOOK_MAIL_URL = "https://outlook.office.com/mail/";
 /** Ceiling on pages a single cursor will pull, so an agent cannot walk an entire mailbox. */
 const MAX_CURSOR_PAGES = 40;
 
-/** Ceiling on queued-but-undecided actions, matching the Gmail gatekeeper. */
-const MAX_PENDING_ACTIONS = 100;
-
 /**
  * Ceiling on folders offered to the agent catalog. Folders are the one item class here that grows
  * with the mailbox, so they are bounded well under the shared AGENT_CATALOG_MAX_ENTRIES ceiling;
@@ -51,40 +49,6 @@ const MAX_CATALOG_FOLDERS = 25;
 
 /** Longest single-line value echoed into an approval title. */
 const MAX_APPROVAL_TITLE_CHARS = 200;
-
-class PendingActionStore<Action> {
-  #kv: DurableObjectStorage["kv"];
-
-  constructor(kv: DurableObjectStorage["kv"]) {
-    this.#kv = kv;
-  }
-
-  #actionKey(id: number): string {
-    return `pending:action:${id}`;
-  }
-
-  submit(action: Action): number {
-    let id = this.#kv.get<number>("pending:nextActionId") ?? 1;
-    this.#kv.put("pending:nextActionId", id + 1);
-    this.#kv.put(this.#actionKey(id), action);
-    return id;
-  }
-
-  get(id: number): Action | undefined {
-    return this.#kv.get<Action>(this.#actionKey(id));
-  }
-
-  list(): {id: number, action: Action}[] {
-    return [...this.#kv.list<Action>({prefix: "pending:action:"})]
-        .map(([key, action]) => ({id: Number(key.slice("pending:action:".length)), action}))
-        .filter(({id}) => Number.isFinite(id))
-        .toSorted((a, b) => a.id - b.id);
-  }
-
-  remove(id: number): void {
-    this.#kv.delete(this.#actionKey(id));
-  }
-}
 
 // ── Action types ────────────────────────────────────────────────────
 //
