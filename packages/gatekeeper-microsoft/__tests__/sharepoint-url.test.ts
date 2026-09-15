@@ -49,6 +49,36 @@ const ACCEPTED: { name: string; url: string; hostname: string; sitePath: string;
     list: "Requests",
   },
   {
+    // The share link SharePoint's "Copy link" button produced for that same list.
+    name: "a share link for that list, with the /:l:/r/ prefix its Copy link button adds",
+    url: "https://contoso.sharepoint.com/:l:/r/sites/Engineering/Lists/" +
+        "DEV%20Contoso%20OS%20Issues%20Log?e=AbC123",
+    hostname: "contoso.sharepoint.com",
+    sitePath: "/sites/Engineering",
+    list: "DEV Contoso OS Issues Log",
+  },
+  {
+    name: "a share link for a root-site list",
+    url: "https://contoso.sharepoint.com/:l:/r/Lists/Requests",
+    hostname: "contoso.sharepoint.com",
+    sitePath: "",
+    list: "Requests",
+  },
+  {
+    name: "a share link for a team site's list",
+    url: "https://contoso.sharepoint.com/:l:/r/teams/HR/Lists/Requests/AllItems.aspx",
+    hostname: "contoso.sharepoint.com",
+    sitePath: "/teams/HR",
+    list: "Requests",
+  },
+  {
+    name: "a share link whose type and mode are upper case",
+    url: "https://contoso.sharepoint.com/:L:/R/sites/HR/Lists/Requests",
+    hostname: "contoso.sharepoint.com",
+    sitePath: "/sites/HR",
+    list: "Requests",
+  },
+  {
     name: "a host in mixed case, with a fragment",
     url: "https://Contoso.SharePoint.com/sites/HR/Lists/Requests/AllItems.aspx#view",
     hostname: "contoso.sharepoint.com",
@@ -83,6 +113,21 @@ const REJECTED: { name: string; url: string; because: RegExp }[] = [
     name: "a /Lists/ segment with nothing after it",
     url: "https://contoso.sharepoint.com/sites/HR/Lists/",
     because: /no list name after \/Lists\//,
+  },
+  {
+    name: "a share link in a mode that carries a share id instead of the list's path",
+    url: "https://contoso.sharepoint.com/:l:/s/sites/HR/EQ1Ab2Cd3Ef4",
+    because: /copy the URL from your browser's address bar/,
+  },
+  {
+    name: "a guest-mode share link, even when a /Lists/ segment follows it",
+    url: "https://contoso.sharepoint.com/:l:/g/sites/HR/Lists/Requests",
+    because: /copy the URL from your browser's address bar/,
+  },
+  {
+    name: "a share link with a type but nothing after it",
+    url: "https://contoso.sharepoint.com/:l:/",
+    because: /copy the URL from your browser's address bar/,
   },
   {
     name: "plain http, which would send the token in the clear if it were ever followed",

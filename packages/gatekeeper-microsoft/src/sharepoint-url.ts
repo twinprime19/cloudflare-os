@@ -6,6 +6,11 @@
 // URL carries beyond that — the view page, the query string, the fragment — is view state, not
 // identity, so it is ignored.
 //
+// SharePoint's "Copy link" button writes a different shape, `/:l:/r/sites/HR/Lists/Requests`: a
+// one-letter type (`l` list, `f` folder, `w` doc …), a mode, then the path. Mode `r` is the only
+// one that carries that real path, so it is stripped and parsing continues; the other modes carry
+// an opaque share id instead and are refused.
+//
 // The parser never echoes the URL back in an error. The value came from a user and travels on to a
 // toast and to an agent; saying what shape was expected is what helps, and it cannot carry anything
 // hostile along with it.
@@ -15,6 +20,12 @@ const SHAREPOINT_HOST_SUFFIX = ".sharepoint.com";
 
 /** The path segment that separates a site's path from a list's name. */
 const LISTS_SEGMENT = "lists";
+
+/** A share link's leading type segment, as "Copy link" writes it: `:l:`, `:f:`, `:w:`, `:x:`. */
+const SHARE_LINK_TYPE = /^:[a-z]:$/i;
+
+/** The one share mode whose next segments are the real path rather than an opaque share id. */
+const SHARE_LINK_PATH_MODE = "r";
 
 /** The shape every error message names, so a user can compare it with what they pasted. */
 const EXPECTED_SHAPE =
@@ -77,6 +88,19 @@ export function parseSharePointListUrl(url: string): SharePointListUrl {
   // inside a component cannot be mistaken for a separator. Components are decoded one at a time
   // below, after the split.
   let raw = parsed.pathname.split("/").filter(segment => segment !== "");
+
+  // A "Copy link" URL puts `/:<type>:/<mode>/` in front of the path the address bar would show.
+  // Only mode `r` is followed by that path; the others name the share, not the list, so nothing
+  // here could resolve them.
+  if (raw.length > 0 && SHARE_LINK_TYPE.test(raw[0])) {
+    if ((raw[1] ?? "").toLowerCase() !== SHARE_LINK_PATH_MODE) {
+      throw new SharePointUrlError(
+          "That sharing link identifies a share rather than the list's path. Open the list and " +
+          "copy the URL from your browser's address bar instead.");
+    }
+    raw = raw.slice(2);
+  }
+
   let listsAt = raw.findIndex(segment => segment.toLowerCase() === LISTS_SEGMENT);
   if (listsAt === -1) {
     throw new SharePointUrlError("That URL has no /Lists/ segment, so it does not name a list.");

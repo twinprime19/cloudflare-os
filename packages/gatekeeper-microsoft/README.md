@@ -86,6 +86,10 @@ https://contoso.sharepoint.com/teams/HR/sub/Lists/Requests/AllItems.aspx → sit
 https://contoso.sharepoint.com/Lists/Requests/AllItems.aspx              → the tenant root site
 ```
 
+The "Copy link" button's share form (`https://contoso.sharepoint.com/:l:/r/sites/HR/Lists/Requests`)
+is accepted too; its other share modes (`/:l:/s/…`, `/:l:/g/…`) name a share rather than a path and
+are refused with a hint to copy the URL from the browser's address bar instead.
+
 The list is matched on the URL name after `/Lists/` (not the display name, which anyone who can edit
 the list may change). Site and list **ids** are resolved once, at introduction, so the binding keeps
 working after a rename. The binding's title is the list's display name.
