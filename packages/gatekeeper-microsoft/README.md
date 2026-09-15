@@ -303,28 +303,6 @@ moot, which is why the step above is not optional. **Record this tenant's actual
 when the permissions are added: one line saying whether a user could consent unaided, or the
 administrator had to.
 
-**Consent all of a resource's permissions or none.** A resource counts as granted only when the
-grant covers *every* one of its scopes, so declining one Teams permission leaves Teams unavailable
-rather than partly working — and the symptom is a connect flow that keeps offering a reconnect link.
-When that happens the worker logs the shortfall at `warn` with
-`event: "microsoft.consent.resource.ungranted"`, naming the resource and the missing scopes; check
-the logs before re-running the consent. To recover: consent the permissions the log names, then have
-the user **connect Microsoft again**. A grant records what it covered at the moment it was issued,
-so an account that connected during the shortfall stays without that resource until it reconnects —
-fixing the consent alone changes nothing for the accounts already connected.
-
-**Order of operations.** Because a connect flow that names no resources asks for every resource's
-scopes, the permissions above must be consented in the tenant **before** a build carrying a new
-resource reaches users. Otherwise the generic "Connect Account" button fails with `AADSTS65001` for
-everyone, including users who only wanted mail.
-
-**Adding permissions to a registration that is already deployed.** Same place — **API
-permissions** > **Add a permission** > **Microsoft Graph** > **Delegated permissions** — add the
-five Teams permissions, then click **Grant admin consent for &lt;tenant&gt;** again; consent covers
-the whole list, and re-granting does not disturb the mailbox grants already in use. No redeploy is
-needed for the consent itself, and none should happen before it: the build carrying the new
-resource comes after, per the order of operations above.
-
 ### Step 3: Create a client secret — and diarize its expiry
 
 Under **Certificates & secrets** > **Client secrets** > **New client secret**:
@@ -562,13 +540,14 @@ pnpm --filter @gadgets/microsoft-gatekeeper build
 
 Each resource type has its own Durable Object class, and every class is registered by a `migrations`
 tag in `wrangler.jsonc` — `v0` for `UserAccount` and `OutlookMailGatekeeperImpl`, `v1` for
-`TeamsGatekeeperImpl`. Tags are appended, never edited: rewriting an applied tag makes the next
-deploy disagree with the migration history the account already holds.
+`TeamsGatekeeperImpl`, `v1-sharepoint-list` for `SharePointListGatekeeperImpl`. Tags are appended,
+never edited: rewriting an applied tag makes the next deploy disagree with the migration history the
+account already holds.
 
-**A deployment that has applied `v1` cannot be rolled back past it.** `wrangler rollback` refuses to
-cross a Durable Object migration, and redeploying a pre-`v1` pin fails the same way, because the
-account's history records a class the older bundle does not declare. Recovery is therefore forward,
-not backward.
+**A deployment that has applied a tag cannot be rolled back past it.** `wrangler rollback` refuses
+to cross a Durable Object migration, and redeploying a pin from before that tag fails the same way,
+because the account's history records a class the older bundle does not declare. Recovery is
+therefore forward, not backward.
 
 **To withdraw a resource from users without redeploying an older build**, remove three things and
 ship that:
