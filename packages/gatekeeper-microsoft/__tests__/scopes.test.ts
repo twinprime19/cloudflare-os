@@ -53,6 +53,7 @@ describe("grantCoversScopes", () => {
 const DO_ID = "a".repeat(64);
 const MAIL_PATTERN = "https://outlook.office.com/mail/*";
 const TEAMS_PATTERN = "https://teams.microsoft.com/*";
+const SHAREPOINT_PATTERN = "https://*.sharepoint.com/*";
 
 const IDENTITY_SCOPES = ["openid", "profile", "email", "User.Read", "offline_access"];
 const MAIL_SCOPES = ["Mail.ReadWrite"];
@@ -60,6 +61,7 @@ const TEAMS_SCOPES = [
   "Team.ReadBasic.All", "Channel.ReadBasic.All", "TeamMember.Read.All", "ChannelMessage.Read.All",
   "Chat.Read",
 ];
+const SHAREPOINT_SCOPES = ["Sites.ReadWrite.All"];
 
 const env = {
   CLIENT_ID: "client-id",
@@ -125,21 +127,31 @@ describe("resourceUrlPatternsToOAuthScopes", () => {
     expect(scopes).not.toContain("Mail.ReadWrite");
   });
 
+  it("requests exactly the SharePoint scope for a SharePoint-only connection", async () => {
+    const scopes = await scopesFor({ resourceUrlPatterns: [SHAREPOINT_PATTERN] });
+
+    expect(scopes.toSorted()).toEqual([...IDENTITY_SCOPES, ...SHAREPOINT_SCOPES].toSorted());
+    expect(scopes).not.toContain("Mail.ReadWrite");
+    for (const scope of TEAMS_SCOPES) expect(scopes).not.toContain(scope);
+  });
+
   it("requests exactly the mail scope for a mail-only connection", async () => {
     const scopes = await scopesFor({ resourceUrlPatterns: [MAIL_PATTERN] });
 
     expect(scopes.toSorted()).toEqual([...IDENTITY_SCOPES, ...MAIL_SCOPES].toSorted());
     for (const scope of TEAMS_SCOPES) expect(scopes).not.toContain(scope);
+    expect(scopes).not.toContain("Sites.ReadWrite.All");
   });
 
-  it("requests mail AND Teams when no patterns are named", async () => {
+  it("requests every resource's scopes when no patterns are named", async () => {
     // Omitting the patterns means "every resource this vendor offers", and the generic Connect
-    // Account flow omits them. So adding Teams widened what a plain connect asks for: this is that
-    // behavior, pinned deliberately rather than discovered later from a consent screen.
+    // Account flow omits them. So each resource added here widened what a plain connect asks for:
+    // until an administrator has consented to the Teams permissions and the site permission, such
+    // a connect fails outright. Pinned deliberately rather than discovered from a consent screen.
     const scopes = await scopesFor(undefined);
 
-    expect(scopes.toSorted())
-      .toEqual([...IDENTITY_SCOPES, ...MAIL_SCOPES, ...TEAMS_SCOPES].toSorted());
+    expect(scopes.toSorted()).toEqual(
+      [...IDENTITY_SCOPES, ...MAIL_SCOPES, ...TEAMS_SCOPES, ...SHAREPOINT_SCOPES].toSorted());
   });
 
   it("requests no resource scopes for an empty pattern list", async () => {
@@ -170,14 +182,21 @@ describe("grantedResourcesFromScopes", () => {
       .getGrantedResourceUrlPatterns()).resolves.toEqual([TEAMS_PATTERN]);
   });
 
+  it("detects a SharePoint-only grant", async () => {
+    await expect(accountWithGrant([...IDENTITY_SCOPES, ...SHAREPOINT_SCOPES])
+      .getGrantedResourceUrlPatterns()).resolves.toEqual([SHAREPOINT_PATTERN]);
+  });
+
   it("detects a mail-only grant", async () => {
     await expect(accountWithGrant([...IDENTITY_SCOPES, ...MAIL_SCOPES])
       .getGrantedResourceUrlPatterns()).resolves.toEqual([MAIL_PATTERN]);
   });
 
-  it("detects a grant covering both", async () => {
-    await expect(accountWithGrant([...IDENTITY_SCOPES, ...MAIL_SCOPES, ...TEAMS_SCOPES])
-      .getGrantedResourceUrlPatterns()).resolves.toEqual([MAIL_PATTERN, TEAMS_PATTERN]);
+  it("detects a grant covering all of them", async () => {
+    await expect(accountWithGrant(
+      [...IDENTITY_SCOPES, ...MAIL_SCOPES, ...TEAMS_SCOPES, ...SHAREPOINT_SCOPES])
+      .getGrantedResourceUrlPatterns())
+      .resolves.toEqual([MAIL_PATTERN, TEAMS_PATTERN, SHAREPOINT_PATTERN]);
   });
 
   it("treats a partly consented Teams grant as not granted at all", async () => {
@@ -189,11 +208,17 @@ describe("grantedResourcesFromScopes", () => {
       .getGrantedResourceUrlPatterns()).resolves.toEqual([]);
   });
 
+  it("treats a grant without the site permission as not covering SharePoint", async () => {
+    // A read-only site permission is not the one this resource asks for.
+    await expect(accountWithGrant([...IDENTITY_SCOPES, "Sites.Read.All"])
+      .getGrantedResourceUrlPatterns()).resolves.toEqual([]);
+  });
+
   it("accepts the resource-qualified, differently cased form Entra actually returns", async () => {
-    const qualified = TEAMS_SCOPES.map(
+    const qualified = [...TEAMS_SCOPES, ...SHAREPOINT_SCOPES].map(
         scope => `https://graph.microsoft.com/${scope.toLowerCase()}`);
 
     await expect(accountWithGrant(qualified).getGrantedResourceUrlPatterns())
-      .resolves.toEqual([TEAMS_PATTERN]);
+      .resolves.toEqual([TEAMS_PATTERN, SHAREPOINT_PATTERN]);
   });
 });
