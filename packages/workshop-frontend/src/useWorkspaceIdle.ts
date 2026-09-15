@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  installIdleClosePolicy,
   isConnectionPaused,
   pauseConnection,
   resumeConnection,
@@ -18,6 +19,20 @@ export const IDLE_TICK_MS = 30_000
 // keep a tab awake for hours.
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll'] as const
 
+// Module scope, not effect scope: the gadget iframe reports its input through
+// `noteWorkspaceActivity()` rather than through this window's listeners. The effect re-initialises
+// it on mount so a stale value from a previous workspace cannot shorten the first window.
+let lastActivityAt = Date.now()
+
+/**
+ * Records input this window cannot observe. The sandboxed gadget iframe forwards its own
+ * `pointerdown`/`keydown`/`wheel`/`touchstart` here, so working inside a gadget defers the pause
+ * exactly like working in the parent page does.
+ */
+export function noteWorkspaceActivity(): void {
+  lastActivityAt = Date.now()
+}
+
 /**
  * Pauses the workspace's RPC connection when the tab has been hidden or without input long enough,
  * and reports whether it is paused. It never resumes on its own: reading what is already on screen
@@ -26,9 +41,11 @@ const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scrol
  * Paused chip, leaving the workspace) calls `resumeConnection`. `busy` blocks entering a pause but never forces an exit, so a threshold that
  * elapsed while an agent was streaming lands on the next tick after it finishes.
  *
- * Focus inside the gadget iframe counts as input at each tick: its events never reach this window,
- * so a user working inside the gadget would otherwise look idle. Unmounting while paused resumes,
- * so the parked reconnect loop never outlives the only thing that would wake it.
+ * Only real input defers the pause. A focused gadget iframe proves nothing on its own -- switching
+ * apps or walking away leaves it focused -- so the iframe reports its input through
+ * `noteWorkspaceActivity` instead. While mounted, the hook also owns the policy for a server-side
+ * idle close: it parks only a tab this hook would have paused itself. Unmounting while paused
+ * resumes, so the parked reconnect loop never outlives the only thing that would wake it.
  */
 export function useWorkspaceIdle(busy: boolean): boolean {
   const [paused, setPaused] = useState(isConnectionPaused)
@@ -36,22 +53,21 @@ export function useWorkspaceIdle(busy: boolean): boolean {
   busyRef.current = busy
 
   useEffect(() => {
-    let lastActivityAt = Date.now()
+    noteWorkspaceActivity()
     let hiddenAt: number | null = document.visibilityState === 'hidden' ? Date.now() : null
 
-    const onActivity = () => { lastActivityAt = Date.now() }
+    const onActivity = noteWorkspaceActivity
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         hiddenAt = Date.now()
         return
       }
       hiddenAt = null
-      lastActivityAt = Date.now()
+      noteWorkspaceActivity()
     }
     const tick = () => {
       if (isConnectionPaused() || busyRef.current) return
       const now = Date.now()
-      if (document.activeElement?.tagName === 'IFRAME') lastActivityAt = now
       if (hiddenAt !== null) {
         if (now - hiddenAt >= HIDDEN_PAUSE_MS) pauseConnection()
         return
@@ -62,13 +78,17 @@ export function useWorkspaceIdle(busy: boolean): boolean {
     const unsubscribe = subscribeConnectionPause(() => {
       setPaused(isConnectionPaused())
       // A resume is a request in flight; give it a full idle window before the next pause.
-      if (!isConnectionPaused()) lastActivityAt = Date.now()
+      if (!isConnectionPaused()) noteWorkspaceActivity()
     })
     for (const type of ACTIVITY_EVENTS) {
       window.addEventListener(type, onActivity, { capture: true, passive: true })
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     const interval = setInterval(tick, IDLE_TICK_MS)
+    // Park only when this hook would have paused anyway: not busy and no input for the visible
+    // threshold; a tab whose user is still typing or clicking in the gadget dials back instead.
+    installIdleClosePolicy(
+      () => !busyRef.current && Date.now() - lastActivityAt >= VISIBLE_IDLE_PAUSE_MS)
 
     return () => {
       for (const type of ACTIVITY_EVENTS) {
@@ -77,6 +97,8 @@ export function useWorkspaceIdle(busy: boolean): boolean {
       document.removeEventListener('visibilitychange', onVisibilityChange)
       clearInterval(interval)
       unsubscribe()
+      // Before the resume: nothing left here would park a connection again.
+      installIdleClosePolicy(null)
       resumeConnection()
     }
   }, [])

@@ -311,6 +311,20 @@ function codedErrorFamily<Code extends string>(messages: Record<Code, string>) {
   };
 }
 
+/**
+ * WebSocket close code the server uses when it ends a session that has carried no inbound frame
+ * for `SESSION_IDLE_CLOSE_MS`. In the private 4000-4999 range, so it can never collide with a
+ * protocol code. The client recognises it and parks its reconnect loop instead of dialing back.
+ */
+export const SESSION_IDLE_CLOSE_CODE = 4001;
+
+/**
+ * How long an API WebSocket may carry no inbound frame before the server closes it. Twice the
+ * frontend's visible-idle threshold: a healthy tab always pauses itself first, so this only ends
+ * sessions the tab could not close (frozen tab, sleeping laptop) and their Durable Object stubs.
+ */
+export const SESSION_IDLE_CLOSE_MS = 30 * 60_000;
+
 /** Stable error codes attached to expected failures from `AuthenticatedApi.openGadget()`. */
 export const OPEN_GADGET_ERROR_CODES = {
   workspaceNotFound: "WORKSPACE_NOT_FOUND",
