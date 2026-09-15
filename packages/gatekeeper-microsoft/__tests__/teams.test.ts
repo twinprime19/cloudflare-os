@@ -587,7 +587,11 @@ describe("echo discipline", () => {
 
 describe("no action surface", () => {
   it("rejects every approval-queue callback, since it queues nothing", async () => {
-    await expect(gatekeeper.applyAction(1)).rejects.toThrow(/Unknown pending Teams action/);
+    // The overseer passes a git cache stub; the implementation never touches it, but the RPC
+    // argument validator is derived from the Gatekeeper interface and rejects a call without one.
+    const cache = new RpcStub({});
+    await expect(gatekeeper.applyAction(1, cache as never))
+      .rejects.toThrow(/Unknown pending Teams action/);
     await expect(gatekeeper.rejectAction(1)).rejects.toThrow(/Unknown pending Teams action/);
     await expect(gatekeeper.revertAction(1)).rejects.toThrow(/revert is not implemented/);
   });
