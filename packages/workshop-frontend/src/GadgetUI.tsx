@@ -4,6 +4,7 @@ import { Sparkle } from '@phosphor-icons/react'
 import { RpcStub, RpcTarget, newMessagePortRpcSession } from 'capnweb'
 import { GadgetClient, ConsoleLogEvent } from '@gadgets/workshop-shared/api'
 import { waitWhilePaused } from './connectionPause'
+import { noteWorkspaceActivity } from './useWorkspaceIdle'
 
 // We want to inject Cap'n Web into the Gadget. Luckily it has no dependencies, so we can just take
 // the whole module and embed it. We can import the module using ?raw to get a string of the
@@ -70,6 +71,20 @@ window.addEventListener('keydown', (event) => {
     window.parent.postMessage({ type: 'escape' }, '*');
   }
 }, true);
+
+// Report real input to the parent so its idle timer does not pause the connection under a user who
+// is working inside the gadget. Throttled: the parent only compares timestamps every 30 seconds.
+{
+  let lastActivitySent = 0;
+  for (let type of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
+    window.addEventListener(type, () => {
+      let now = Date.now();
+      if (now - lastActivitySent < 10000) return;
+      lastActivitySent = now;
+      window.parent.postMessage({ type: 'activity' }, '*');
+    }, { capture: true, passive: true });
+  }
+}
 
 window.addEventListener('click', (event) => {
   if (!(event.target instanceof Element)) {
@@ -395,6 +410,10 @@ function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chat
         })
       } else if (event.data?.type === 'escape') {
         onIframeEscapeRef.current?.()
+      } else if (event.data?.type === 'activity') {
+        // Input inside the sandboxed frame never reaches the parent's listeners; without this the
+        // idle timer would pause the connection under an active user.
+        noteWorkspaceActivity()
       }
     }
 

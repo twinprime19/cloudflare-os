@@ -49,6 +49,21 @@ describe('connectionPause', () => {
     expect(m.isConnectionPaused()).toBe(false)
   })
 
+  it('treats a server idle close as ordinary until a policy says otherwise', async () => {
+    const m = await freshModule()
+    expect(m.shouldPauseOnIdleClose()).toBe(false)
+
+    m.installIdleClosePolicy(() => true)
+    expect(m.shouldPauseOnIdleClose()).toBe(true)
+
+    // A busy workspace keeps its policy installed but answers false, so the loop redials.
+    m.installIdleClosePolicy(() => false)
+    expect(m.shouldPauseOnIdleClose()).toBe(false)
+
+    m.installIdleClosePolicy(null)
+    expect(m.shouldPauseOnIdleClose()).toBe(false)
+  })
+
   it('ignores resume when not paused and can pause again after resuming', async () => {
     const m = await freshModule()
     const drop = vi.fn<() => void>()
