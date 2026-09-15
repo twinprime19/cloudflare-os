@@ -342,6 +342,11 @@ export default {
       newUrl.searchParams.set("response_mode", "query");
       newUrl.searchParams.set("scope", begun.scopes.join(" "));
       newUrl.searchParams.set("state", `${doId}:${begun.oauthNonce}`);
+      // Signing out of Cloudflare OS does not end the browser's Microsoft session, so without this
+      // Entra would silently re-issue a code for the same account and a signed-out user would land
+      // straight back in. The account picker makes sign-in a deliberate choice again. Persistent
+      // connections skip it: the user is already signed in and is linking that same account.
+      if (begun.authOnly) newUrl.searchParams.set("prompt", "select_account");
 
       return Response.redirect(newUrl.toString(), 302);
     } else if (relPath === "/oauth") {
@@ -574,10 +579,11 @@ export class UserAccount extends DurableObject<Env> {
 
   /**
    * Called by the fetch handler when the user visits the initiation URL. Verifies the initiation
-   * nonce, consumes it, and returns a fresh OAuth nonce plus the scopes to request. Returns null if
-   * the nonce is invalid or expired.
+   * nonce, consumes it, and returns a fresh OAuth nonce plus the scopes to request and whether the
+   * flow is sign-in only. Returns null if the nonce is invalid or expired.
    */
-  async beginOAuthFlow(initiationNonce: string): Promise<{oauthNonce: string, scopes: string[]} | null> {
+  async beginOAuthFlow(initiationNonce: string):
+      Promise<{oauthNonce: string, scopes: string[], authOnly: boolean} | null> {
     let stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (!stored || stored.stage !== "initiation" ||
         Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, initiationNonce)) {
@@ -592,7 +598,8 @@ export class UserAccount extends DurableObject<Env> {
       stage: "oauth",
     });
     let scopes = this.ctx.storage.kv.get<string[]>("requestedScopes") ?? IDENTITY_SCOPES;
-    return {oauthNonce, scopes};
+    let authOnly = this.ctx.storage.kv.get<boolean>("authOnly") ?? false;
+    return {oauthNonce, scopes, authOnly};
   }
 
   /**
