@@ -6,6 +6,12 @@ const TENANT = "11111111-2222-3333-4444-555555555555";
 const TOKEN_URL = `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/token`;
 const AUTH_SCOPES = ["openid", "profile", "email", "User.Read"];
 const IDENTITY_SCOPES = [...AUTH_SCOPES, "offline_access"];
+// The resource scopes a connection asks for per grantable resource, mirroring the vendor's table.
+const MAIL_SCOPES = ["Mail.ReadWrite"];
+const TEAMS_SCOPES = [
+  "Team.ReadBasic.All", "Channel.ReadBasic.All", "TeamMember.Read.All",
+  "ChannelMessage.Read.All", "Chat.Read",
+];
 
 const env = {
   CLIENT_ID: "client-id",
@@ -62,9 +68,9 @@ function newAccount(context = fakeContext()) {
 
 /** Drive a full connect through the nonce lifecycle and return what the token endpoint saw. */
 async function connect(account: UserAccount, callback: ReturnType<typeof fakeCallback>,
-                       options: { authOnly?: boolean } = {}) {
+                       options: { authOnly?: boolean; scopes?: string[] } = {}) {
   const initiationNonce = "n".repeat(64);
-  const scopes = options.authOnly ? AUTH_SCOPES : IDENTITY_SCOPES;
+  const scopes = options.scopes ?? (options.authOnly ? AUTH_SCOPES : IDENTITY_SCOPES);
   await account.setCallback(callback as never, initiationNonce, scopes, options.authOnly ?? false);
   const begun = await account.beginOAuthFlow(initiationNonce);
   expect(begun).not.toBeNull();
@@ -90,6 +96,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+/** Collect the structured log records written to `console.warn` from here on. */
+function captureWarnings(): Record<string, unknown>[] {
+  const warnings: Record<string, unknown>[] = [];
+  vi.spyOn(console, "warn").mockImplementation(
+      (...args: unknown[]) => void warnings.push(...args as Record<string, unknown>[]));
+  return warnings;
+}
 
 function lastTokenRequestBody(): URLSearchParams {
   const call = fetchMock.mock.calls.at(-1) as [string, RequestInit];
@@ -253,6 +267,72 @@ describe("connect flow", () => {
     expect(context.storage.kv.get("accessToken")).toBeUndefined();
     expect(context.storage.kv.get("idTokenClaims")).toBeUndefined();
     expect(context.storage.kv.get("grantScopes")).toBeUndefined();
+  });
+});
+
+describe("consent coverage", () => {
+  it("names the scopes a partly consented resource came back without", async () => {
+    // A resource is usable only when every one of its scopes is granted, so a declined permission
+    // leaves it unavailable with nothing else in the system saying which one is missing.
+    const warnings = captureWarnings();
+    const { account } = newAccount();
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-1",
+      expires_in: 3600,
+      refresh_token: "refresh-1",
+      // The administrator consented to the team and channel reads and declined the message ones.
+      scope: "openid profile email https://graph.microsoft.com/User.Read " +
+          "https://graph.microsoft.com/Team.ReadBasic.All " +
+          "https://graph.microsoft.com/Channel.ReadBasic.All " +
+          "https://graph.microsoft.com/TeamMember.Read.All",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+
+    await expect(connect(account, fakeCallback(), {
+      scopes: [...IDENTITY_SCOPES, ...TEAMS_SCOPES],
+    })).resolves.toBe(true);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      event: "microsoft.consent.resource.ungranted",
+      resource: "https://teams.microsoft.com/*",
+      missingScopes: ["ChannelMessage.Read.All", "Chat.Read"],
+    });
+  });
+
+  it("says nothing about a resource this connection never asked for", async () => {
+    // A mail-only connection is not short of the Teams permissions; it never requested them.
+    const warnings = captureWarnings();
+    const { account } = newAccount();
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-1",
+      expires_in: 3600,
+      refresh_token: "refresh-1",
+      scope: "openid profile email https://graph.microsoft.com/User.Read " +
+          "https://graph.microsoft.com/Mail.ReadWrite",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+
+    await expect(connect(account, fakeCallback(), {
+      scopes: [...IDENTITY_SCOPES, ...MAIL_SCOPES],
+    })).resolves.toBe(true);
+
+    expect(warnings).toEqual([]);
+  });
+
+  it("says nothing for a sign-in-only grant, which asks for no resource at all", async () => {
+    const warnings = captureWarnings();
+    const { account } = newAccount();
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-auth",
+      expires_in: 3600,
+      scope: "openid profile email https://graph.microsoft.com/User.Read",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+
+    await expect(connect(account, fakeCallback(), { authOnly: true })).resolves.toBe(true);
+
+    expect(warnings).toEqual([]);
   });
 });
 

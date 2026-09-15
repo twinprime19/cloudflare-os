@@ -25,7 +25,7 @@ export const GRAPH_ORIGIN = "https://graph.microsoft.com";
 const GRAPH_BASE = `${GRAPH_ORIGIN}/v1.0`;
 
 /** Per-attempt ceiling on a Graph round trip. */
-const GRAPH_TIMEOUT_MS = 20 * 1000;
+export const GRAPH_TIMEOUT_MS = 20 * 1000;
 
 /** Longest provider error text echoed into an error a user or agent can see. */
 const MAX_GRAPH_ERROR_CHARS = 500;
@@ -124,7 +124,8 @@ type GraphAttachment = {
   isInline?: boolean;
 };
 
-type GraphCollection<T> = {
+/** Graph's collection envelope: the items, plus a link to the rest when there is more. */
+export type GraphCollection<T> = {
   value?: T[];
   "@odata.nextLink"?: string;
 };
@@ -156,7 +157,8 @@ export class GraphApiError extends Error {
   }
 }
 
-function truncate(value: string, max = MAX_GRAPH_ERROR_CHARS): string {
+/** Cap a provider string before it is echoed into an error a user or agent can see. */
+export function truncate(value: string, max = MAX_GRAPH_ERROR_CHARS): string {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
