@@ -24,6 +24,7 @@ import {
   ActionKind, AgentCatalog, ApprovalQueue, Cursor, Gatekeeper,
   GatekeeperUserVerifier, ObservationAuthorizer, ResourceDescription, boundAgentCatalog,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { formatApprovalField, sanitizeApprovalTitle } from "./approval-text";
 import { AccessTokenCache, AccessTokenRequest } from "./auth-retry";
 import { GraphMailApi, MAX_REPLY_BODY_BYTES, validateSearchQuery } from "./graph-api";
 import { MAX_PENDING_ACTIONS, PendingActionStore } from "./pending-actions";
@@ -47,9 +48,6 @@ const MAX_CURSOR_PAGES = 40;
  */
 const MAX_CATALOG_FOLDERS = 25;
 
-/** Longest single-line value echoed into an approval title. */
-const MAX_APPROVAL_TITLE_CHARS = 200;
-
 // ── Action types ────────────────────────────────────────────────────
 //
 // Actions store the message's immutable id and the caller's intent, never a pre-built API payload:
@@ -72,18 +70,6 @@ type OutlookMailSessionContext = {
   approvalQueue: RpcStub<ApprovalQueue>;
   pendingActions: PendingActionStore<OutlookMailAction>;
 };
-
-function sanitizeApprovalTitle(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").slice(0, MAX_APPROVAL_TITLE_CHARS);
-}
-
-function formatApprovalField(label: string, value: string): string {
-  // Use a fence longer than any backtick run in the value, so untrusted email fields render
-  // verbatim and cannot forge surrounding approval Markdown.
-  let fence = "```";
-  while (value.includes(fence)) fence += "`";
-  return `**${label}:**\n\n${fence}\n${value}\n${fence}`;
-}
 
 function describeMessage(info: OutlookMessageInfo): string {
   return [

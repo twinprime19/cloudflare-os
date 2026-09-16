@@ -29,11 +29,11 @@ import { validateRpc } from "capnweb-validate";
 import {
   ActionKind, ApprovalQueue, Cursor, Gatekeeper, GatekeeperUserVerifier, ResourceDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { formatApprovalField, sanitizeApprovalTitle } from "./approval-text";
 import { AccessTokenCache, AccessTokenRequest, RetryAfterPolicy } from "./auth-retry";
 import { GraphApiError, truncate } from "./graph-api";
 import {
-  ColumnDefinition, GraphSharePointApi, ListItem, WhereClause, buildItemsFilter,
-  sharePointThrottled,
+  ColumnDefinition, GraphSharePointApi, ListItem, buildItemsFilter, sharePointThrottled,
 } from "./graph-sharepoint-api";
 import { MAX_PENDING_ACTIONS, PendingActionStore } from "./pending-actions";
 import type {
@@ -44,9 +44,6 @@ import type { Env, SharePointVerifierApi, UserAccount } from "./microsoft";
 
 /** Ceiling on pages a single cursor will pull, so an agent cannot walk an entire list. */
 const MAX_CURSOR_PAGES = 40;
-
-/** Longest single-line value echoed into an approval title. */
-const MAX_APPROVAL_TITLE_CHARS = 200;
 
 /** Longest caller- or provider-supplied name echoed back in an error message. */
 const MAX_NAME_ECHO_CHARS = 100;
@@ -63,7 +60,7 @@ const MAX_OUTCOME_REASON_CHARS = 300;
  * constructor's third parameter) so tests can collapse it; `0` disables the wait entirely, which is
  * the documented fallback if the platform's delivery semantics make waiting pointless.
  */
-export const WAIT_FOR_APPLY_MS = 5000;
+const WAIT_FOR_APPLY_MS = 5000;
 
 /** Throttling ceiling for reads: an agent is waiting on these synchronously. */
 const READ_RETRY_AFTER: RetryAfterPolicy = { maxWaitMs: 10_000, tooLong: sharePointThrottled };
@@ -115,23 +112,23 @@ type ListMeta = {
  * so a human has to decide whether to retry or reject it, and this record is what tells them (and
  * every other submitter) why everything behind it is stuck.
  */
-export type ActionOutcome =
+type ActionOutcome =
   | { state: "applied"; itemId: string; webUrl?: string }
   | { state: "failed"; reason: string; throttled: boolean }
   | { state: "rejected" };
 
 /** Storage key of an action's outcome record. */
-export function outcomeKey(actionId: number): string {
+function outcomeKey(actionId: number): string {
   return `${OUTCOME_PREFIX}${actionId}`;
 }
 
 /** The id `createItem` hands back for an action that has not been applied yet. */
-export function provisionalItemId(actionId: number): string {
+function provisionalItemId(actionId: number): string {
   return `${PROVISIONAL_PREFIX}${actionId}`;
 }
 
 /** The action id inside a provisional item id, or null when the id is not one. */
-export function parseProvisionalItemId(id: string): number | null {
+function parseProvisionalItemId(id: string): number | null {
   if (!id.startsWith(PROVISIONAL_PREFIX)) return null;
   let rest = id.slice(PROVISIONAL_PREFIX.length);
   if (!ITEM_ID_PATTERN.test(rest)) return null;
@@ -157,7 +154,7 @@ export class SharePointSubmissionError extends Error {
 }
 
 /** The error a decided-against submission is reported with, wherever it is discovered. */
-export function submissionError(actionId: number, outcome: ActionOutcome): SharePointSubmissionError {
+function submissionError(actionId: number, outcome: ActionOutcome): SharePointSubmissionError {
   if (outcome.state === "rejected") {
     return new SharePointSubmissionError(
         `Submission ${actionId} was rejected by an approver.`, "rejected");
@@ -176,7 +173,7 @@ export function submissionError(actionId: number, outcome: ActionOutcome): Share
 }
 
 /** The outcome recorded when a Graph write throws. Reason is sanitised: it is shown to a user. */
-export function failedOutcome(error: unknown): ActionOutcome {
+function failedOutcome(error: unknown): ActionOutcome {
   // `sharePointThrottled` builds a 429 too, so one status covers both "the server throttled us" and
   // "the server asked for a longer wait than the apply policy will sit out".
   let throttled = error instanceof GraphApiError && error.status === 429;
@@ -189,18 +186,6 @@ export function failedOutcome(error: unknown): ActionOutcome {
 }
 
 // ── Approval text ───────────────────────────────────────────────────
-
-function sanitizeApprovalTitle(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").slice(0, MAX_APPROVAL_TITLE_CHARS);
-}
-
-function formatApprovalField(label: string, value: string): string {
-  // Use a fence longer than any backtick run in the value, so untrusted field values render verbatim
-  // and cannot forge surrounding approval Markdown.
-  let fence = "```";
-  while (value.includes(fence)) fence += "`";
-  return `**${label}:**\n\n${fence}\n${value}\n${fence}`;
-}
 
 /** Echo a caller- or provider-supplied name inside an error, without letting it carry structure. */
 function echoName(value: unknown): string {
@@ -220,7 +205,7 @@ function displayValue(value: unknown): string {
  * edit the list. Values are fenced, which is what keeps a submitted `<script>` or a run of backticks
  * from restyling the prompt around it.
  */
-export function describeFields(fields: Record<string, unknown>): string {
+function describeFields(fields: Record<string, unknown>): string {
   let entries = Object.entries(fields);
   if (entries.length === 0) return "_This item sets no column values._";
   return entries
@@ -512,7 +497,7 @@ class SharePointListSessionImpl extends RpcTarget implements SharePointListSessi
   async getItems(options?: GetItemsOptions): Promise<Cursor<ListItem>> {
     let columns = await this.#ctx.columns();
     let select = options?.select;
-    let where = (options?.where ?? []) as WhereClause[];
+    let where = options?.where ?? [];
 
     // Validated before the approval prompt, so a bad column or an unfilterable type fails here
     // rather than on the first next() — nobody should be asked to authorize a query that cannot run.

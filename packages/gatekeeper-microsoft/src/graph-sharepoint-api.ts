@@ -132,15 +132,11 @@ export type WhereClause = {
   value: string | number | boolean;
 };
 
-/** A SharePoint site, as resolved from a pasted URL's host and path. */
-export type SharePointSiteInfo = {
-  id: string;
-  displayName: string;
-  webUrl: string;
-};
-
-/** A list within a site. */
-export type SharePointListInfo = {
+/**
+ * A site, or a list within one: the id to address it by, a name to show, and a link to open. Sites
+ * and lists carry the same three, so they are described the same way.
+ */
+export type SharePointResourceInfo = {
   id: string;
   displayName: string;
   webUrl: string;
@@ -150,14 +146,8 @@ export type SharePointListInfo = {
 // Only the fields this client reads. Everything is optional: these describe what Graph may send, not
 // what it promises.
 
-type GraphSite = {
-  id?: string;
-  displayName?: string;
-  name?: string;
-  webUrl?: string;
-};
-
-type GraphList = {
+/** A site or a list, as Graph sends it. Both name themselves with the same fields. */
+type GraphResource = {
   id?: string;
   displayName?: string;
   name?: string;
@@ -189,25 +179,18 @@ type GraphListItem = {
 
 // ── Mapping ─────────────────────────────────────────────────────────
 
-function siteInfoFrom(site: GraphSite): SharePointSiteInfo {
-  if (typeof site.id !== "string" || !site.id) {
-    throw new Error("Microsoft Graph returned a SharePoint site without an id.");
+/**
+ * Reduce a site or a list to what this client passes on. `noun` names the kind in the failure and in
+ * the placeholder for an unnamed one, which is all the two cases differ by.
+ */
+function resourceInfoFrom(resource: GraphResource, noun: "site" | "list"): SharePointResourceInfo {
+  if (typeof resource.id !== "string" || !resource.id) {
+    throw new Error(`Microsoft Graph returned a SharePoint ${noun} without an id.`);
   }
   return {
-    id: site.id,
-    displayName: site.displayName || site.name || "(unnamed site)",
-    webUrl: typeof site.webUrl === "string" ? site.webUrl : "",
-  };
-}
-
-function listInfoFrom(list: GraphList): SharePointListInfo {
-  if (typeof list.id !== "string" || !list.id) {
-    throw new Error("Microsoft Graph returned a SharePoint list without an id.");
-  }
-  return {
-    id: list.id,
-    displayName: list.displayName || list.name || "(unnamed list)",
-    webUrl: typeof list.webUrl === "string" ? list.webUrl : "",
+    id: resource.id,
+    displayName: resource.displayName || resource.name || `(unnamed ${noun})`,
+    webUrl: typeof resource.webUrl === "string" ? resource.webUrl : "",
   };
 }
 
@@ -552,9 +535,9 @@ export class GraphSharePointApi {
    * `sitePath` is the decoded server-relative path from `parseSharePointListUrl`; empty resolves the
    * tenant root site.
    */
-  async resolveSite(hostname: string, sitePath: string): Promise<SharePointSiteInfo> {
-    return siteInfoFrom(await this.#fetchJson<GraphSite>(
-        graphSiteByPathUrl(hostname, sitePath, { $select: "id,displayName,webUrl" })));
+  async resolveSite(hostname: string, sitePath: string): Promise<SharePointResourceInfo> {
+    return resourceInfoFrom(await this.#fetchJson<GraphResource>(
+        graphSiteByPathUrl(hostname, sitePath, { $select: "id,displayName,webUrl" })), "site");
   }
 
   /**
@@ -564,7 +547,7 @@ export class GraphSharePointApi {
    * last segment of each `webUrl`, case-insensitively — SharePoint URLs are case-preserving but not
    * case-sensitive, so a pasted link can differ in case from what Graph reports.
    */
-  async resolveListByUrl(siteId: string, listSegment: string): Promise<SharePointListInfo> {
+  async resolveListByUrl(siteId: string, listSegment: string): Promise<SharePointResourceInfo> {
     let wanted = listSegment.toLowerCase();
     let url: string = graphUrl(["sites", siteId, "lists"], {
       $select: "id,displayName,webUrl",
@@ -572,9 +555,11 @@ export class GraphSharePointApi {
     });
 
     for (let page = 0; page < MAX_LIST_PAGES; page++) {
-      let body = await this.#fetchJson<GraphCollection<GraphList>>(url);
+      let body = await this.#fetchJson<GraphCollection<GraphResource>>(url);
       for (let list of body.value ?? []) {
-        if (listUrlName(list.webUrl)?.toLowerCase() === wanted) return listInfoFrom(list);
+        if (listUrlName(list.webUrl)?.toLowerCase() === wanted) {
+          return resourceInfoFrom(list, "list");
+        }
       }
       let next = body["@odata.nextLink"];
       if (!next) {
@@ -591,9 +576,10 @@ export class GraphSharePointApi {
   }
 
   /** The list's current name and link. Used to keep a binding's title honest after a rename. */
-  async describeList(siteId: string, listId: string): Promise<SharePointListInfo> {
-    return listInfoFrom(await this.#fetchJson<GraphList>(
-        graphUrl(["sites", siteId, "lists", listId], { $select: "id,displayName,webUrl" })));
+  async describeList(siteId: string, listId: string): Promise<SharePointResourceInfo> {
+    let list = await this.#fetchJson<GraphResource>(
+        graphUrl(["sites", siteId, "lists", listId], { $select: "id,displayName,webUrl" }));
+    return resourceInfoFrom(list, "list");
   }
 
   /** The list's columns, normalised, with SharePoint's plumbing dropped. */

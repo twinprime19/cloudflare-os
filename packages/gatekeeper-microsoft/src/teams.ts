@@ -32,6 +32,7 @@ import {
   ActionKind, AgentCatalog, ApprovalQueue, Cursor, Gatekeeper, GatekeeperUserVerifier,
   ObservationAuthorizer, ResourceDescription, boundAgentCatalog,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { formatApprovalField, sanitizeApprovalTitle } from "./approval-text";
 import { AccessTokenCache, AccessTokenRequest } from "./auth-retry";
 import type { GraphPage } from "./graph-api";
 import { GraphTeamsApi, TeamsSearchWalk, validateTeamsSearchQuery } from "./graph-teams-api";
@@ -55,9 +56,6 @@ const MAX_CURSOR_PAGES = 40;
 
 /** Consecutive empty-but-continuing pages a cursor skips before reporting exhaustion. */
 const MAX_EMPTY_PAGES = 5;
-
-/** Longest single-line value echoed into an approval title. */
-const MAX_APPROVAL_TITLE_CHARS = 200;
 
 /** Longest excerpt of a message body placed in an approval description. */
 const MAX_EXCERPT_CHARS = 200;
@@ -84,18 +82,6 @@ type TeamsSessionContext = {
   api: GraphTeamsApi;
   approvalQueue: RpcStub<ApprovalQueue>;
 };
-
-function sanitizeApprovalTitle(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").slice(0, MAX_APPROVAL_TITLE_CHARS);
-}
-
-function formatApprovalField(label: string, value: string): string {
-  // Use a fence longer than any backtick run in the value, so untrusted Teams text renders verbatim
-  // and cannot forge surrounding approval Markdown.
-  let fence = "```";
-  while (value.includes(fence)) fence += "`";
-  return `**${label}:**\n\n${fence}\n${value}\n${fence}`;
-}
 
 /** One bounded line standing for a value that may be long or many-lined. */
 function oneLine(value: string, max: number): string {
