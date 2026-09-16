@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider } from '@tanstack/react-router'
 import { RpcPromise, RpcStub, newWebSocketRpcSession } from 'capnweb'
 import { AppI18nProvider } from '@gadgets/i18n'
-import { PublicApi, ServerConfig, SESSION_IDLE_CLOSE_CODE } from '@gadgets/workshop-shared/api'
+import { PublicApi, ServerConfig } from '@gadgets/workshop-shared/api'
 import { RpcContext } from './RpcContext'
 import { ServerConfigContext, ServerConfigErrorContext } from './ServerConfigContext'
 import { ThemeProvider } from './ThemeContext'
@@ -14,13 +14,7 @@ import './styles.css'
 import FrontendErrorBoundary from './FrontendErrorBoundary'
 import { installWorkshopErrorReporting, reportIssue } from './errorReporting'
 import { applySiteFavicon, cacheBustSiteLogoUrl } from './siteLogoUtils'
-import {
-  installDropSocketHandler,
-  isConnectionPaused,
-  pauseConnection,
-  shouldPauseOnIdleClose,
-  waitWhilePaused,
-} from './connectionPause'
+import { installDropSocketHandler, isConnectionPaused, waitWhilePaused } from './connectionPause'
 
 // ---------------------------------------------------------------------------
 // Dev auto-login: if VITE_DEV_AUTO_LOGIN=true, automatically create/login
@@ -103,14 +97,7 @@ function startConnection(): RpcStub<PublicApi> {
   lastConnectTime = Date.now();
   const apiHost = getBackendHost();
   const wsUrl = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + apiHost + '/api';
-  // Own the socket rather than passing capnweb a URL: the close code is the only place the server
-  // can say "you were idle", and reading it is what keeps the reconnect loop from undoing the
-  // pause. Registered before capnweb's own listener, so the flag is set before `handleBroken` runs.
-  const ws = new WebSocket(wsUrl);
-  ws.addEventListener('close', event => {
-    if (event.code === SESSION_IDLE_CLOSE_CODE && shouldPauseOnIdleClose()) pauseConnection();
-  });
-  const stub = newWebSocketRpcSession<PublicApi>(ws);
+  const stub = newWebSocketRpcSession<PublicApi>(wsUrl);
   stub.onRpcBroken(handleBroken);
   return stub;
 }

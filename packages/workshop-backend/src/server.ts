@@ -1,7 +1,7 @@
 import { RpcStub, RpcTarget, newHttpBatchRpcResponse, newWebSocketRpcSession, RpcSessionOptions } from "capnweb";
 import { validateRpc } from "capnweb-validate";
 import type { JWTPayload } from "jose";
-import { PublicApi, AuthenticatedApi, Overseer, GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, AiGatewayInfo, AiModelProvider, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, ObserverConfigCallback, BlueprintLibrarySummary, BlueprintPublicInfo, BlueprintUserSummary, BlueprintBindingAssignment, AgentSpawnerConfig, WorkpieceId, BLUEPRINT_SCREENSHOT_PATH_PREFIX, BLUEPRINT_SCREENSHOT_R2_PREFIX, blueprintScreenshotUrl, ServerConfig, CloudflareUsageInfo, CloudflareAccountOption, LoginAttempt, GatekeeperAppInfo, AdminApi, GatekeeperVendorInfo, OutputFormatOffer, ListOutputsResult, createOpenGadgetError, getOpenGadgetErrorCode, OPEN_GADGET_ERROR_CODES, AUTH_ERROR_CODES, createAuthError, SESSION_IDLE_CLOSE_CODE, SESSION_IDLE_CLOSE_MS } from '@gadgets/workshop-shared/api';
+import { PublicApi, AuthenticatedApi, Overseer, GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, AiGatewayInfo, AiModelProvider, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, ObserverConfigCallback, BlueprintLibrarySummary, BlueprintPublicInfo, BlueprintUserSummary, BlueprintBindingAssignment, AgentSpawnerConfig, WorkpieceId, BLUEPRINT_SCREENSHOT_PATH_PREFIX, BLUEPRINT_SCREENSHOT_R2_PREFIX, blueprintScreenshotUrl, ServerConfig, CloudflareUsageInfo, CloudflareAccountOption, LoginAttempt, GatekeeperAppInfo, AdminApi, GatekeeperVendorInfo, OutputFormatOffer, ListOutputsResult, createOpenGadgetError, getOpenGadgetErrorCode, OPEN_GADGET_ERROR_CODES, AUTH_ERROR_CODES, createAuthError } from '@gadgets/workshop-shared/api';
 import type { UiFeatureFlags } from "@gadgets/workshop-shared/feature-flags";
 import { getServerConfig } from "./deployment-config.js";
 import { isPasswordAuthEnabled, getAuthGatekeeperAllowlist } from "./auth/config.js";
@@ -862,7 +862,7 @@ export default {
 
       return await newWorkersRpcResponse(req,
           new PublicApiImpl(ctx, env, abortSession, accessPayload),
-          { abortSignal: abortController.signal, idleCloseMs: SESSION_IDLE_CLOSE_MS });
+          { abortSignal: abortController.signal });
     }
 
     return new Response("Not Found", {status: 404});
@@ -877,10 +877,6 @@ export default {
 type ExtendedRpcSessionOptions = RpcSessionOptions & {
   // Abort WebSocket sessions when this AbortSignal is aborted. (No effect on HTTP batch sessions.)
   abortSignal: AbortSignal;
-
-  // Close a WebSocket session that has carried no inbound frame for this long. (No effect on HTTP
-  // batch sessions.) Omit to leave a session open for as long as the socket lives.
-  idleCloseMs?: number;
 };
 
 // Clone of newWorkersRpcResponse() from Cap'n Web, except the `options` has been extended with
@@ -902,7 +898,7 @@ async function newWorkersRpcResponse(
   }
 }
 
-export function newWorkersWebSocketRpcResponse(
+function newWorkersWebSocketRpcResponse(
     request: Request, localMain?: any, options?: ExtendedRpcSessionOptions): Response {
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
     return new Response("This endpoint only accepts WebSocket requests.", { status: 400 });
@@ -923,47 +919,10 @@ export function newWorkersWebSocketRpcResponse(
       });
     }
   }
-
-  if (options?.idleCloseMs) {
-    attachIdleClose(server, stub, options.idleCloseMs);
-  }
   // -- END ADDED FOR GADGETS --
 
   return new Response(null, {
     status: 101,
     webSocket: pair[1],
   });
-}
-
-// Ends a session that has gone quiet, releasing every Durable Object stub behind it.
-//
-// The frontend pauses idle tabs itself, and does it sooner; this is the backstop for the sockets it
-// cannot close -- a frozen tab, a sleeping laptop, a client that never got the pause code. Only
-// inbound frames count: server-to-client traffic (an agent streaming its output) belongs to work
-// the browser already asked for, and a browser doing that work keeps its tab busy, so an idle close
-// there costs one reconnect rather than a lost stream.
-function attachIdleClose(ws: WebSocket, stub: RpcStub<unknown>, ms: number): void {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const arm = () => {
-    clearTimeout(timer);
-    timer = setTimeout(fire, ms);
-  };
-  const fire = () => {
-    // A frame arriving as this fires would re-arm the timer, and closing an already-closed socket
-    // throws; stop listening before the close so there is only ever one fire per socket.
-    ws.removeEventListener("message", arm);
-    clearTimeout(timer);
-    logger.info("closing idle api session", { event: "session.idle.closed", durationMs: ms });
-    // Close first: the client reads this code to decide whether to park or reconnect, and
-    // disposing the session would otherwise close the socket with capnweb's own code.
-    ws.close(SESSION_IDLE_CLOSE_CODE, "idle");
-    stub[Symbol.dispose]();
-  };
-  // Without this the isolate keeps a timer per dead socket.
-  const stop = () => clearTimeout(timer);
-
-  ws.addEventListener("message", arm);
-  ws.addEventListener("close", stop);
-  ws.addEventListener("error", stop);
-  arm();
 }

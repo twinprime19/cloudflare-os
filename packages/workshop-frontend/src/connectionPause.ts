@@ -5,17 +5,15 @@
 // reconnect loop instead of letting it dial back, so the Worker session and every Durable Object
 // stub behind it stay released until something resumes the tab.
 //
-// Invariant: while `paused` is true, nothing dials. Pausing comes from the workspace idle hook
-// (`useWorkspaceIdle`), or from the server's own idle close while that hook is mounted and agrees
-// the tab is idle; anything that needs the server resumes -- sending from the composer, the
-// Paused chip, leaving the workspace. Resuming is deliberate on purpose: a revived Durable Object
-// stays awake until the next idle threshold, so merely looking at the tab must not wake it. The
-// connection code only reads the flag and waits on it. No React here: `main.tsx` manages the
-// socket outside the component tree.
+// Invariant: while `paused` is true, nothing dials. Only the workspace idle hook
+// (`useWorkspaceIdle`) pauses; anything that needs the server resumes -- sending from the
+// composer, the Paused chip, leaving the workspace. Resuming is deliberate on purpose: a revived
+// Durable Object stays awake until the next idle threshold, so merely looking at the tab must not
+// wake it. The connection code only reads the flag and waits on it. No React here: `main.tsx`
+// manages the socket outside the component tree.
 
 let paused = false
 let dropSocket: (() => void) | null = null
-let idleClosePolicy: (() => boolean) | null = null
 let waiters: Array<() => void> = []
 const listeners = new Set<() => void>()
 const notifyListeners = () => listeners.forEach(listener => listener())
@@ -23,20 +21,6 @@ const notifyListeners = () => listeners.forEach(listener => listener())
 /** Registers how to drop the live socket; `main.tsx` installs this once at startup. */
 export function installDropSocketHandler(handler: () => void): void {
   dropSocket = handler
-}
-
-/**
- * Registers who decides what a server-side idle close means, or `null` to clear it. Only the
- * workspace idle hook installs one; routes without it reconnect after an idle close the way they
- * do after any other disconnect.
- */
-export function installIdleClosePolicy(policy: (() => boolean) | null): void {
-  idleClosePolicy = policy
-}
-
-/** True when the server closing an idle socket should park the connection instead of redialing. */
-export function shouldPauseOnIdleClose(): boolean {
-  return idleClosePolicy?.() ?? false
 }
 
 /** True between `pauseConnection()` and the next `resumeConnection()`. */
