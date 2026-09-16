@@ -10,21 +10,33 @@ import {
   authorizeEndpoint, exchangeAuthCode, fetchAvatarDataUrl, fetchGraphProfile, fetchProfilePhoto,
   fetchVerifiedDomains, grantCoversScopes, normalizeScope, refreshAccessToken, resolveVerifiedEmail,
 } from "./microsoft-api";
+import { GraphApiError } from "./graph-api";
+import { GraphSharePointApi } from "./graph-sharepoint-api";
 import type { OutlookMailGatekeeperImplProps } from "./outlook-mail";
 import type { TeamsGatekeeperImplProps } from "./teams";
+import type { SharePointListGatekeeperImplProps } from "./sharepoint-list";
+import {
+  SharePointUrlError, isSharePointHost, parseSharePointListUrl, type SharePointListUrl,
+} from "./sharepoint-url";
 import type {
   OutlookMailConfiguratorRpc,
 } from "./configurator/outlook-mail-configurator-types";
 import type { TeamsConfiguratorRpc } from "./configurator/teams-configurator-types";
+import type {
+  SharePointListConfiguratorRpc,
+} from "./configurator/sharepoint-list-configurator-types";
 import MICROSOFT_LOGO_SVG from "./microsoft-logo.svg";
 import OUTLOOK_MAIL_CONFIGURATOR_HTML from "./generated/outlook-mail-configurator-ui.txt";
 import TEAMS_CONFIGURATOR_HTML from "./generated/teams-configurator-ui.txt";
+import SHAREPOINT_LIST_CONFIGURATOR_HTML from "./generated/sharepoint-list-configurator-ui.txt";
 import TYPES_CODE from "./types.txt";
 import TEAMS_TYPES_CODE from "./teams-types.txt";
+import SHAREPOINT_TYPES_CODE from "./sharepoint-types.txt";
 import { obsContext } from "./observability.js";
 
 export { OutlookMailGatekeeperImpl } from "./outlook-mail";
 export { TeamsGatekeeperImpl } from "./teams";
+export { SharePointListGatekeeperImpl } from "./sharepoint-list";
 
 // Vendor id = GATEKEEPER_<NAME> binding suffix (lowercased).
 const VENDOR_ID = "microsoft";
@@ -210,6 +222,17 @@ const TEAMS_RESOURCE: SupportedResource = {
   grantable: true,
 };
 
+// A list is addressed by the page URL a user pastes, and every SharePoint Online tenant serves it
+// from its own host, so the pattern's host is a wildcard. One consequence, accepted: the Workshop's
+// `extractBaseUrl` cannot derive a concrete base URL from a wildcard host, so the picker offers no
+// pre-filled address and the configurator collects the whole URL.
+const SHAREPOINT_LIST_RESOURCE: SupportedResource = {
+  urlPattern: "https://*.sharepoint.com/*",
+  title: "SharePoint List",
+  description: "Read a list's columns and items, and create new items.",
+  grantable: true,
+};
+
 // `Mail.ReadWrite` covers reading messages and folders, flipping read state, moving messages, and
 // creating drafts. `Mail.Send` is deliberately absent: this gatekeeper never sends mail, it leaves
 // drafts for the user.
@@ -218,6 +241,11 @@ const TEAMS_RESOURCE: SupportedResource = {
 // the read-only promise of that resource holds at the grant as well as in the code. Several of them
 // require a tenant administrator's consent, which is why a partly consented grant is logged (see
 // `logUngrantedResources`) instead of quietly leaving the resource unavailable.
+//
+// `Sites.ReadWrite.All` is the narrowest delegated permission that covers reading a list's columns
+// and items and creating an item in it: Graph's granular site permissions (`Sites.Selected`) are
+// application-only, so a delegated connection cannot be scoped to one site. Every request still
+// runs as the signed-in user, so the connection can only reach what that user can already open.
 const RESOURCE_SCOPES: {resource: SupportedResource, scopes: string[]}[] = [
   { resource: OUTLOOK_MAIL_RESOURCE, scopes: ["Mail.ReadWrite"] },
   {
@@ -227,6 +255,7 @@ const RESOURCE_SCOPES: {resource: SupportedResource, scopes: string[]}[] = [
       "ChannelMessage.Read.All", "Chat.Read",
     ],
   },
+  { resource: SHAREPOINT_LIST_RESOURCE, scopes: ["Sites.ReadWrite.All"] },
 ];
 
 const SUPPORTED_RESOURCES: SupportedResource[] = RESOURCE_SCOPES.map(entry => entry.resource);
@@ -289,6 +318,15 @@ function logUngrantedResources(requestedScopes: string[], grantedScopes: string[
       grantedScopes,
     });
   }
+}
+
+/** Why a list lookup failed, in words that can be shown to whoever pasted the URL. */
+function sharePointFailureReason(err: unknown): string {
+  // A GraphApiError message is built for display already: provider text, truncated, no ids. The
+  // trailing stop is dropped because the sentence this lands in supplies its own. Anything else
+  // came from the network or the token path, where the text is not ours to echo.
+  if (err instanceof GraphApiError) return err.message.replace(/\.$/, "");
+  return "the request to Microsoft did not complete";
 }
 
 const MICROSOFT_LOGO_URL = `data:image/svg+xml,${encodeURIComponent(MICROSOFT_LOGO_SVG)}`;
@@ -454,12 +492,12 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
    * Every resource type's types, joined.
    *
    * A plain concatenation, which is only safe because the per-resource files were written not to
-   * collide: the Teams types reach `Cursor` through an inline import rather than importing and
-   * re-exporting it as the mail types do, so the joined text declares each name once. Each
-   * `Gatekeeper.getTypeScriptTypes()` still serves only its own file.
+   * collide: the Teams and SharePoint types reach `Cursor` through an inline import rather than
+   * importing and re-exporting it as the mail types do, so the joined text declares each name
+   * once. Each `Gatekeeper.getTypeScriptTypes()` still serves only its own file.
    */
   async getTypeScriptTypes(): Promise<string> {
-    return [TYPES_CODE, TEAMS_TYPES_CODE].join("\n");
+    return [TYPES_CODE, TEAMS_TYPES_CODE, SHAREPOINT_TYPES_CODE].join("\n");
   }
 }
 
@@ -1021,7 +1059,59 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
       };
     }
 
+    // A pasted list page names its list by site path and URL name; Graph works in ids. Resolving
+    // them here, once, is what makes the binding survive the list being renamed or moved later —
+    // and it is also the first moment the account's own access to the list is tested, so a URL the
+    // user cannot open fails while they are still looking at the picker.
+    //
+    // A parse failure on a SharePoint host is shown as the parser wrote it: the user meant this
+    // resource, and only that message names what to paste instead. Off a SharePoint host the same
+    // failure means something else — the URL is not this vendor's at all — so it falls through to
+    // the routing error below.
+    let listUrl: SharePointListUrl | undefined;
+    try {
+      listUrl = parseSharePointListUrl(url);
+    } catch (err) {
+      if (!(err instanceof SharePointUrlError) || isSharePointHost(parsed.hostname)) throw err;
+    }
+    if (listUrl) {
+      let { siteId, listId } = await this.#resolveSharePointList(listUrl);
+      let props: SharePointListGatekeeperImplProps = {
+        userObjectId: this.ctx.props.userObjectId, siteId, listId,
+      };
+      return {
+        class: this.ctx.exports.SharePointListGatekeeperImpl({props}),
+        resource: SHAREPOINT_LIST_RESOURCE,
+      };
+    }
+
     throw new Error(`The Microsoft gatekeeper cannot connect this URL: ${url}`);
+  }
+
+  /**
+   * The site and list ids a pasted list URL stands for.
+   *
+   * Two Graph requests, each under the same 20 s ceiling every other call here uses, because the
+   * picker waits on this: the site, then the list on it. A failure is reported in the connecting
+   * user's terms — the provider's own words are display-safe (`GraphApiError` builds them from a
+   * truncated Graph message), and anything else is reported as a failed request rather than echoed.
+   */
+  async #resolveSharePointList(listUrl: SharePointListUrl): Promise<{
+    siteId: string;
+    listId: string;
+  }> {
+    let api = new GraphSharePointApi(
+        async opts => (await this.#account().getAccessToken(opts)).token);
+    try {
+      let site = await api.resolveSite(listUrl.hostname, listUrl.sitePath);
+      let list = await api.resolveListByUrl(site.id, listUrl.listSegment);
+      return { siteId: site.id, listId: list.id };
+    } catch (err) {
+      throw new Error(
+          `Could not open that SharePoint list: ${sharePointFailureReason(err)}. Check the URL ` +
+          "and that your account can open it.",
+          { cause: err });
+    }
   }
 
   async startResourceConfigurator(
@@ -1037,6 +1127,13 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
       return {
         iframeHtml: TEAMS_CONFIGURATOR_HTML,
         ui: new RpcStub(new TeamsConfiguratorUI()),
+      };
+    }
+
+    if (resourceUrlPattern === SHAREPOINT_LIST_RESOURCE.urlPattern) {
+      return {
+        iframeHtml: SHAREPOINT_LIST_CONFIGURATOR_HTML,
+        ui: new RpcStub(new SharePointListConfiguratorUI()),
       };
     }
 
@@ -1089,27 +1186,72 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
 //
 // Opaque capability standing for "this account", handed to Gatekeeper.addObserver() and passed back
 // to this same gatekeeper, which may therefore trust what it reports. It carries the account id in
-// props so any future access check runs against the observer's own Microsoft token rather than the
-// resource owner's. No resource type consults it yet, so it exposes no checks.
+// props so every access check runs against the observer's own Microsoft token rather than the
+// resource owner's.
 
 type MicrosoftVerifierProps = {
   userObjectId: string;
 };
 
+/**
+ * The non-standard method the SharePoint list gatekeeper calls on its own verifier (see its
+ * addObserver). Not part of the generic GatekeeperUserVerifier contract, which has no methods: the
+ * overseer only promises to hand a verifier back to the gatekeeper whose account minted it, which is
+ * what makes calling a private method on it sound.
+ */
+export interface SharePointVerifierApi extends GatekeeperUserVerifier {
+  hasListAccess(siteId: string, listId: string): Promise<boolean>;
+}
+
 @validateRpc()
 export class MicrosoftVerifier extends WorkerEntrypoint<Env, MicrosoftVerifierProps>
-    implements GatekeeperUserVerifier {
+    implements SharePointVerifierApi {
+  #account(): DurableObjectStub<UserAccount> {
+    let id = this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId);
+    return this.ctx.exports.UserAccount.get(id);
+  }
+
+  /**
+   * Can this account open that list?
+   *
+   * Reading the list's own metadata is the cheapest question SharePoint answers with the permission
+   * the observer would need. A refusal and a list that is invisible to them are the same answer
+   * here: no. Anything else is an outage or a misconfiguration, not a verdict, and is reported as
+   * such — deliberately without ids or provider text, because the message is shown to whoever tried
+   * to add the collaborator.
+   */
+  async hasListAccess(siteId: string, listId: string): Promise<boolean> {
+    let api = new GraphSharePointApi(
+        async opts => (await this.#account().getAccessToken(opts)).token);
+    try {
+      await api.describeList(siteId, listId);
+      return true;
+    } catch (err) {
+      if (err instanceof GraphApiError && (err.status === 403 || err.status === 404)) return false;
+      // The cause carries the provider's own words for the logs; the message deliberately does not.
+      throw new Error("Could not verify SharePoint access right now.", { cause: err });
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Resource configurator
 //
-// RPC interface exposed to the resource-selection iframe. Both resources are singletons — a
-// connected account has exactly one mailbox and one Teams surface — so each frame confirms the
-// choice and needs nothing from the gatekeeper.
+// RPC interface exposed to the resource-selection iframe. The mailbox and the Teams surface are
+// singletons — a connected account has exactly one of each — so those frames confirm the choice and
+// need nothing from the gatekeeper. A SharePoint list is not: its frame collects the pasted URL,
+// and still needs nothing from the gatekeeper because the URL is only ever validated server-side.
 
 @validateRpc()
 export class OutlookMailConfiguratorUI extends RpcTarget implements OutlookMailConfiguratorRpc {}
 
 @validateRpc()
 export class TeamsConfiguratorUI extends RpcTarget implements TeamsConfiguratorRpc {}
+
+// The list frame collects the pasted URL and nothing else. It needs no capability either: deciding
+// whether a URL really names a list the account can open takes the account's own token, so that
+// answer is produced where the binding is created (`getGatekeeperClassFor`) and on every reopen
+// (`describe`), not in a sandboxed frame that could only ask for it.
+@validateRpc()
+export class SharePointListConfiguratorUI extends RpcTarget
+    implements SharePointListConfiguratorRpc {}
