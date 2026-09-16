@@ -15,9 +15,10 @@ import {
 import { RpcStub as NativeRpcStub } from "cloudflare:workers";
 import { createTwoFilesPatch, FILE_HEADERS_ONLY } from "diff";
 import { webFetch as webFetchImpl, WebFetchEnv, formatWebFetchResult } from "./web-fetch";
-import { AgentCatalogSnapshot, formatAlwaysAvailableResourcesPrompt } from "./agent-catalog";
+import { formatAlwaysAvailableResourcesPrompt } from "./agent-catalog";
 import { formatInstanceInstructions } from "./admin-config";
 import type { AiGatewayLogRoute } from "./ai-gateway";
+import type { SpawnCallableOptions } from "./agent-spawner-binding";
 import { AgentTurnError, completeText, describeRequestFailure, httpStatusFromError, zeroUsage }
   from "./ai-invoke";
 import type { ModelHandle } from "./ai-models";
@@ -153,6 +154,14 @@ export type AiChatAgentContext = {
   spawnerConfig?: AgentSpawnerConfig;
 
   /**
+   * If present, this chat was spawned with `spawnCallable()`, and these are the TypeScript
+   * declarations of the interface the agent implements, frozen at spawn time like
+   * `spawnerConfig`. Kept here rather than in the chat log so the system-prompt builder can read
+   * them without a log scan and they don't render in the chat.
+   */
+  spawnerTypes?: SpawnCallableOptions;
+
+  /**
    * Initial `env` binding set gathered when this chat was started, typically including all gadgets
    * and all gatekeepers which those gadgets bind to, but the contents may be different depending
    * on how the chat thread was started (e.g. agent spawners initialize env in a specific way).
@@ -180,12 +189,6 @@ export type AiChatAgentContext = {
    * that).
    */
   alwaysAvailableCapsuleIds?: WorkpieceId[];
-
-  /**
-   * Cached discovery catalogs for the always-available resources, keyed per gatekeeper.
-   * Regenerable: re-fetched when missing/stale (see prepareChatBindings).
-   */
-  alwaysAvailableCatalogs?: AgentCatalogSnapshot[];
 };
 
 /**
@@ -286,17 +289,24 @@ export type CompactionCheckpoint = {
   proposedChange?: CodeChange;
 };
 
-/** The compaction state and policy for one call to `runAgent`. */
-export type CompactionContext = {
-  /** The checkpoint to replay from, if the thread has one. */
+/**
+ * The history one agent pass replays: the active compaction checkpoint, if any, the chat log from
+ * it on, and the token total the provider reported for the chat's last model step (zero when none
+ * is recorded). See AgentHooks.loadChatHistory.
+ */
+export type ChatHistory = {
   checkpoint?: CompactionCheckpoint;
-
-  /** The chosen model, whose window and reserved response capacity size the prompt budget. */
-  modelConfig: AiModelConfig;
-
-  /** The total tokens reported for the last measured model step, or zero if none are available. */
+  chatMessages: AiChatMessage[];
   measuredTokens: number;
 };
+
+// Why one pass of the agent returned to runAgent's loop: the turn ran to a stop; a persisted tool
+// step left the next request over the compaction trigger, so the pass ended for a reload; or the
+// pass summarized instead of prompting the model and this is the checkpoint to publish.
+type AgentPassOutcome =
+  | {type: "finished"}
+  | {type: "reloadForCompaction"}
+  | {type: "compacted"; checkpoint: CompactionCheckpoint};
 
 /**
  * Summary of one of the workspace's gadgets, as needed by the agent: identity and its named
@@ -331,9 +341,8 @@ async function resolveBindingDescription(
     case "workpiece":
       return hooks.describeBinding(`env.${name}`, entry.id);
     case "value":
-      return `env.${name} holds the arguments of an agent callback: \`env.${name}.args\` is the ` +
-          `arguments array, and \`env.${name}.resolve(value)\` / \`env.${name}.reject(error)\` ` +
-          `complete the callback.`;
+      return `env.${name} is the arguments array of a call delivered to this agent (one element ` +
+          `per parameter of the call). Any RPC stubs among them may be called directly.`;
     default:
       return entry satisfies never;
   }
@@ -439,6 +448,15 @@ export interface AgentHooks {
       },
       totalTokens?: number, aiGatewayLogId?: string, aiGatewayLogRoute?: AiGatewayLogRoute,
       estimatedCost?: number): Promise<boolean>;
+
+  /**
+   * The history one agent pass replays (see ChatHistory). Read fresh before each pass, since a
+   * pass can compact or persist steps.
+   */
+  loadChatHistory(chatId: number): ChatHistory;
+
+  /** Publish a compaction checkpoint: later history loads start from it. */
+  commitChatCompaction(chatId: number, checkpoint: CompactionCheckpoint): void;
 
   /**
    * The gadget's current head commit (WorkpieceSummary.commitId), or undefined if it has none:
@@ -558,8 +576,6 @@ export interface AgentHooks {
                    bindings: Record<string, ChatBindingEntry>,
                    onOutputText?: (delta: string) => void,
                    worktreeTurn?: WorktreeTurnAccess): Promise<string>;
-  activeAgentCallbackCount(chatId: number): number;
-  rejectAllAgentCallbacks(chatId: number, error: string): void;
   consumeCapturedActions(chatId: number)
       : {actions: number[], accessedGadget: boolean, awaitDecision: boolean} | undefined;
   emitChatStreamEvent(chatId: number, event: AiChatStreamEvent): void;
@@ -686,18 +702,28 @@ export interface AgentHooks {
 // =======================================================================================
 // Agent system prompt and tool descriptions
 
+const COMMUNICATION_GUIDANCE = `
+# Communicating with users
+
+Be helpful, direct, and friendly. Use plain language. Lead with the answer or outcome, keep explanations concise, and use familiar document, account, and gadget names. Do not mention source filenames in routine progress updates or confirmations. Refer to the gadget and the change.
+
+Assume the user is not an engineer. Write code and use tools as needed without narrating APIs, bindings, or implementation steps. Explain technical details when asked or needed to understand a limitation or make a decision, matching the user's level of detail.
+
+Be accurate about results, unfinished work, and required access. Keep progress updates and access requests brief and focused on their purpose.
+`.trim();
+
 let SYSTEM_PROMPT = `
-You are a helpful coding assistant tasked with helping users write small personal applications known as "Gadgets". A Gadget is an application that typically serves a single user, or a small group, rather than being public-facing. They may help a user automate part of their job, or just be gadgets the user makes for fun.
+You are a helpful assistant who helps users get things done. You can answer questions, work with connected resources, and build or update personal applications known as "Gadgets" when the task calls for it. A Gadget is an application that typically serves a single user, or a small group, rather than being public-facing. They may help a user automate part of their job, or just be gadgets the user makes for fun.
 
 # Workspaces
 
 You are working within a "workspace". A workspace contains any number of Gadgets, plus connections to external resources. Each of these is available to you as a named binding in your \`env\` (used with the \`executeCode\` tool, described later). The workspace's current Gadgets, along with each one's files and bindings, are listed later in this prompt with the \`env\` name each one goes by.
 
-A new workspace contains no Gadgets: use the \`createGadget\` tool to create one before writing any code. Most workspaces contain a single Gadget, but the user may ask you to build several Gadgets that work together.
+A new workspace contains no Gadgets. You can answer questions, read connected resources, and perform one-off tasks with \`executeCode\` without creating a Gadget. Create one (via the \`createGadget\` tool) only when the user's request or established context clearly calls for a new application or saved output. An empty workspace or a task that needs code is not by itself a reason to create one.
 
-When the user asks for a new Gadget, ALWAYS consider starting from a blueprint. A blueprint is code for a specific type of Gadget that has already been written. The \`listBlueprints\` tool returns a list of available blueprints. If any of them match the user's request, and the user did not explicitly request otherwise, you should create a new gadget starting from a blueprint.
+Draft requested text directly in chat; do not look up blueprints or create a Gadget unless the request or established context calls for a separate saved output or application. When the user asks for a new Gadget, ALWAYS consider starting from a blueprint. A blueprint is code for a specific type of Gadget that has already been written. The \`listBlueprints\` tool returns a list of available blueprints. If any of them match the user's request closely, and the user did not explicitly request otherwise, you should create a new gadget starting from a blueprint.
 
-Note that users rarely ask for "a Gadget" in those words. They ask for a thing: a doc, a deck, a tracker, a tool that does X. Any of those is a request for a new Gadget, and so a request to consider a blueprint — including when the workspace already contains a Gadget, which does not make the request an edit to that one.
+Note that users rarely ask for "a Gadget" in those words. They ask for a thing: a doc, a deck, a tracker, a tool that does X. "Summarize this doc", "draft an email", or "check these figures" usually asks for an answer or one-off task, not a new Gadget. Work on an existing Gadget when the request refers to it. If a useful answer completes the task, give that answer. Ask a brief clarification when it's unclear whether the user wants something created; otherwise, proceed. When the goal is unclear, ask what the user wants to accomplish before suggesting an application.
 
 Tools refer to Gadgets by their binding name in your env: the file tools (\`readFile\`, \`writeFile\`, \`editFile\`) take a required \`workpiece\` parameter naming the Gadget that owns the file, and \`setGadgetBinding\` takes a \`gadget\` parameter naming the Gadget whose bindings to modify.
 
@@ -904,10 +930,28 @@ You are an AI agent started to perform a specific task as part of a personal app
 
 Gadgets execute on a restricted and heavily-sandboxed variant of Cloudflare Workers.
 
-You were started programmatically by the Gadget to perform a task. The specific task will be described in the first message in this chat. The message is not directly from the user but rather from an automated system. If you receive any further messages after the first, then these additional messages are directly from a human user making additional requests regarding the task.
+You were started programmatically by the Gadget to perform a task, described below.
 
 Typically (but not always), you will need to use the \`executeCode\` tool to complete the task, invoking the available bindings (members of the env object) and other APIs available to you.
 `.trim();
+
+// How the task reaches an agent spawned with spawn(): as the chat's first message.
+let SPAWNED_TASK_PROMPT = `
+The specific task is described in the first message in this chat. That message is not directly from the user but rather from an automated system. Any further messages after the first are directly from a human user making additional requests regarding the task.
+`.trim();
+
+// How the task reaches an agent spawned with spawnCallable(): as calls on an interface the agent
+// implements. The kernel explains how calls are delivered, and embeds the gadget-supplied
+// declarations verbatim.
+function formatCallableAgentPrompt({types, mainType}: SpawnCallableOptions): string {
+  return `
+The Gadget expects you to implement the TypeScript interface \`${mainType}\`, declared below. Each time it calls a method of \`${mainType}\`, you will receive the call as a message, and the parameters to the call will be placed into your \`env\` for use in \`executeCode\`, under the name given in that message. Complete the task as described in the interface's doc comments. Calls return nothing to the caller: the only effect you have is through the capabilities available to you, including any RPC stubs passed as parameters. Any message in this chat that is not such a call is directly from a human user making additional requests regarding the task.
+
+\`\`\`ts
+${types.trim()}
+\`\`\`
+`.trim();
+}
 
 let READ_FILE_TOOL_DESCRIPTION = `
 Read the content of a file owned by one of the workspace's gadgets. If a file changes after you read it, you will either be informed of the change or the outdated result will be replaced with a note telling you to re-read the file; otherwise there is no need to read a file again after you have already read it once. This cannot read chat attachments; attachments are provided directly in the conversation.
@@ -916,7 +960,7 @@ Read the content of a file owned by one of the workspace's gadgets. If a file ch
 let CREATE_GADGET_TOOL_DESCRIPTION = `
 Create a new Gadget in this workspace. The new gadget immediately becomes available in your \`env\` under the \`bindingName\` you choose, which is also how you refer to it in other tools (the \`workpiece\` parameter of the file tools, etc.).
 
-Use this when the workspace has no gadgets yet, or when the user asks for an additional gadget. Always choose a short, descriptive title — the user will see it.
+Use this when the user's request or established context clearly calls for a new application or saved output. An empty workspace or a one-off task does not require a gadget. Always choose a short, descriptive title — the user will see it.
 
 By default the new gadget is empty. Pass \`blueprintId\` (discovered with the \`listBlueprints\` tool, or given by the user) to instead start the gadget from a blueprint's code; the result then also describes the bindings the blueprint expects you to wire up.
 `.trim();
@@ -1011,7 +1055,7 @@ Note that this differs from the \`env\` a Gadget's own code sees: a Gadget's ser
 
 When the user asks you to just do a task that can be done with these bindings, you should use executeCode to perform the task, instead of adding code to a gadget to do it.
 
-The function also receives a \`self\` parameter which is a magic object that points back to this chat thread. Calling any method on \`self\`, like \`self.foo(123)\`, delivers a callback message to this chat and activates you to respond. \`self\` can be passed over RPC (e.g. to a subscription method) and stored in a Durable Object's KV storage for long-term callbacks. When an agent callback is received, it appears in your env under a name like \`PARAMS_1\`, with \`.args\` (the callback arguments), \`.resolve(value)\` (to return a value to the caller), and \`.reject(error)\` (to reject with an error).
+The function also receives a \`self\` parameter which is a magic object that points back to this chat thread. Calling any method on \`self\`, like \`self.foo(123)\`, records a callback to this chat, which is delivered to you as a message on a later turn and activates you to respond. The call resolves as soon as the callback is recorded and returns nothing; it never waits for you (so awaiting it within the same executeCode run is fine, but it cannot yield a result). The arguments must be storable: any RPC stubs among them must be persistent stubs. \`self\` can be passed over RPC (e.g. to a subscription method) and stored in a Durable Object's KV storage for long-term callbacks. When a callback is received, its arguments appear in your env as an array, under a name like \`foo_ARGS\` given in the callback message.
 `.trim();
 
 let LIST_CONNECTABLE_RESOURCES_TOOL_DESCRIPTION = `
@@ -1020,10 +1064,6 @@ List the resource types a gatekeeper vendor offers, so you can construct a resou
 
 let REQUEST_CONNECTION_TOOL_DESCRIPTION = `
 Ask the user to connect a gatekeeper resource (e.g. a ClickHouse cluster, a GitHub repo). Pre-configure as much as you can: always pass vendorId, and pass resourceUrl when you can infer it (use listConnectableResources to learn the URL patterns). The request must resolve to a specific resource: if you pass a resourceUrl it must match one of the vendor's patterns, and if the vendor offers multiple resource types with no whole-instance option you MUST pass a matching resourceUrl. Otherwise the call is rejected with guidance and no card is shown — fix the request and try again. You also choose \`bindingName\`: the name the resource will have in your env once connected (you know why you want the resource, so pick a name that reflects its role). On success this shows the user an accept/deny card in the chat. It does NOT block: your turn ends after a successful call, and you will be resumed once the user accepts (the resource becomes available as \`env.<bindingName>\`, which you can describeBinding and use from executeCode; wire it into a Gadget with setGadgetBinding only if the Gadget's code needs it) or denies (your turn simply ends; wait for the user's next message).
-`.trim();
-
-let GIVE_UP_TOOL_DESCRIPTION = `
-Gives up on handling the current callbacks, rejecting all outstanding callbacks with an error. Use this if you cannot fulfill the callbacks after attempting to do so.
 `.trim();
 
 // =======================================================================================
@@ -1372,21 +1412,45 @@ export async function importMailAttachments(
 // =======================================================================================
 
 /**
- * Runs one agent turn against the chat's history. Returns a checkpoint when the turn compacted
- * instead of prompting the model: the caller commits it, then reruns for a normal turn or stops for
- * `/compact`. Returns undefined when the turn ran.
+ * Runs one agent turn against the chat's history, compacting as needed. A pass over the history
+ * may compact instead of prompting the model, or end after a persisted tool step because the next
+ * request would cross the compaction trigger; either way the loop reloads the durable history,
+ * which the next pass compacts first, and goes again. Each compaction moves the boundary strictly
+ * forward and can never pass the newest turn start, so the loop is bounded. `/compact` is done once
+ * it has compacted; the model is never prompted.
  */
 export async function runAgent(
     hooks: AgentHooks,
     handle: ModelHandle,
     chatId: number,
     author: AiChatAuthorInfo,
-    chatMessages: AiChatMessage[],
     abortSignal: AbortSignal,
     initiator: AiChatAuthorInfo,
-    callbackInitiated: boolean,
-    compaction: CompactionContext): Promise<CompactionCheckpoint | undefined> {
-  let checkpoint = compaction.checkpoint;
+    modelConfig: AiModelConfig): Promise<void> {
+  // Turn budget for this activation. It lives out here, not in the pass, because a pass that ends
+  // in a compaction reload has still spent the turns it ran: a per-pass counter would restart on
+  // every reload and bound nothing.
+  let turnCount = {steps: 0};
+  while (true) {
+    let history = hooks.loadChatHistory(chatId);
+    let outcome = await runAgentPass(
+        hooks, handle, chatId, author, history, abortSignal, initiator, modelConfig, turnCount);
+    if (outcome.type === "compacted") hooks.commitChatCompaction(chatId, outcome.checkpoint);
+    if (outcome.type === "finished" || isCompactionTurn(history.chatMessages)) return;
+    abortSignal.throwIfAborted();
+  }
+}
+
+async function runAgentPass(
+    hooks: AgentHooks,
+    handle: ModelHandle,
+    chatId: number,
+    author: AiChatAuthorInfo,
+    {checkpoint, chatMessages, measuredTokens}: ChatHistory,
+    abortSignal: AbortSignal,
+    initiator: AiChatAuthorInfo,
+    modelConfig: AiModelConfig,
+    turnCount: {steps: number}): Promise<AgentPassOutcome> {
 
   // The workspace's gadget registry, snapshotted at the start of the turn (gadgets provisional
   // to other chats are excluded -- they belong to those chats' proposed changes). This is the
@@ -1811,6 +1875,8 @@ export async function runAgent(
       chatBindings.set(seed.name, {type: "workpiece", id: seed.target});
     }
   }
+  // Read after prepareChatBindings, which seeds (and persists) the context on first use.
+  let agentContext = hooks.getChatAgentContext(chatId);
 
   // Always-available resources (e.g. the Context Library) describe the agent's environment, so
   // they're announced in the system prompt (slot 1, below) alongside the bindings list rather
@@ -1820,12 +1886,6 @@ export async function runAgent(
       ? formatAlwaysAvailableResourcesPrompt(alwaysAvailable.map(seed =>
           ({title: seed.title, name: seed.name, catalog: seed.catalog!})))
       : "";
-
-  // Agent-callback bindings are named PARAMS_1, PARAMS_2, ... in replay order, skipping any name
-  // already taken in scope. This is the authoritative allocation; chatScopeNames and the naming
-  // chokepoint in overseer.ts simulate it (so name-choosing paths there can't claim a name a
-  // callback holds) -- keep them in sync.
-  let callbackNameCounter = 0;
 
   // Rebuild the code the compacted prefix left behind: first the checkpoint's pins establish
   // their base trees, then the composed proposed change applies on top. (A pre-conversion
@@ -2172,6 +2232,7 @@ export async function runAgent(
                   toolOutput = {text: toolCall.output!};
                   break;
                 case "giveUp":
+                  // Obsolete tool: no longer offered, replayed for old chat logs only.
                   toolOutput = {text: jsonToolResultText({rejected: true})};
                   break;
                 case "webFetch":
@@ -2394,30 +2455,32 @@ export async function runAgent(
       }
 
       case "agentCallback": {
-        // Assign a binding name for this callback's args: PARAMS_<n>, deterministic from replay
-        // order, skipping names already taken in scope (kept in sync with the simulations in
-        // overseer.ts -- see chatScopeNames).
-        let name: string;
-        do {
-          name = `PARAMS_${++callbackNameCounter}`;
-        } while (isNameInScope(name));
-        chatBindings.set(name, { type: "value", messageSequence: msg.sequence });
-
-        let content =
-            `A callback was received: \`self.${msg.methodName}()\`\n\n` +
-            `Arguments (env.${name}.args):\n${msg.argsSummary}\n\n` +
-            `Access the full data as \`env.${name}.args\` in executeCode. ` +
-            `You MUST resolve or reject this callback using ` +
-            `\`env.${name}.resolve(value)\` or \`env.${name}.reject(error)\`. ` +
-            `The caller is blocked until you do so. Once you resolve or reject all open ` +
-            `callbacks, your turn will end immediately; be sure to complete everything ` +
-            `you need to do before that.`;
+        // The args binding name was stamped on the message when the call was appended to the log
+        // (drainPendingAgentCalls in overseer.ts), unique in the chat's scope at that point. A
+        // message without one predates durable calls: its arguments were transient and are gone.
+        let name = msg.bindingName;
+        let content: string;
+        if (name === undefined) {
+          content =
+              `A callback was received: \`self.${msg.methodName}()\`. ` +
+              `Its arguments are no longer available.`;
+        } else {
+          chatBindings.set(name, { type: "value", messageSequence: msg.sequence });
+          let call = agentContext.spawnerTypes
+              ? `The Gadget called \`${msg.methodName}()\` on your interface.`
+              : `A callback was received: \`self.${msg.methodName}()\`.`;
+          content =
+              `${call} Arguments (\`env.${name}\`):\n${msg.argsSummary}\n\n` +
+              `Access the full arguments as \`env.${name}\` (an array, one element per ` +
+              `parameter) in executeCode.`;
+        }
 
         modelMessages.push({ role: "user", content, timestamp: msgTimestamp });
         break;
       }
 
       case "agentNudge":
+        // Obsolete: no longer emitted, replayed for old chat logs only.
         modelMessages.push({ role: "user", content: msg.text, timestamp: msgTimestamp });
         break;
 
@@ -2603,7 +2666,6 @@ export async function runAgent(
         pendingWorktreeCommits.push({worktreeId: id, commit, previousHead}),
   };
 
-  let agentContext = hooks.getChatAgentContext(chatId);
   let emitStreamEvent = (event: AiChatStreamEvent) => {
     hooks.emitChatStreamEvent(chatId, event);
   };
@@ -2651,14 +2713,18 @@ export async function runAgent(
           `You have access to the following bindings via the \`env\` object:\n${lines.join("\n")}`;
     }
 
-    // Split the system prompt into static and dynamic parts for better caching.
+    // Split the system prompt into static and dynamic parts for better caching. How the task is
+    // delivered depends on how the chat was spawned, and for a callable agent includes the
+    // chat-specific (but stable across the chat) interface, so that goes in the second slot.
     systemPromptSlots = [
-      instanceInstructions
-          ? `${SPAWNER_SYSTEM_PROMPT}\n\n${instanceInstructions}`
-          : SPAWNER_SYSTEM_PROMPT,
-      alwaysAvailableResourcesPrompt
-          ? `${systemPromptBindings}\n\n${alwaysAvailableResourcesPrompt}`
-          : systemPromptBindings,
+      SPAWNER_SYSTEM_PROMPT,
+      [
+        agentContext.spawnerTypes
+            ? formatCallableAgentPrompt(agentContext.spawnerTypes)
+            : SPAWNED_TASK_PROMPT,
+        systemPromptBindings,
+        alwaysAvailableResourcesPrompt,
+      ].filter(part => part !== "").join("\n\n"),
     ];
   } else {
     // This is a regular coding agent.
@@ -2672,8 +2738,9 @@ export async function runAgent(
     let systemPromptWorkspace: string;
     if (gadgetInfos.length == 0) {
       systemPromptWorkspace =
-          "This workspace does not contain any gadgets yet. Before writing any code, create a " +
-          "gadget with the `createGadget` tool.";
+          "This workspace does not contain any gadgets yet. You can use connected resources " +
+          "and executeCode without one. Use `createGadget` tool only when the task calls for a new " +
+          "application or saved output, before writing that gadget's files.";
     } else {
       let sections: string[] = [];
       for (let info of gadgetInfos) {
@@ -2761,20 +2828,23 @@ export async function runAgent(
 
     // Split the system prompt into static and dynamic parts for better caching.
     systemPromptSlots = [
-      instanceInstructions
-          ? `${SYSTEM_PROMPT}\n\n${instanceInstructions}`
-          : SYSTEM_PROMPT,
+      SYSTEM_PROMPT,
       (standardFormats ? `${standardFormats}\n\n` : "") +
           `${systemPromptWorkspace}${systemPromptConnections}` +
           (alwaysAvailableResourcesPrompt ? `\n\n${alwaysAvailableResourcesPrompt}` : ""),
     ];
   }
 
+  // Shared guidance precedes deployment instructions for both agent types.
+  systemPromptSlots[0] += `\n\n${COMMUNICATION_GUIDANCE}`;
+  if (instanceInstructions) {
+    systemPromptSlots[0] += `\n\n${instanceInstructions}`;
+  }
   let systemPrompt = `${systemPromptSlots[0]}\n\n${systemPromptSlots[1]}`;
 
   // Some models charge their response to the same window as the prompt, so the reservation is both
   // withheld from the prompt's budget and sent as the response cap -- the two can't disagree.
-  let {inputBudget, maxOutputTokens} = getModelTokenLimits(compaction.modelConfig);
+  let {inputBudget, maxOutputTokens} = getModelTokenLimits(modelConfig);
 
   let projection: CompactionProjectionMessage[] = modelMessages.map((message, index) => ({
     message, ...modelMessageSources[index],
@@ -2784,8 +2854,8 @@ export async function runAgent(
   // `measuredTokens` covers the prompt and response of the last model step, so estimate only what
   // was added after it. A tool result carries the call's sequence but wasn't in that usage.
   // (The system prompt is not part of the projection, so the pure estimate adds it separately.)
-  let contextTokens = compaction.measuredTokens > 0 && lastMeasuredSequence !== undefined
-    ? compaction.measuredTokens + estimateProjectionTokens(
+  let contextTokens = measuredTokens > 0 && lastMeasuredSequence !== undefined
+    ? measuredTokens + estimateProjectionTokens(
         projection.filter(({message, sequence}) => sequence !== undefined &&
           (sequence > lastMeasuredSequence ||
            (sequence === lastMeasuredSequence && message.role === "toolResult"))))
@@ -2818,7 +2888,7 @@ export async function runAgent(
         // An empty summary would discard the compacted history, so keep the history instead.
         if (!summary) throw new Error("Compaction produced an empty summary.");
 
-        return {
+        let compacted: CompactionCheckpoint = {
           chatId,
           compactedTo,
           summary,
@@ -2831,6 +2901,7 @@ export async function runAgent(
               ]),
               checkpoint),
         };
+        return {type: "compacted", checkpoint: compacted};
       } catch (error) {
         // Compaction triggers below the limit, so the turn's own prompt still fits and a failed
         // summary must not fail the turn. Cancellation and an explicit `/compact` do surface.
@@ -2849,7 +2920,7 @@ export async function runAgent(
     }
   }
   // `/compact` ends the turn whether or not the boundary could advance; the model is never prompted.
-  if (compactionTurn) return;
+  if (compactionTurn) return {type: "finished"};
 
   // Wraps a plain-text tool result (the exact text the model sees) with optional recorded notes
   // (see AiToolCall: observedCodeVersion, recorded output) riding along as pi `details` for the
@@ -3130,7 +3201,7 @@ export async function runAgent(
       execute: async (toolCallId, {binding, messageId, attachmentIds}) => {
         try {
           let output = await importMailAttachments(
-              hooks, chatId, chatBindings, compaction.modelConfig.provider,
+              hooks, chatId, chatBindings, modelConfig.provider,
               {binding, messageId, attachmentIds});
 
           // No observation is recorded here, unlike webFetch: every read this tool made went
@@ -3544,31 +3615,12 @@ export async function runAgent(
     }),
   };
 
-  // When the agent was started to handle callbacks, add the giveUp tool so it can bail out.
-  if (callbackInitiated) {
-    tools.giveUp = defineTool({
-      name: "giveUp",
-      label: "Give up",
-      description: GIVE_UP_TOOL_DESCRIPTION,
-      parameters: Type.Object({
-        error: Type.String({
-          description: "Error message explaining why the callbacks cannot be fulfilled.",
-        }),
-      }),
-      execute: async (_toolCallId, {error}) => {
-        hooks.rejectAllAgentCallbacks(chatId, error);
-        return toolResult(jsonToolResultText({rejected: true}));
-      }
-    });
-  }
-
   if (agentContext.spawnerConfig) {
     // Restrict sub-agents to a narrower set of tools: they can inspect and call bindings in code
     // (which is how they read reference knowledge), but not the full editing/connection surface.
     tools = {
       describeBinding: tools.describeBinding,
       executeCode: tools.executeCode,
-      ...(callbackInitiated ? {giveUp: tools.giveUp} : {}),
     };
   }
 
@@ -3580,8 +3632,9 @@ export async function runAgent(
   // failed turn is persisted.
   let turnFailure: {message: string} | undefined;
 
-  // Turn cap, replacing the old stepCountIs(30).
-  let turnCount = 0;
+  // Set after the persistence barrier when another provider request would cross the preferred
+  // compaction budget. The caller reloads durable history before doing any more model work.
+  let reloadForCompaction = false;
 
   // The awaited event sink driving both the client stream fan-out and the persistence barrier.
   let emit = async (event: AgentEvent): Promise<void> => {
@@ -3766,6 +3819,8 @@ export async function runAgent(
             handle.aiGatewayLogRoute, message.usage.cost.total)) {
           ++nextChangeId;
         }
+        // The step is durable, so it counts against the activation's turn budget.
+        ++turnCount.steps;
 
         // Reset per-step streaming state.
         toolCallNotes.clear();
@@ -3784,7 +3839,7 @@ export async function runAgent(
     logger.warn("agent turn skipped: history ends with a completed assistant message", {
       event: "agent.turn.skipped", chatId,
     });
-    return undefined;
+    return {type: "finished"};
   }
 
   let context: AgentContext = {
@@ -3799,25 +3854,47 @@ export async function runAgent(
     convertToLlm: (messages) => messages as Message[],
     toolExecution: "sequential",
     maxTokens: maxOutputTokens,
-    shouldStopAfterTurn: () =>
-        // Cancelled during tool execution: the completed turn was persisted by the turn_end
-        // barrier just above; don't start another (doomed) model request.
-        abortSignal.aborted ||
-        // Hard cap on turns, as before.
-        ++turnCount >= 30 ||
-        // End the turn once the agent has successfully requested a connection: it must wait
-        // for the user to respond, not keep reasoning in the meantime. (Accept resumes it on a
-        // fresh turn; deny just leaves the turn ended.) A rejected requestConnection (e.g.
-        // unresolvable resource) leaves this false so the agent can fix the request and retry
-        // in the same turn.
-        connectionRequested ||
-        // End the turn once attachments have been imported: their content reaches the model
-        // only when the next turn replays the chat log they were added to.
-        attachmentsImported ||
-        // Wait for approval before continuing against state that may not reflect the action.
-        awaitingActionDecision ||
-        // Auto-terminate when callback-initiated and all callbacks have been resolved/rejected.
-        (callbackInitiated && hooks.activeAgentCallbackCount(chatId) === 0),
+    shouldStopAfterTurn: ({message, toolResults}) => {
+      // The stop reasons that end the turn come first: a compaction reload must not resume work
+      // that one of them ended.
+      if (
+          // Cancelled during tool execution: the completed turn was persisted by the turn_end
+          // barrier just above; don't start another (doomed) model request.
+          abortSignal.aborted ||
+          // Hard cap on turns. The budget belongs to the caller, so the reloads below continue
+          // it instead of restarting it.
+          turnCount.steps >= 30 ||
+          // End the turn once the agent has successfully requested a connection: it must wait
+          // for the user to respond, not keep reasoning in the meantime. (Accept resumes it on a
+          // fresh turn; deny just leaves the turn ended.) A rejected requestConnection (e.g.
+          // unresolvable resource) leaves this false so the agent can fix the request and retry
+          // in the same turn.
+          connectionRequested ||
+          // End the turn once attachments have been imported: their content reaches the model
+          // only when the next turn replays the chat log they were added to.
+          attachmentsImported ||
+          // Wait for approval before continuing against state that may not reflect the action.
+          awaitingActionDecision) {
+        return true;
+      }
+      // The model stopped on its own; there is no next request to make room for.
+      if (toolResults.length === 0) return false;
+      // Otherwise the next request is this step's measured prompt plus the tool results just
+      // produced, weighed as the model will see them (pi's `details` can carry a second copy of a
+      // large output). Without usage there is nothing to measure against, so reload: the
+      // turn-start check estimates the whole prompt, as it does for that case there.
+      let measured = message.usage.totalTokens;
+      let next = measured + estimateProjectionTokens(
+          toolResults.map(({details: _, ...message}) => ({message})));
+      if (measured <= 0 || shouldCompactChat(next, inputBudget)) {
+        reloadForCompaction = true;
+        // The rerun's fresh preview manager knows of no active file; end this one's marker here,
+        // as a non-edit tool start would, so it doesn't outlive the run on the client.
+        codePreviewManager.clearActiveFile();
+        return true;
+      }
+      return false;
+    },
   }, emit, abortSignal, handle.stream);
 
   // (No end-of-turn flush: every completed step's effects were barrier-committed with its
@@ -3838,8 +3915,7 @@ export async function runAgent(
         httpStatusFromError(turnFailure.message, handle));
   }
 
-  // The turn ran, so there is no checkpoint to report.
-  return undefined;
+  return {type: reloadForCompaction ? "reloadForCompaction" : "finished"};
 }
 
 /**
@@ -3877,53 +3953,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Produces the storable version of callback args: deep copy where NativeRpcStub instances
- * are replaced with TransientStubLoopback Fetchers. ServiceStub/Fetcher instances and other
- * native types are kept as-is. Throws if depth exceeds 64.
- *
- * Each transient RpcStub found is collected into `transientStubs` (side output). The
- * `replaceTransientStub` callback creates a TransientStubLoopback Fetcher for the given
- * stub index.
- */
-export function makeStorableArgs(
-    value: unknown,
-    replaceTransientStub: (stubIndex: number) => unknown,
-    // TODO: When NativeStub<unknown> works, change `any[]` to `NativeStub<unknown>[]`.
-    transientStubs: any[],
-    depth: number = 0): unknown {
-  if (depth > 64) {
-    throw new Error("Agent callback arguments exceed maximum nesting depth of 64.");
-  }
-
-  // Transient RPC stubs → collect and replace with loopback.
-  if (value instanceof NativeRpcStub) {
-    let index = transientStubs.length;
-    // @ts-ignore RPC types cause excessively deep instantiation.
-    transientStubs.push(value);
-    return replaceTransientStub(index);
-  }
-
-  if (Array.isArray(value)) {
-    return (value as unknown[]).map(
-        item => makeStorableArgs(item, replaceTransientStub, transientStubs, depth + 1));
-  }
-
-  // Recurse into plain objects.
-  if (isPlainObject(value)) {
-    let result: Record<string, unknown> = {};
-    for (let key of Object.keys(value)) {
-      result[key] = makeStorableArgs(
-          value[key], replaceTransientStub, transientStubs, depth + 1);
-    }
-    return result;
-  }
-
-  // Everything else (primitives, Dates, Uint8Arrays, Fetchers, etc.) kept as-is.
-  // TODO: Handle streams? Request? Response? Map? Set?
-  return value;
-}
-
-/**
  * Produces a depth-limited summary string for callback args. Stubs and large content are
  * replaced with placeholders.
  */
@@ -3957,13 +3986,16 @@ function summarizeValue(value: unknown, depth: number): string {
   }
 
   if (value instanceof NativeRpcStub) return "RpcStub";
+  // @ts-ignore RPC types cause excessively deep instantiation (a known bug in the Workers RPC
+  //   types: `RpcStub<any>` is infinitely recursive). The error is reported once, at whichever
+  //   line first triggers it -- here, on the narrowing that follows the instanceof check above.
   if (value instanceof Date) return `Date("${value.toISOString()}")`;
   if (value instanceof Uint8Array) return `Uint8Array(${value.length})`;
 
   // TODO: Export ServiceStub from cloudflare:workers so we can represent it here. For now we
   //   guess that it's a stub if it has the constructor name "Fetcher".
   if (typeof value === "object" && value.constructor?.name === "Fetcher") {
-    return "PersistentRpcStub";
+    return "ServiceStub";
   }
 
   if (Array.isArray(value)) {

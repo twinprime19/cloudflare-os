@@ -289,6 +289,9 @@ msgstr "Tất cả các loại kết nối"
 msgid "Allow new sign-ups"
 msgstr "Cho phép đăng ký mới"
 
+msgid "Allow user search"
+msgstr "Cho phép tìm kiếm người dùng"
+
 msgid "Already have an account? <0>Sign in</0>"
 msgstr "Đã có tài khoản? <0>Đăng nhập</0>"
 
@@ -439,6 +442,10 @@ msgstr "Tích hợp sẵn"
 #. placeholder {0}: resolvedBy.name
 msgid "By {0}"
 msgstr "Bởi {0}"
+
+#. placeholder {0}: formatFullTimestamp(msg.timestamp)
+msgid "Call received at {0}"
+msgstr "Đã nhận lệnh gọi lúc {0}"
 
 msgid "Callbacks that let connected resources wake up this gadget when events happen."
 msgstr "Các callback cho phép tài nguyên đã kết nối đánh thức gadget này khi có sự kiện xảy ra."
@@ -598,9 +605,6 @@ msgstr "Kết nối {vendorName}"
 msgid "Connect a different account"
 msgstr "Kết nối tài khoản khác"
 
-msgid "Connect Account"
-msgstr "Kết nối tài khoản"
-
 msgid "Connect Cloudflare"
 msgstr "Kết nối Cloudflare"
 
@@ -710,6 +714,9 @@ msgstr "Không thể kiểm tra yêu cầu"
 msgid "Could not check for requests — reload the page to try again."
 msgstr "Không thể kiểm tra yêu cầu — tải lại trang để thử lại."
 
+msgid "Could not complete the connection"
+msgstr "Không thể hoàn tất kết nối"
+
 msgid "Could not finish checking for requests — reload the page to try again."
 msgstr "Không thể hoàn tất việc kiểm tra yêu cầu — tải lại trang để thử lại."
 
@@ -718,6 +725,9 @@ msgstr "Không thể tải hoạt động"
 
 msgid "Could not load auto-approval"
 msgstr "Không thể tải chế độ duyệt tự động"
+
+msgid "Could not sign in"
+msgstr "Không thể đăng nhập"
 
 msgid "Couldn’t check which connections recipients will be asked to verify."
 msgstr "Không thể kiểm tra người nhận sẽ được yêu cầu xác minh những kết nối nào."
@@ -1208,6 +1218,9 @@ msgstr "Tệp, kết nối và kỹ năng"
 msgid "Filter conversations"
 msgstr "Lọc cuộc trò chuyện"
 
+msgid "Finishing up…"
+msgstr "Đang hoàn tất…"
+
 msgid "Free daily allowance"
 msgstr "Hạn mức miễn phí hàng ngày"
 
@@ -1340,14 +1353,14 @@ msgstr "Kích thước hình ảnh không hợp lệ."
 msgid "Invite"
 msgstr "Mời"
 
+msgid "Invite “{directoryQuery}” exactly"
+msgstr "Mời đúng “{directoryQuery}”"
+
 msgid "Invite people or share a link."
 msgstr "Mời mọi người hoặc chia sẻ liên kết."
 
 msgid "Inviting…"
 msgstr "Đang mời…"
-
-msgid "It has observed sensitive data that can only be accessed by you, the owner."
-msgstr "Không gian làm việc này đã quan sát thấy dữ liệu nhạy cảm mà chỉ bạn, chủ sở hữu, mới có thể truy cập."
 
 msgid "It ships with the deployment, so it stays in this list either way."
 msgstr "Định dạng này đi kèm với bản triển khai, nên vẫn nằm trong danh sách này dù thế nào đi nữa."
@@ -1381,6 +1394,9 @@ msgstr "Để trống một trường để dùng tên do blueprint khai báo. M
 
 msgid "Leave a field empty to use the name the blueprint declares. Applies to outputs made from now on — existing ones keep the name they were made with."
 msgstr "Để trống một trường để dùng tên do blueprint khai báo. Áp dụng cho các đầu ra được tạo từ bây giờ trở đi — các đầu ra hiện có vẫn giữ tên đã được đặt khi tạo."
+
+msgid "Let users find other accounts by name or email when sharing a workspace. When off, people can only be invited by their exact username or email. Applies on each user’s next connection."
+msgstr "Cho phép người dùng tìm tài khoản khác theo tên hoặc email khi chia sẻ không gian làm việc. Khi tắt, chỉ có thể mời người khác bằng đúng tên người dùng hoặc email của họ. Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
 
 msgid "Let's build"
 msgstr "Bắt đầu xây dựng"
@@ -1499,6 +1515,9 @@ msgstr "Quản lý các mô hình AI mà mọi người trên bản triển khai
 
 msgid "Manage your account details, avatar, and security."
 msgstr "Quản lý thông tin tài khoản, ảnh đại diện và bảo mật của bạn."
+
+msgid "Matching people"
+msgstr "Người phù hợp"
 
 msgid "Maybe later"
 msgstr "Để sau"
@@ -1691,14 +1710,14 @@ msgstr "Không có kết quả."
 msgid "No services available"
 msgstr "Không có dịch vụ nào khả dụng"
 
-msgid "No services available to connect."
-msgstr "Không có dịch vụ nào khả dụng để kết nối."
-
 msgid "No skills match your search."
 msgstr "Không có kỹ năng nào khớp với tìm kiếm của bạn."
 
 msgid "No standard formats yet"
 msgstr "Chưa có định dạng chuẩn nào"
+
+msgid "No users found."
+msgstr "Không tìm thấy người dùng nào."
 
 msgid "No workspaces found"
 msgstr "Không tìm thấy không gian làm việc nào"
@@ -1846,6 +1865,9 @@ msgstr "Chọn danh tính {vendorName} mà {0} này nên sử dụng."
 msgid "Plural"
 msgstr "Số nhiều"
 
+msgid "Pop-up blocked. Please allow pop-ups and try again."
+msgstr "Cửa sổ bật lên đã bị chặn. Vui lòng cho phép cửa sổ bật lên rồi thử lại."
+
 msgid "Press <0>Esc</0> to exit full screen"
 msgstr "Nhấn <0>Esc</0> để thoát chế độ toàn màn hình"
 
@@ -1926,6 +1948,9 @@ msgstr "Tải lại"
 
 msgid "Reload the page to try again."
 msgstr "Tải lại trang để thử lại."
+
+msgid "Reload the Workshop and start the connection again."
+msgstr "Tải lại Workshop và bắt đầu kết nối lại."
 
 msgid "Reload the Workshop to start again."
 msgstr "Tải lại Workshop để bắt đầu lại."
@@ -2096,11 +2121,17 @@ msgstr "Tìm kiếm (⌘K)"
 msgid "Search blueprints…"
 msgstr "Tìm kiếm blueprint…"
 
+msgid "Search by name or email"
+msgstr "Tìm theo tên hoặc email"
+
 msgid "Search gatekeepers…"
 msgstr "Tìm kiếm gatekeeper…"
 
 msgid "Search outputs…"
 msgstr "Tìm kiếm đầu ra…"
+
+msgid "Search people"
+msgstr "Tìm người"
 
 msgid "Search providers…"
 msgstr "Tìm kiếm nhà cung cấp…"
@@ -2119,6 +2150,9 @@ msgstr "Tìm kiếm không gian làm việc và hành động…"
 
 msgid "Search workspaces…"
 msgstr "Tìm kiếm không gian làm việc…"
+
+msgid "Searching…"
+msgstr "Đang tìm kiếm…"
 
 msgid "Security"
 msgstr "Bảo mật"
@@ -2227,11 +2261,17 @@ msgstr "Hiển thị cạnh logo trên thanh trên cùng. Để trống để d�
 msgid "Sign in"
 msgstr "Đăng nhập"
 
+msgid "Sign in to the Workshop and start the connection again."
+msgstr "Đăng nhập vào Workshop và bắt đầu kết nối lại."
+
 msgid "Sign in to your account"
 msgstr "Đăng nhập vào tài khoản của bạn"
 
 msgid "Sign out"
 msgstr "Đăng xuất"
+
+msgid "Signed in"
+msgstr "Đã đăng nhập"
 
 msgid "Signups are closed"
 msgstr "Đã đóng đăng ký"
@@ -2396,6 +2436,9 @@ msgstr "Blueprint này không còn tồn tại"
 msgid "This blueprint was uploaded manually and cannot be recovered."
 msgstr "Blueprint này đã được tải lên thủ công và không thể khôi phục."
 
+msgid "This browser blocks storage in pop-ups, so the flow cannot complete. Allow site data for this site and try again."
+msgstr "Trình duyệt này chặn lưu trữ trong cửa sổ bật lên nên không thể hoàn tất quy trình. Hãy cho phép dữ liệu trang web cho trang này rồi thử lại."
+
 msgid "This connection no longer offers this action; the rule still applies."
 msgstr "Kết nối này không còn cung cấp hành động này; quy tắc vẫn được áp dụng."
 
@@ -2410,6 +2453,9 @@ msgstr "Gadget này không hỗ trợ xuất."
 
 msgid "This is how you'll appear in conversations"
 msgstr "Đây là cách bạn sẽ xuất hiện trong các cuộc trò chuyện"
+
+msgid "This link isn't valid"
+msgstr "Liên kết này không hợp lệ"
 
 msgid "This permanently removes the hook. Future events will stop being delivered."
 msgstr "Thao tác này sẽ xóa vĩnh viễn hook. Các sự kiện trong tương lai sẽ ngừng được gửi đến."
@@ -2433,11 +2479,11 @@ msgstr "Thao tác này sẽ xóa <0>{deletingFile}</0> khỏi gadget. Bạn khô
 msgid "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
 msgstr "Không thể hủy bỏ bản cập nhật này: nó đã đưa vào các thay đổi vốn đã được chấp nhận ở nơi khác. Thay vào đó, chỉnh sửa các tệp."
 
-msgid "This workspace can’t be shared"
-msgstr "Không thể chia sẻ không gian làm việc này"
-
 msgid "This workspace has no gadgets yet."
 msgstr "Không gian làm việc này chưa có gadget nào."
+
+msgid "This workspace has read sensitive data. People you invite are asked to verify their own access to the connections it uses at their access level — some may be unable to open it. Anything the workspace has already saved is visible to everyone who can."
+msgstr "Không gian làm việc này đã đọc dữ liệu nhạy cảm. Những người bạn mời sẽ được yêu cầu xác minh quyền truy cập của chính họ vào các kết nối mà nó sử dụng theo cấp truy cập của họ — một số người có thể không mở được. Mọi thứ không gian làm việc đã lưu đều hiển thị với tất cả những ai mở được."
 
 msgid "Throw away these draft edits."
 msgstr "Hủy bỏ các chỉnh sửa nháp này."
@@ -2450,9 +2496,6 @@ msgstr "Tiêu đề"
 
 msgid "To open this workspace, you must choose connected accounts for the services it uses."
 msgstr "Để mở không gian làm việc này, bạn phải chọn tài khoản đã kết nối cho các dịch vụ mà nó sử dụng."
-
-msgid "To share something similar, create a blueprint from a gadget in this workspace, then use it to create a new workspace."
-msgstr "Để chia sẻ nội dung tương tự, tạo một blueprint từ một gadget trong không gian làm việc này, rồi dùng blueprint đó để tạo một không gian làm việc mới."
 
 msgid "Top-bar notice"
 msgstr "Thông báo đầu trang"
@@ -2569,6 +2612,9 @@ msgstr "Dùng bố cục diff dạng xếp chồng"
 msgid "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
 msgstr "Dùng <0/><1>mũi tên hoàn tác</1> bên dưới bất kỳ phản hồi nào của tác nhân để hủy bỏ từ lượt đó trở đi."
 
+msgid "Use the text as a username or email"
+msgstr "Dùng văn bản này làm tên người dùng hoặc email"
+
 msgid "Used the gadget"
 msgstr "Đã dùng gadget"
 
@@ -2578,6 +2624,9 @@ msgstr "Đã dùng gadget lúc {0}"
 
 msgid "User ID"
 msgstr "ID người dùng"
+
+msgid "User search is temporarily unavailable."
+msgstr "Tìm kiếm người dùng tạm thời không khả dụng."
 
 msgid "Username"
 msgstr "Tên người dùng"
@@ -2692,6 +2741,9 @@ msgstr "Bạn đã đưa các thay đổi mới nhất của gadget vào bản n
 msgid "You can attach up to {MAX_COMPOSER_ATTACHMENTS} attachments"
 msgstr "Bạn có thể đính kèm tối đa {MAX_COMPOSER_ATTACHMENTS} tệp"
 
+msgid "You can close this window."
+msgstr "Bạn có thể đóng cửa sổ này."
+
 msgid "You can copy it again anytime from Share links"
 msgstr "Bạn có thể sao chép lại bất cứ lúc nào từ Liên kết chia sẻ"
 
@@ -2710,6 +2762,9 @@ msgstr "Bạn đã lưu các chỉnh sửa"
 
 msgid "You're all set"
 msgstr "Bạn đã sẵn sàng"
+
+msgid "You're signed out"
+msgstr "Bạn đã đăng xuất"
 
 msgid "You've reached your free usage limit"
 msgstr "Bạn đã đạt giới hạn mức sử dụng miễn phí"

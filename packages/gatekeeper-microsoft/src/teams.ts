@@ -2,7 +2,8 @@
 //
 // Capability-based API over the Teams Graph client next door: `TeamsSession` hands out team,
 // channel, chat, and message capabilities, and cursors pull pages as the gadget consumes them. Each
-// read is authorized through the approval queue before anything is returned to the caller.
+// session read is authorized through the approval queue before anything is returned to the caller;
+// the agent catalog is the one surface outside that gate (see getAgentCatalog).
 //
 // Read-only, structurally. There is no action surface at all — no pending-action store, no
 // `submitAction` call site, and `applyAction`/`rejectAction`/`revertAction` throw rather than
@@ -30,7 +31,7 @@ import { DurableObject, RpcStub, RpcTarget } from "cloudflare:workers";
 import { validateRpc } from "capnweb-validate";
 import {
   ActionKind, AgentCatalog, ApprovalQueue, Cursor, Gatekeeper, GatekeeperUserVerifier,
-  ObservationAuthorizer, ResourceDescription, boundAgentCatalog,
+  ResourceDescription, boundAgentCatalog,
 } from "@gadgets/workshop-shared/gatekeeper";
 import { formatApprovalField, sanitizeApprovalTitle } from "./approval-text";
 import { AccessTokenCache, AccessTokenRequest } from "./auth-retry";
@@ -846,9 +847,12 @@ export class TeamsGatekeeperImpl
    * Teams and chats by name, so an agent can find where a conversation lives without paging the
    * session API. Teams come first: they are the named, stable half of the surface, while a chat's
    * identity is often only who is in it.
+   *
+   * The Workshop loads this into every chat's prompt on every turn and no approval stands in the
+   * way, so the titles — counterpart-controlled text, like nearly everything Teams returns — are
+   * each flattened to a single line by `catalogTitle` and cannot forge the structure they land in.
    */
-  async getAgentCatalog(
-      authorizer: RpcStub<ObservationAuthorizer>): Promise<AgentCatalog | null> {
+  async getAgentCatalog(): Promise<AgentCatalog | null> {
     let api = this.#api();
     let [teams, chats] = await Promise.all([api.listJoinedTeams(), api.listChats()]);
 
@@ -873,16 +877,6 @@ export class TeamsGatekeeperImpl
     // the first page — are reported here.
     if (entries.length > MAX_CATALOG_ENTRIES || chats.nextLink) catalog.truncated = true;
 
-    if (catalog.entries.length > 0) {
-      // The titles are counterpart-controlled text entering the agent's context, so the observation
-      // lists them fenced rather than reporting a count that would hide what was served.
-      await authorizer.authorizeObservation({
-        title: "Microsoft Teams catalog",
-        description:
-            `Listed ${catalog.entries.length} Microsoft Teams team(s) and chat(s).\n\n` +
-            formatApprovalField("Entries", catalog.entries.map(entry => entry.title).join("\n")),
-      });
-    }
     return catalog;
   }
 

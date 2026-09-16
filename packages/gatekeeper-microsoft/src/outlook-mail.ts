@@ -7,7 +7,8 @@
 // Approval model:
 //   submitAction (requires approval): markRead, markUnread, moveToFolder, createReplyDraft,
 //                                     createReplyAllDraft
-//   authorizeObservation (audit-only): all reads
+//   authorizeObservation (audit-only): all session reads; the agent catalog is not one of them,
+//                                      see getAgentCatalog
 //
 // Mutations return `void` and nothing is written to the mailbox before approval — no draft is
 // created, no id is minted, and no later read reflects a queued action. Simulating pending state
@@ -22,7 +23,7 @@ import { DurableObject, RpcStub, RpcTarget } from "cloudflare:workers";
 import { validateRpc } from "capnweb-validate";
 import {
   ActionKind, AgentCatalog, ApprovalQueue, Cursor, Gatekeeper,
-  GatekeeperUserVerifier, ObservationAuthorizer, ResourceDescription, boundAgentCatalog,
+  GatekeeperUserVerifier, ResourceDescription, boundAgentCatalog,
 } from "@gadgets/workshop-shared/gatekeeper";
 import { formatApprovalField, sanitizeApprovalTitle } from "./approval-text";
 import { AccessTokenCache, AccessTokenRequest } from "./auth-retry";
@@ -590,10 +591,11 @@ export class OutlookMailGatekeeperImpl
 
   /**
    * Folder names, so an agent can discover where mail lives (and where it could be moved) without
-   * paging the session API.
+   * paging the session API. The Workshop loads this into every chat's prompt on every turn, with no
+   * approval in the way; folder names are the account owner's own text, unlike the message content
+   * every read here is authorized for.
    */
-  async getAgentCatalog(
-      authorizer: RpcStub<ObservationAuthorizer>): Promise<AgentCatalog | null> {
+  async getAgentCatalog(): Promise<AgentCatalog | null> {
     let folders = await this.#api().listFolders();
     let entries = folders
         .slice(0, MAX_CATALOG_FOLDERS)
@@ -608,12 +610,6 @@ export class OutlookMailGatekeeperImpl
     // A mailbox can hold more folders than the catalog advertises; boundAgentCatalog only flags its
     // own shared ceiling, so the drop at MAX_CATALOG_FOLDERS is reported here.
     if (folders.length > MAX_CATALOG_FOLDERS) catalog.truncated = true;
-    if (catalog.entries.length > 0) {
-      await authorizer.authorizeObservation({
-        title: "Outlook folder catalog",
-        description: `Listed ${catalog.entries.length} Outlook mail folder(s).`,
-      });
-    }
     return catalog;
   }
 

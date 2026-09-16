@@ -597,15 +597,13 @@ describe("credential death", () => {
 });
 
 describe("agent catalog", () => {
-  it("lists folders and authorizes the observation", async () => {
+  it("lists folders with their message counts", async () => {
     stubFetch();
-    const authorizer = fakeApprovalQueue();
 
-    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog();
 
     expect(catalog!.entries.map(entry => entry.title)).toEqual(["Inbox", "Archive"]);
     expect(catalog!.entries[0].description).toContain("3 unread");
-    expect(authorizer.observations[0].title).toBe("Outlook folder catalog");
   });
 
   it("caps a large mailbox at 25 folders and flags the catalog truncated", async () => {
@@ -616,14 +614,12 @@ describe("agent catalog", () => {
       unreadItemCount: 0,
     }));
     stubFetch(() => jsonResponse({ value: manyFolders }));
-    const authorizer = fakeApprovalQueue();
 
-    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog();
 
     expect(catalog!.entries).toHaveLength(25);
     expect(catalog!.truncated).toBe(true);
     expect(catalog!.entries[0].title).toBe("Folder 0");
-    expect(authorizer.observations[0].description).toContain("25 Outlook mail folder(s)");
   });
 });
 

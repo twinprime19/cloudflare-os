@@ -1,10 +1,13 @@
 import { WorkerEntrypoint, DurableObject, RpcStub, RpcTarget } from "cloudflare:workers";
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import {
-  AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions,
-  GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorIface,
-  ResourceConfiguratorFrame, SupportedResource, VendorDescription, stripTrailingSlashes,
+  AccountDescription, ConnectHandoff, Gatekeeper, GatekeeperConnectCallback,
+  GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier,
+  GatekeeperVendor as GatekeeperVendorIface, ResourceConfiguratorFrame, SupportedResource,
+  VendorDescription, stripTrailingSlashes,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
+import { commitStagedCredentials, stageCredentials } from "@gadgets/gatekeeper-kit/credential-stage";
 import {
   AccessTokenRequest, EntraAccessToken, EntraTokenGrant, IdTokenClaims, ProfilePhoto, TokenFailure,
   authorizeEndpoint, exchangeAuthCode, fetchAvatarDataUrl, fetchGraphProfile, fetchProfilePhoto,
@@ -50,6 +53,19 @@ type StoredNonce = {
   value: string;
   expiresAt: number;
   stage: "initiation" | "oauth";
+  /**
+   * Set when this flow reconnects an existing account, so its grant is staged rather than made
+   * live. The mode travels with the flow instead of living on the account: committing one
+   * reconnect while another is in flight must not change how that other flow lands.
+   */
+  reconnect?: true;
+};
+
+/** What a reconnect flow obtained, held in escrow until commitReconnect() writes it live. */
+type StagedGrant = {
+  grant: EntraTokenGrant;
+  /** The scopes this flow asked for, recorded as `grantScopes` when the stage is committed. */
+  scopes: string[];
 };
 
 // The last mint that failed permanently, kept in storage so an evicted object doesn't rediscover a
@@ -159,14 +175,6 @@ function getOAuthConfig(env: Env): OAuthConfig | null {
 }
 
 // =======================================================================================
-
-const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en">
-  <body>
-    <script type="text/javascript">window.close();</script>
-    <p>Authorization complete. You may close this tab and return to Cloudflare OS.
-  </body>
-</html>`;
 
 const INVALID_LINK_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -418,16 +426,13 @@ export default {
 
       let userObjectId = ctx.exports.UserAccount.idFromString(doId);
       let stub: DurableObjectStub<UserAccount> = ctx.exports.UserAccount.get(userObjectId);
-      if (!await stub.acceptAuthCode(code, oauthNonce)) {
+      let handoff = await stub.acceptAuthCode(code, oauthNonce);
+      if (!handoff) {
         return new Response(INVALID_LINK_HTML, {
           headers: { "Content-Type": "text/html; charset=utf-8" }
         });
       }
-      return new Response(SELF_CLOSING_HTML, {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8"
-        }
-      });
+      return htmlResponse(connectHandoffPageHtml(handoff));
     } else {
       return new Response("Not Found", {status: 404});
     }
@@ -576,18 +581,19 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   /**
-   * Prepare this account for a reconnect flow. The next acceptAuthCode() call will replace the
-   * existing refresh token and notify via credentialsRestored() instead of complete().
+   * Prepare this account for a reconnect flow. The next acceptAuthCode() call stages the grant it
+   * obtains and reports it via reconnectComplete() instead of complete(); the existing refresh
+   * token keeps serving until commitReconnect() makes the staged one live.
    *
    * `requestedScopes` is the full set of OAuth scopes to request on the reauthorization.
    */
   async prepareReconnect(initiationNonce: string, requestedScopes: string[]) {
-    this.ctx.storage.kv.put<boolean>("reconnecting", true);
     this.ctx.storage.kv.put<string[]>("requestedScopes", requestedScopes);
     this.ctx.storage.kv.put<StoredNonce>("nonce", {
       value: initiationNonce,
       expiresAt: Date.now() + INITIATION_NONCE_LIFETIME_MS,
       stage: "initiation",
+      reconnect: true,
     });
   }
 
@@ -634,6 +640,7 @@ export class UserAccount extends DurableObject<Env> {
       value: oauthNonce,
       expiresAt: Date.now() + OAUTH_NONCE_LIFETIME_MS,
       stage: "oauth",
+      reconnect: stored.reconnect,
     });
     let scopes = this.ctx.storage.kv.get<string[]>("requestedScopes") ?? IDENTITY_SCOPES;
     let authOnly = this.ctx.storage.kv.get<boolean>("authOnly") ?? false;
@@ -641,14 +648,15 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   /**
-   * Returns false if the OAuth nonce is invalid or expired.
+   * Finishes the OAuth code exchange and returns the handoff for the page the browser lands on, or
+   * null if the OAuth nonce is invalid or expired.
    */
-  async acceptAuthCode(code: string, oauthNonce: string): Promise<boolean> {
+  async acceptAuthCode(code: string, oauthNonce: string): Promise<ConnectHandoff | null> {
     // Verify and consume the OAuth nonce.
     let stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (!stored || stored.stage !== "oauth" ||
         Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, oauthNonce)) {
-      return false;
+      return null;
     }
     this.ctx.storage.kv.delete("nonce");
 
@@ -667,7 +675,6 @@ export class UserAccount extends DurableObject<Env> {
 
       let scopes = this.ctx.storage.kv.get<string[]>("requestedScopes") ?? IDENTITY_SCOPES;
       let authOnly = this.ctx.storage.kv.get<boolean>("authOnly") ?? false;
-      let reconnecting = !!this.ctx.storage.kv.get<boolean>("reconnecting");
 
       let grant = await exchangeAuthCode({
         ...config,
@@ -694,7 +701,7 @@ export class UserAccount extends DurableObject<Env> {
       // openid-scoped grant, so "no principal recorded" is not a legitimate established account —
       // it is a state we cannot verify, and an unverifiable reconnect is exactly what this check
       // exists to refuse. The grant is left untouched, as if the user had refused consent.
-      if (reconnecting) {
+      if (stored.reconnect) {
         let priorObjectId = this.ctx.storage.kv.get<IdTokenClaims>("idTokenClaims")?.oid;
         if (!priorObjectId || grant.idTokenClaims?.oid !== priorObjectId) {
           throw new Error(
@@ -703,22 +710,35 @@ export class UserAccount extends DurableObject<Env> {
         }
       }
 
-      this.#storeGrant(grant);
       // A sign-in-only grant asks for no resource scopes, so it has nothing to be short of.
       if (!authOnly) logUngrantedResources(scopes, grant.grantedScopes);
-      this.ctx.storage.kv.put<string[]>("grantScopes", scopes);
       this.ctx.storage.kv.delete("requestedScopes");
+
+      if (stored.reconnect) {
+        // The reconnect URL is a bearer capability, so the new grant is only staged until the
+        // Workshop has confirmed the browser that finished the flow is the owner's (see
+        // commitReconnect). Gadgets bound to this account keep reading the current token
+        // meanwhile, and a recorded mint failure still describes it, so both stand until the
+        // commit.
+        let stageId = stageCredentials<StagedGrant>(
+            this.ctx.storage.kv, { grant, scopes }, Date.now());
+        return { callback, stageId, authOnly };
+      }
+
+      this.#storeGrant(grant);
+      this.ctx.storage.kv.put<string[]>("grantScopes", scopes);
       // These credentials are new, so any recorded permanent failure no longer applies.
       this.ctx.storage.kv.delete("mintFailure");
 
-      if (reconnecting) this.ctx.storage.kv.delete("reconnecting");
-      return { callback, reconnecting, authOnly };
+      return { callback, stageId: undefined, authOnly };
     });
 
     let callback = completion.callback;
-    if (completion.reconnecting) {
-      // Reconnect flow: credentials replaced above, notify restoration.
-      await callback.credentialsRestored();
+    let handoff: ConnectHandoff;
+    if (completion.stageId !== undefined) {
+      // Reconnect flow: the grant is staged, so the Workshop is told what to commit rather than
+      // that the credentials are already live.
+      handoff = await callback.reconnectComplete(completion.stageId);
     } else {
       // Initial connect flow: create the user entrypoint and notify completion.
       //
@@ -728,7 +748,7 @@ export class UserAccount extends DurableObject<Env> {
       // is reported when it happens, via credentialsExpired().
       try {
         let props: GatekeeperUserImplProps = { userObjectId: this.ctx.id.toString() };
-        await callback.complete(this.ctx.exports.GatekeeperUserImpl({props}));
+        handoff = await callback.complete(this.ctx.exports.GatekeeperUserImpl({props}));
       } catch (err) {
         // Nobody received a usable account, so the whole grant is orphaned — not just the refresh
         // token. Leaving the access token behind would let a concurrent mint publish it for an
@@ -743,7 +763,21 @@ export class UserAccount extends DurableObject<Env> {
       }
     }
 
-    return true;
+    return handoff;
+  }
+
+  /** Makes the grant staged under `stageId` live; see GatekeeperUser.commitReconnect. */
+  async commitReconnect(stageId: string): Promise<void> {
+    await this.#updateCredentials(async () => {
+      let staged = commitStagedCredentials<StagedGrant>(
+          this.ctx.storage.kv, Date.now(), stageId);
+      if (!staged) throw new Error("No reconnect is awaiting confirmation. Please try again.");
+      this.#storeGrant(staged.grant);
+      this.ctx.storage.kv.put<string[]>("grantScopes", staged.scopes);
+      // These credentials are new, so any recorded permanent failure no longer applies — and
+      // clearing it re-arms the one-shot expiry notification for whatever kills them next.
+      this.ctx.storage.kv.delete("mintFailure");
+    });
   }
 
   hasRefreshToken() {
@@ -1150,6 +1184,10 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     // Re-request the scopes already granted so a plain reconnect doesn't narrow access.
     await account.prepareReconnect(initiationNonce, await account.getGrantScopes());
     return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${initiationNonce}` };
+  }
+
+  async commitReconnect(stageId: string): Promise<void> {
+    await this.#account().commitReconnect(stageId);
   }
 
   async ensureResources(resourceUrlPatterns: string[]): Promise<{url?: string}> {

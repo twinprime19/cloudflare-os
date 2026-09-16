@@ -239,7 +239,7 @@ describe("document conversion environment", () => {
   // has observed sensitive data must not do -- the same reason web fetch is refused there.
   it("refuses to convert an upload in a workspace under sharing lockdown",
       () => withImpl(async impl => {
-    impl.storage.prohibitAllSharing.put(true);
+    impl.storage.containsRestrictedData.put(true);
 
     expect(() => impl.getDocumentConversionEnv())
         .toThrow("prohibited from converting uploaded documents");

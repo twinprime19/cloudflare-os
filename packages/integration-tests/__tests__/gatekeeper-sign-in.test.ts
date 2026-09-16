@@ -43,8 +43,10 @@ beforeAll(async () => {
   harness = await startHarness({
     gatekeepers: [{ binding: TEST_GATEKEEPER_BINDING, dir: TEST_GATEKEEPER_DIR }],
     // Sign-in is opt-in per deployment: without the allowlist, startGatekeeperLogin() refuses however
-    // auth-capable the bound vendor is.
-    workshopVars: { AUTH_GATEKEEPERS: TEST_VENDOR_ID },
+    // auth-capable the bound vendor is. PUBLIC_BASE_URL is the origin a completed sign-in's handoff
+    // ticket is bound to; the backend refuses to complete one without it. No pop-up follows the
+    // redirect here (the test reads the ticket out of the page), so nothing ever dials this origin.
+    workshopVars: { AUTH_GATEKEEPERS: TEST_VENDOR_ID, PUBLIC_BASE_URL: "http://handoff.invalid" },
   });
 });
 
@@ -88,19 +90,16 @@ async function fixtureProfileHints(): Promise<{ name: string; photo: Uint8Array 
 
 /**
  * Sign in as `email` and return the session token, driving the steps the browser drives: start the
- * attempt, begin waiting on it, then open the gatekeeper's pop-up URL.
+ * attempt, open the gatekeeper's pop-up URL, present the handoff ticket its completion page carries
+ * together with the attempt's nonce, then receive the token the confirmation released.
  *
- * The wait is registered before the pop-up completes, as it is in the browser -- so the token is
- * delivered to a live waiter rather than stashed for a later arrival.
+ * The ticket is read from the completion page the way the pop-up would (it is the fragment the page
+ * navigates to), so the test exercises the same binding a browser does: a token is released only to
+ * the attempt whose nonce confirms the ticket.
  */
 async function signIn(publicApi: RpcStub<PublicApi>, email: string): Promise<string> {
-  const { url, attempt } = await publicApi.startGatekeeperLogin(TEST_VENDOR_ID);
+  const { url, nonce, attempt } = await publicApi.startGatekeeperLogin(TEST_VENDOR_ID);
   try {
-    const waiting = attempt.wait();
-    // If the pop-up step below throws, this call is abandoned mid-flight and rejects when the session
-    // is disposed. Mark it handled so that rejection can't surface as a stray unhandled error on top
-    // of the real failure; `await waiting` still sees it on the path that gets there.
-    waiting.catch(() => {});
     // The fixture's stand-in for the provider's login page: who completes the flow is a query param.
     const popup = new URL(url);
     popup.searchParams.set("email", email);
@@ -108,10 +107,24 @@ async function signIn(publicApi: RpcStub<PublicApi>, email: string): Promise<str
     if (res.status !== 200) {
       throw new Error(`Completing the sign-in flow failed with ${res.status}: ${await res.text()}`);
     }
-    return await waiting;
+    await publicApi.confirmLogin(ticketFromHandoffPage(await res.text()), nonce);
+    const token = await attempt.receive();
+    if (token === null) throw new Error("The sign-in was confirmed but no session token was delivered.");
+    return token;
   } finally {
     attempt[Symbol.dispose]();
   }
+}
+
+/**
+ * The handoff ticket a gatekeeper's completion page sends the pop-up to `/connect/handoff#<ticket>`
+ * with: 64 lowercase hex characters embedded as a script literal (gatekeeper-kit's
+ * `connectHandoffPageHtml`).
+ */
+function ticketFromHandoffPage(html: string): string {
+  const ticket = /var ticket = "([0-9a-f]{64})"/.exec(html)?.[1];
+  if (!ticket) throw new Error(`The completion page carries no handoff ticket:\n${html}`);
+  return ticket;
 }
 
 async function signInAndAuthenticate(

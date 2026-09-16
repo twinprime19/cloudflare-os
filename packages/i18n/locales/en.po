@@ -289,6 +289,9 @@ msgstr "All connection types"
 msgid "Allow new sign-ups"
 msgstr "Allow new sign-ups"
 
+msgid "Allow user search"
+msgstr "Allow user search"
+
 msgid "Already have an account? <0>Sign in</0>"
 msgstr "Already have an account? <0>Sign in</0>"
 
@@ -439,6 +442,10 @@ msgstr "Bundled"
 #. placeholder {0}: resolvedBy.name
 msgid "By {0}"
 msgstr "By {0}"
+
+#. placeholder {0}: formatFullTimestamp(msg.timestamp)
+msgid "Call received at {0}"
+msgstr "Call received at {0}"
 
 msgid "Callbacks that let connected resources wake up this gadget when events happen."
 msgstr "Callbacks that let connected resources wake up this gadget when events happen."
@@ -598,9 +605,6 @@ msgstr "Connect {vendorName}"
 msgid "Connect a different account"
 msgstr "Connect a different account"
 
-msgid "Connect Account"
-msgstr "Connect Account"
-
 msgid "Connect Cloudflare"
 msgstr "Connect Cloudflare"
 
@@ -710,6 +714,9 @@ msgstr "Could not check for requests"
 msgid "Could not check for requests — reload the page to try again."
 msgstr "Could not check for requests — reload the page to try again."
 
+msgid "Could not complete the connection"
+msgstr "Could not complete the connection"
+
 msgid "Could not finish checking for requests — reload the page to try again."
 msgstr "Could not finish checking for requests — reload the page to try again."
 
@@ -718,6 +725,9 @@ msgstr "Could not load activity"
 
 msgid "Could not load auto-approval"
 msgstr "Could not load auto-approval"
+
+msgid "Could not sign in"
+msgstr "Could not sign in"
 
 msgid "Couldn’t check which connections recipients will be asked to verify."
 msgstr "Couldn’t check which connections recipients will be asked to verify."
@@ -1208,6 +1218,9 @@ msgstr "Files, connections, and skills"
 msgid "Filter conversations"
 msgstr "Filter conversations"
 
+msgid "Finishing up…"
+msgstr "Finishing up…"
+
 msgid "Free daily allowance"
 msgstr "Free daily allowance"
 
@@ -1340,14 +1353,14 @@ msgstr "Invalid image dimensions."
 msgid "Invite"
 msgstr "Invite"
 
+msgid "Invite “{directoryQuery}” exactly"
+msgstr "Invite “{directoryQuery}” exactly"
+
 msgid "Invite people or share a link."
 msgstr "Invite people or share a link."
 
 msgid "Inviting…"
 msgstr "Inviting…"
-
-msgid "It has observed sensitive data that can only be accessed by you, the owner."
-msgstr "It has observed sensitive data that can only be accessed by you, the owner."
 
 msgid "It ships with the deployment, so it stays in this list either way."
 msgstr "It ships with the deployment, so it stays in this list either way."
@@ -1381,6 +1394,9 @@ msgstr "Leave a field empty to use the name the blueprint declares. A bundled bl
 
 msgid "Leave a field empty to use the name the blueprint declares. Applies to outputs made from now on — existing ones keep the name they were made with."
 msgstr "Leave a field empty to use the name the blueprint declares. Applies to outputs made from now on — existing ones keep the name they were made with."
+
+msgid "Let users find other accounts by name or email when sharing a workspace. When off, people can only be invited by their exact username or email. Applies on each user’s next connection."
+msgstr "Let users find other accounts by name or email when sharing a workspace. When off, people can only be invited by their exact username or email. Applies on each user’s next connection."
 
 msgid "Let's build"
 msgstr "Let's build"
@@ -1499,6 +1515,9 @@ msgstr "Manage the AI models everyone on this deployment can use."
 
 msgid "Manage your account details, avatar, and security."
 msgstr "Manage your account details, avatar, and security."
+
+msgid "Matching people"
+msgstr "Matching people"
 
 msgid "Maybe later"
 msgstr "Maybe later"
@@ -1691,14 +1710,14 @@ msgstr "No results."
 msgid "No services available"
 msgstr "No services available"
 
-msgid "No services available to connect."
-msgstr "No services available to connect."
-
 msgid "No skills match your search."
 msgstr "No skills match your search."
 
 msgid "No standard formats yet"
 msgstr "No standard formats yet"
+
+msgid "No users found."
+msgstr "No users found."
 
 msgid "No workspaces found"
 msgstr "No workspaces found"
@@ -1846,6 +1865,9 @@ msgstr "Pick which {vendorName} identity this {0} should use."
 msgid "Plural"
 msgstr "Plural"
 
+msgid "Pop-up blocked. Please allow pop-ups and try again."
+msgstr "Pop-up blocked. Please allow pop-ups and try again."
+
 msgid "Press <0>Esc</0> to exit full screen"
 msgstr "Press <0>Esc</0> to exit full screen"
 
@@ -1926,6 +1948,9 @@ msgstr "Reload"
 
 msgid "Reload the page to try again."
 msgstr "Reload the page to try again."
+
+msgid "Reload the Workshop and start the connection again."
+msgstr "Reload the Workshop and start the connection again."
 
 msgid "Reload the Workshop to start again."
 msgstr "Reload the Workshop to start again."
@@ -2096,11 +2121,17 @@ msgstr "Search (⌘K)"
 msgid "Search blueprints…"
 msgstr "Search blueprints…"
 
+msgid "Search by name or email"
+msgstr "Search by name or email"
+
 msgid "Search gatekeepers…"
 msgstr "Search gatekeepers…"
 
 msgid "Search outputs…"
 msgstr "Search outputs…"
+
+msgid "Search people"
+msgstr "Search people"
 
 msgid "Search providers…"
 msgstr "Search providers…"
@@ -2119,6 +2150,9 @@ msgstr "Search workspaces and actions…"
 
 msgid "Search workspaces…"
 msgstr "Search workspaces…"
+
+msgid "Searching…"
+msgstr "Searching…"
 
 msgid "Security"
 msgstr "Security"
@@ -2227,11 +2261,17 @@ msgstr "Shown next to the logo in the top bar. Leave empty to use the default (�
 msgid "Sign in"
 msgstr "Sign in"
 
+msgid "Sign in to the Workshop and start the connection again."
+msgstr "Sign in to the Workshop and start the connection again."
+
 msgid "Sign in to your account"
 msgstr "Sign in to your account"
 
 msgid "Sign out"
 msgstr "Sign out"
+
+msgid "Signed in"
+msgstr "Signed in"
 
 msgid "Signups are closed"
 msgstr "Signups are closed"
@@ -2396,6 +2436,9 @@ msgstr "This blueprint no longer exists"
 msgid "This blueprint was uploaded manually and cannot be recovered."
 msgstr "This blueprint was uploaded manually and cannot be recovered."
 
+msgid "This browser blocks storage in pop-ups, so the flow cannot complete. Allow site data for this site and try again."
+msgstr "This browser blocks storage in pop-ups, so the flow cannot complete. Allow site data for this site and try again."
+
 msgid "This connection no longer offers this action; the rule still applies."
 msgstr "This connection no longer offers this action; the rule still applies."
 
@@ -2410,6 +2453,9 @@ msgstr "This Gadget does not support exports."
 
 msgid "This is how you'll appear in conversations"
 msgstr "This is how you'll appear in conversations"
+
+msgid "This link isn't valid"
+msgstr "This link isn't valid"
 
 msgid "This permanently removes the hook. Future events will stop being delivered."
 msgstr "This permanently removes the hook. Future events will stop being delivered."
@@ -2433,11 +2479,11 @@ msgstr "This removes <0>{deletingFile}</0> from the gadget. You can't undo this.
 msgid "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
 msgstr "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
 
-msgid "This workspace can’t be shared"
-msgstr "This workspace can’t be shared"
-
 msgid "This workspace has no gadgets yet."
 msgstr "This workspace has no gadgets yet."
+
+msgid "This workspace has read sensitive data. People you invite are asked to verify their own access to the connections it uses at their access level — some may be unable to open it. Anything the workspace has already saved is visible to everyone who can."
+msgstr "This workspace has read sensitive data. People you invite are asked to verify their own access to the connections it uses at their access level — some may be unable to open it. Anything the workspace has already saved is visible to everyone who can."
 
 msgid "Throw away these draft edits."
 msgstr "Throw away these draft edits."
@@ -2450,9 +2496,6 @@ msgstr "Title"
 
 msgid "To open this workspace, you must choose connected accounts for the services it uses."
 msgstr "To open this workspace, you must choose connected accounts for the services it uses."
-
-msgid "To share something similar, create a blueprint from a gadget in this workspace, then use it to create a new workspace."
-msgstr "To share something similar, create a blueprint from a gadget in this workspace, then use it to create a new workspace."
 
 msgid "Top-bar notice"
 msgstr "Top-bar notice"
@@ -2569,6 +2612,9 @@ msgstr "Use stacked diff layout"
 msgid "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
 msgstr "Use the <0/><1>undo arrow</1> under any agent response to discard from that turn onward."
 
+msgid "Use the text as a username or email"
+msgstr "Use the text as a username or email"
+
 msgid "Used the gadget"
 msgstr "Used the gadget"
 
@@ -2578,6 +2624,9 @@ msgstr "Used the gadget at {0}"
 
 msgid "User ID"
 msgstr "User ID"
+
+msgid "User search is temporarily unavailable."
+msgstr "User search is temporarily unavailable."
 
 msgid "Username"
 msgstr "Username"
@@ -2692,6 +2741,9 @@ msgstr "You brought the gadget's latest changes into this draft — {conflictCou
 msgid "You can attach up to {MAX_COMPOSER_ATTACHMENTS} attachments"
 msgstr "You can attach up to {MAX_COMPOSER_ATTACHMENTS} attachments"
 
+msgid "You can close this window."
+msgstr "You can close this window."
+
 msgid "You can copy it again anytime from Share links"
 msgstr "You can copy it again anytime from Share links"
 
@@ -2710,6 +2762,9 @@ msgstr "You saved edits"
 
 msgid "You're all set"
 msgstr "You're all set"
+
+msgid "You're signed out"
+msgstr "You're signed out"
 
 msgid "You've reached your free usage limit"
 msgstr "You've reached your free usage limit"

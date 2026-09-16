@@ -5,6 +5,7 @@ import {
   stripTrailingSlashes,
   type ActionDescription,
   type AccountDescription,
+  type ConnectHandoff,
   type Cursor,
   type Gatekeeper,
   type GatekeeperConnectCallback,
@@ -20,11 +21,13 @@ import {
   type SupportedResource,
   type VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
+import { commitStagedCredentials, stageCredentials } from "@gadgets/gatekeeper-kit/credential-stage";
 import {
   GitHubApi,
   GitHubApiError,
   exchangeAuthCode,
-  revokeOAuthGrant,
+  revokeOAuthToken,
   type ConditionalRequestResult,
   type GitHubCompareResponse,
   type GitHubIssueCommentResponse,
@@ -131,6 +134,12 @@ type StoredNonce = {
   value: string;
   expiresAt: number;
   stage: "initiation" | "oauth";
+  /**
+   * Set when this flow reconnects an existing account, so its grant is staged rather than made
+   * live. The mode travels with the flow instead of living on the account: committing one
+   * reconnect while another is in flight must not change how that other flow lands.
+   */
+  reconnect?: true;
 };
 
 type ResourceKind = "repo" | "issue" | "pull";
@@ -383,14 +392,6 @@ const SUPPORTED_RESOURCES: SupportedResource[] = [
   ISSUE_RESOURCE,
   PULL_REQUEST_RESOURCE,
 ];
-
-const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en">
-  <body>
-    <script type="text/javascript">window.close();</script>
-    <p>Authorization complete. You may close this tab and return to Cloudflare OS.</p>
-  </body>
-</html>`;
 
 const INVALID_LINK_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -1183,16 +1184,14 @@ export default {
       const stub: DurableObjectStub<UserAccount> = ctx.exports.UserAccount.get(
         ctx.exports.UserAccount.idFromString(doId),
       );
-      const accepted = await stub.acceptAuthCode(code, oauthNonce);
-      if (!accepted) {
+      const handoff = await stub.acceptAuthCode(code, oauthNonce);
+      if (!handoff) {
         return new Response(INVALID_LINK_HTML, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
       }
 
-      return new Response(SELF_CLOSING_HTML, {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+      return htmlResponse(connectHandoffPageHtml(handoff));
     }
 
     return new Response("Not Found", { status: 404 });
@@ -1258,12 +1257,12 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   async prepareReconnect(initiationNonce: string): Promise<void> {
-    this.ctx.storage.kv.put("reconnecting", true);
     this.ctx.storage.kv.put("expiredNotified", false);
     this.ctx.storage.kv.put<StoredNonce>("nonce", {
       value: initiationNonce,
       expiresAt: Date.now() + INITIATION_NONCE_LIFETIME_MS,
       stage: "initiation",
+      reconnect: true,
     });
   }
 
@@ -1278,15 +1277,20 @@ export class UserAccount extends DurableObject<Env> {
       value: oauthNonce,
       expiresAt: Date.now() + OAUTH_NONCE_LIFETIME_MS,
       stage: "oauth",
+      reconnect: stored.reconnect,
     });
     const scopes = this.ctx.storage.kv.get<string[]>("requestedScopes") ?? OAUTH_SCOPES;
     return { oauthNonce, scopes };
   }
 
-  async acceptAuthCode(code: string, oauthNonce: string): Promise<boolean> {
+  /**
+   * Finishes the OAuth code exchange and returns the handoff for the page the browser lands on, or
+   * null when the callback's nonce doesn't match.
+   */
+  async acceptAuthCode(code: string, oauthNonce: string): Promise<ConnectHandoff | null> {
     const stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (!stored || stored.stage !== "oauth" || Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, oauthNonce)) {
-      return false;
+      return null;
     }
     this.ctx.storage.kv.delete("nonce");
 
@@ -1304,34 +1308,47 @@ export class UserAccount extends DurableObject<Env> {
 
     const grant = await exchangeAuthCode(code, clientId, clientSecret, `${getBaseUrl(this.env)}/oauth`);
 
-    this.ctx.storage.kv.put("accessToken", grant.accessToken);
-    this.ctx.storage.kv.put("scopes", grant.scopes);
-    this.ctx.storage.kv.put("expiredNotified", false);
-
-    const reconnecting = this.ctx.storage.kv.get<boolean>("reconnecting");
-    if (reconnecting) {
-      this.ctx.storage.kv.delete("reconnecting");
-      await callback.credentialsRestored();
+    let handoff: ConnectHandoff;
+    if (stored.reconnect) {
+      // The reconnect URL is a bearer capability, so the new grant is only staged until the Workshop
+      // has confirmed the browser that finished the flow is the owner's (see commitReconnect). Bound
+      // gadgets keep reading the current token meanwhile. The stage id ties the Workshop's ticket to
+      // this grant, so an overlapping reconnect cannot be committed by it.
+      const stageId = stageCredentials(this.ctx.storage.kv, grant, Date.now());
+      handoff = await callback.reconnectComplete(stageId);
     } else {
+      this.ctx.storage.kv.put("accessToken", grant.accessToken);
+      this.ctx.storage.kv.put("scopes", grant.scopes);
+      this.ctx.storage.kv.put("expiredNotified", false);
       try {
         const props = { userObjectId: this.ctx.id.toString() };
-        await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props }));
+        handoff = await callback.complete(this.ctx.exports.GatekeeperUserImpl({ props }));
       } catch (error) {
         this.ctx.storage.kv.delete("accessToken");
         this.ctx.storage.kv.delete("scopes");
         throw error;
       }
       // Auth-only sign-in grants are transient: the caller read the email via complete(), so
-      // schedule a prompt self-destruct. We do NOT call the provider revoke endpoint (it could
-      // invalidate the user's other grants for this OAuth app); we just drop our local copy.
+      // schedule a prompt self-destruct. Only the local copy is dropped, with no provider revoke
+      // call: the token grants nothing worth revoking, and this is the sign-in path.
       if (this.ctx.storage.kv.get<boolean>("ephemeral")) {
         await this.ctx.storage.setAlarm(Date.now() + 2 * 60 * 1000);
-        return true;
+        return handoff;
       }
     }
 
     await this.ctx.storage.deleteAlarm();
-    return true;
+    return handoff;
+  }
+
+  /** Makes the grant staged under `stageId` live; see GatekeeperUser.commitReconnect. */
+  async commitReconnect(stageId: string): Promise<void> {
+    const grant = commitStagedCredentials<Awaited<ReturnType<typeof exchangeAuthCode>>>(
+      this.ctx.storage.kv, Date.now(), stageId);
+    if (!grant) throw new Error("No reconnect is awaiting confirmation. Please try again.");
+    this.ctx.storage.kv.put("accessToken", grant.accessToken);
+    this.ctx.storage.kv.put("scopes", grant.scopes);
+    this.ctx.storage.kv.put("expiredNotified", false);
   }
 
   getAccessToken(): string {
@@ -1370,10 +1387,10 @@ export class UserAccount extends DurableObject<Env> {
     const accessToken = this.ctx.storage.kv.get<string>("accessToken");
     if (accessToken && this.env.CLIENT_ID && this.env.CLIENT_SECRET) {
       try {
-        await revokeOAuthGrant(accessToken, this.env.CLIENT_ID, this.env.CLIENT_SECRET);
+        await revokeOAuthToken(accessToken, this.env.CLIENT_ID, this.env.CLIENT_SECRET);
       } catch (error) {
-        logger.error("failed to revoke GitHub OAuth grant", {
-          event: "oauth.grant.revoke.failed", error,
+        logger.error("failed to revoke GitHub OAuth token", {
+          event: "oauth.token.revoke.failed", error,
         });
       }
     }
@@ -1509,6 +1526,11 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     return {
       url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${initiationNonce}`,
     };
+  }
+
+  async commitReconnect(stageId: string): Promise<void> {
+    const id = this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId);
+    await this.ctx.exports.UserAccount.get(id).commitReconnect(stageId);
   }
 
   async ensureResources(_resourceUrlPatterns: string[]): Promise<{url?: string}> {

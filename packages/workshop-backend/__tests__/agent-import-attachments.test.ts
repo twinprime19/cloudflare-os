@@ -8,7 +8,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { importMailAttachments, runAgent } from "../src/agent.js";
-import type { AgentHooks, ChatBindingEntry, CompactionContext } from "../src/agent.js";
+import type { AgentHooks, ChatBindingEntry } from "../src/agent.js";
 import type { ModelHandle } from "../src/ai-models.js";
 import type {
   AiChatAuthorInfo, AiChatMessage, ChatAttachmentUpload,
@@ -454,7 +454,10 @@ function replayHooks(): AgentHooks {
     getGadgetHead: () => undefined,
     readCommitFiles: async () => new Map(),
     changedPaths: async () => new Set<string>(),
-    activeAgentCallbackCount: () => 0,
+    // The agent now reads the chat log through the hooks; the replayed history is the recorded
+    // import below, never compacted.
+    loadChatHistory: () => ({checkpoint: undefined, chatMessages: importedChatLog(), measuredTokens: 0}),
+    commitChatCompaction: () => {},
     consumeCapturedActions: () => undefined,
     consumeCapturedConnectionRequests: () => [],
   } as unknown as AgentHooks;
@@ -472,17 +475,13 @@ describe("chat history replay of an import", () => {
         throw new Error("stop: context captured");
       },
     } as unknown as ModelHandle;
-    let compaction: CompactionContext = {
-      modelConfig: {provider: "anthropic", model: "claude-sonnet-4-5", apiToken: "token"},
-      measuredTokens: 0,
-    };
+    let modelConfig = {provider: "anthropic", model: "claude-sonnet-4-5", apiToken: "token"} as const;
     let author: AiChatAuthorInfo = {type: "agent", id: "claude", name: "Agent"};
 
     // The failing request is what ends the turn; the context it was given is the assertion.
     await expect(runAgent(
-        replayHooks(), handle, CHAT_ID, author, importedChatLog(),
-        new AbortController().signal, {type: "user", id: "alice@example.com", name: "Alice"},
-        false, compaction)).rejects.toThrow();
+        replayHooks(), handle, CHAT_ID, author, new AbortController().signal,
+        {type: "user", id: "alice@example.com", name: "Alice"}, modelConfig)).rejects.toThrow();
 
     let toolResult = captured.find(message => message.role === "toolResult");
     expect(toolResult).toBeDefined();

@@ -5,7 +5,7 @@ const JPEG_HEADER = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0]);
 const PNG_HEADER = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
 
 // Minimal in-memory stand-in for the AVATARS KV binding, mirroring the pattern in
-// format-blueprints.test.ts.
+// bundled-blueprints.test.ts.
 function makeEnv(): { kv: Map<string, Uint8Array>; env: AvatarEnv } {
   let kv = new Map<string, Uint8Array>();
   return {

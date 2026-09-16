@@ -27,9 +27,9 @@
 # only if you are mirroring a deployed URL.
 # PUBLIC_BASE_URL=http://localhost:8787
 
-# Alternate source directory for the bundled format blueprints, relative to
-# packages/workshop-backend. Defaults to `format-blueprints`.
-# FORMAT_BLUEPRINTS_DIR=format-blueprints
+# Alternate source directory for the bundled blueprints (the standard output formats), relative to
+# packages/workshop-backend. Defaults to the blueprints `@gadgets/bundled-blueprints` ships.
+# BUNDLED_BLUEPRINTS_DIR=../../my-formats
 
 
 # ---------------------------------------------------------------------------------------------

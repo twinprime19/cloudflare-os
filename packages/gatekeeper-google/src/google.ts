@@ -1,6 +1,8 @@
 import { WorkerEntrypoint, DurableObject, RpcTarget, RpcStub } from "cloudflare:workers";
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
-import { GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorIface, Gatekeeper, ResourceDescription, ApprovalQueue, ObservationDescription, VendorDescription, GatekeeperConnectCallback, GatekeeperConnectOptions, AccountDescription, SupportedResource, ResourceConfiguratorFrame, Cursor, ActionKind, GitCache } from '@gadgets/workshop-shared/gatekeeper';
+import { GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorIface, Gatekeeper, ResourceDescription, ApprovalQueue, ObservationDescription, VendorDescription, GatekeeperConnectCallback, GatekeeperConnectOptions, AccountDescription, SupportedResource, ResourceConfiguratorFrame, Cursor, ActionKind, GitCache, type ConnectHandoff } from '@gadgets/workshop-shared/gatekeeper';
+import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
+import { commitStagedCredentials, stageCredentials } from "@gadgets/gatekeeper-kit/credential-stage";
 import {
   PreviewOAuth,
   PreviewOAuthConfigurationError,
@@ -155,14 +157,6 @@ type Env = Cloudflare.Env & GoogleOAuthEnv & {
 
 // =======================================================================================
 
-const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en">
-  <body>
-    <script type="text/javascript">window.close();</script>
-    <p>Authorization complete. You may close this tab and return to Cloudflare OS.
-  </body>
-</html>`;
-
 const INVALID_LINK_HTML = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -299,16 +293,13 @@ export default {
       let code = url.searchParams.get("code");
       if (!code) return new Response("Error: no 'code' provided", { status: 400 });
 
-      if (!await stub.acceptAuthCode(code, oauthState.oauthNonce)) {
+      let handoff = await stub.acceptAuthCode(code, oauthState.oauthNonce);
+      if (!handoff) {
         return new Response(INVALID_LINK_HTML, {
           headers: { "Content-Type": "text/html; charset=utf-8" }
         });
       }
-      return new Response(SELF_CLOSING_HTML, {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8"
-        }
-      });
+      return htmlResponse(connectHandoffPageHtml(handoff));
     } else {
       return new Response("Not Found", {status: 404});
     }
@@ -399,6 +390,14 @@ class Mutex {
   }
 }
 
+/** What a reconnect flow obtains, held in escrow until commitReconnect() writes it live. */
+type StagedGoogleCredentials = {
+  refreshToken: string;
+  accessToken: GoogleAccessToken;
+  grantedScopes: string[];
+  requestedResources: string[];
+};
+
 export class UserAccount extends DurableObject<Env> {
   // Serialize minting, reconnect, and revoke against each other. Minting is a network round trip, so
   // without this a single invalidated token has every concurrent caller mint its own — a burst
@@ -465,10 +464,13 @@ export class UserAccount extends DurableObject<Env> {
   consumeOAuthNonce(oauthNonce: string): boolean {
     return claimStoredOAuthFlow(this.ctx.storage.kv, oauthNonce, Date.now()) !== null;
   }
-  /** Returns false if the OAuth nonce is invalid or expired. */
-  async acceptAuthCode(code: string, oauthNonce: string): Promise<boolean> {
+  /**
+   * Finishes the OAuth code exchange and returns the handoff for the page the browser lands on, or
+   * null if the OAuth nonce is invalid or expired.
+   */
+  async acceptAuthCode(code: string, oauthNonce: string): Promise<ConnectHandoff | null> {
     let flow = claimStoredOAuthFlow(this.ctx.storage.kv, oauthNonce, Date.now());
-    if (!flow) return false;
+    if (!flow) return null;
 
     let { CLIENT_ID: clientId, CLIENT_SECRET: clientSecret } = this.env;
     if (!clientId || !clientSecret) {
@@ -494,22 +496,35 @@ export class UserAccount extends DurableObject<Env> {
         throw new Error("OAuth exchange didn't return refresh token?");
       }
 
+      if (flow.mode === "reconnect") {
+        // The reconnect URL is a bearer capability, so the new grant is only staged until the
+        // Workshop has confirmed the browser that finished the flow is the owner's (see
+        // commitReconnect). Bound gadgets keep reading the current token meanwhile.
+        let staged: StagedGoogleCredentials = {
+          refreshToken: response.refreshToken, accessToken: response.accessToken,
+          grantedScopes: response.grantedScopes, requestedResources: flow.requestedResources,
+        };
+        let stageId = stageCredentials(this.ctx.storage.kv, staged, Date.now());
+        return { callback, mode: flow.mode, stageId };
+      }
+
       this.ctx.storage.kv.put<string>("refreshToken", response.refreshToken);
       this.ctx.storage.kv.put<GoogleAccessToken>("accessToken", response.accessToken);
       // These credentials are new, so any recorded permanent failure no longer applies
       this.#mintFailure = undefined;
       this.ctx.storage.kv.put<string[]>("grantedScopes", response.grantedScopes);
       mergeGrantedResources(this.ctx.storage.kv, flow.requestedResources);
-      return { callback, mode: flow.mode };
+      return { callback, mode: flow.mode, stageId: undefined };
     });
 
     let callback = completion.callback;
-    if (completion.mode === "reconnect") {
-      await callback.credentialsRestored();
+    let handoff: ConnectHandoff;
+    if (completion.stageId !== undefined) {
+      handoff = await callback.reconnectComplete(completion.stageId);
     } else {
       try {
         let props: GatekeeperUserImplProps = { userObjectId: this.ctx.id.toString() };
-        await callback.complete(this.ctx.exports.GatekeeperUserImpl({props}));
+        handoff = await callback.complete(this.ctx.exports.GatekeeperUserImpl({props}));
       } catch (err) {
         this.ctx.storage.kv.delete("refreshToken");
         throw err;
@@ -523,7 +538,22 @@ export class UserAccount extends DurableObject<Env> {
       }
     }
 
-    return true;
+    return handoff;
+  }
+
+  /** Makes the grant staged under `stageId` live; see GatekeeperUser.commitReconnect. */
+  async commitReconnect(stageId: string): Promise<void> {
+    await this.#credentials.run(async () => {
+      let staged = commitStagedCredentials<StagedGoogleCredentials>(
+          this.ctx.storage.kv, Date.now(), stageId);
+      if (!staged) throw new Error("No reconnect is awaiting confirmation. Please try again.");
+      this.ctx.storage.kv.put<string>("refreshToken", staged.refreshToken);
+      this.ctx.storage.kv.put<GoogleAccessToken>("accessToken", staged.accessToken);
+      // These credentials are new, so any recorded permanent failure no longer applies
+      this.#mintFailure = undefined;
+      this.ctx.storage.kv.put<string[]>("grantedScopes", staged.grantedScopes);
+      mergeGrantedResources(this.ctx.storage.kv, staged.requestedResources);
+    });
   }
 
   /**
@@ -836,6 +866,11 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     let requestable = await obj.getRequestableResourceUrlPatterns();
     await obj.prepareReconnect(initiationNonce, requestable);
     return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${initiationNonce}` };
+  }
+
+  async commitReconnect(stageId: string): Promise<void> {
+    let id = this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId);
+    await this.ctx.exports.UserAccount.get(id).commitReconnect(stageId);
   }
 
   async ensureResources(resourceUrlPatterns: string[]): Promise<{url?: string}> {
@@ -3326,7 +3361,7 @@ class BigQuerySessionImpl extends RpcTarget implements BigQuerySession {
         `Referenced tables: ${estimate.referencedTables.join(", ")}\n` +
         `Estimated bytes processed: ${estimate.bytesProcessed.toLocaleString()}\n` +
         `Maximum bytes billed: ${maxBytes.toLocaleString()}.`,
-      prohibitAllSharing: true,
+      containsRestrictedData: true,
     });
 
     let result = await this.#api.query(billingProject, sql, {
@@ -3358,7 +3393,7 @@ class BigQuerySessionImpl extends RpcTarget implements BigQuerySession {
       description:
         `Estimated bytes processed: ${estimate.bytesProcessed.toLocaleString()}\n` +
         `Referenced tables: ${estimate.referencedTables.join(", ") || "(none)"}`,
-      prohibitAllSharing: true,
+      containsRestrictedData: true,
     });
 
     return estimate;
@@ -3370,7 +3405,7 @@ class BigQuerySessionImpl extends RpcTarget implements BigQuerySession {
     await this.#authorizeDatasets([], {
       title: "Get BigQuery project",
       description: `Returned the scoped project: \`${this.#scopedProjectId}\`.`,
-      prohibitAllSharing: true,
+      containsRestrictedData: true,
     });
     return result;
   }
@@ -3391,7 +3426,7 @@ class BigQuerySessionImpl extends RpcTarget implements BigQuerySession {
       await this.#authorizeDatasets([{ projectId: p, datasetId: this.#scopedDatasetId }], {
         title: `List datasets in ${p}`,
         description: `Returned scoped dataset \`${p}.${this.#scopedDatasetId}\` (1 dataset).`,
-        prohibitAllSharing: true,
+        containsRestrictedData: true,
       });
       return [dataset];
     }
@@ -3401,7 +3436,7 @@ class BigQuerySessionImpl extends RpcTarget implements BigQuerySession {
     await this.#authorizeDatasets(result.map(ds => ({ projectId: p, datasetId: ds.datasetId })), {
       title: `List datasets in ${p}`,
       description: `Listed ${result.length} dataset(s) in \`${p}\`.`,
-      prohibitAllSharing: true,
+      containsRestrictedData: true,
     });
     return result;
   }
@@ -3427,7 +3462,7 @@ class BigQuerySessionImpl extends RpcTarget implements BigQuerySession {
       await this.#authorizeDatasets([{ projectId: p, datasetId: d }], {
         title: `List tables in ${p}.${d}`,
         description: `Returned scoped table \`${p}.${d}.${this.#scopedTableId}\` (1 table).`,
-        prohibitAllSharing: true,
+        containsRestrictedData: true,
       });
       return [table];
     }
@@ -3436,7 +3471,7 @@ class BigQuerySessionImpl extends RpcTarget implements BigQuerySession {
     await this.#authorizeDatasets([{ projectId: p, datasetId: d }], {
       title: `List tables in ${p}.${d}`,
       description: `Listed ${result.length} table(s) in \`${p}.${d}\`.`,
-      prohibitAllSharing: true,
+      containsRestrictedData: true,
     });
     return result;
   }
@@ -3473,7 +3508,7 @@ class BigQuerySessionImpl extends RpcTarget implements BigQuerySession {
       title: `Describe ${p}.${d}.${t}`,
       description:
         `Described table \`${p}.${d}.${t}\` (${result.schema.length} columns).`,
-      prohibitAllSharing: true,
+      containsRestrictedData: true,
     });
     return result;
   }

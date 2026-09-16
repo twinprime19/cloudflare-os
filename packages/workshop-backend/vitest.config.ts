@@ -38,12 +38,23 @@ export default defineConfig({
     textModules,
     capnwebValidate(),
     cloudflareTest({
-      main: './src/server.ts',
+      // The production Worker plus test-only entrypoints (see __tests__/test-worker.ts).
+      main: './__tests__/test-worker.ts',
       miniflare: {
         compatibilityDate: '2026-09-04',
-        compatibilityFlags: ['experimental', 'nodejs_compat'],
+        // `allow_irrevocable_stub_storage` as in wrangler.jsonc: the user DO persists account stubs.
+        compatibilityFlags: ['experimental', 'nodejs_compat', 'allow_irrevocable_stub_storage'],
+        bindings: { PUBLIC_BASE_URL: 'https://workshop.example/' },
+        // The overseer loads gadget code through this, so a test can run a real gadget facet.
+        workerLoaders: { LOADER: {} },
         durableObjects: {
           TEST_OVERSEER: { className: 'OverseerDurableObject', useSQLite: true },
+          TEST_USER: { className: 'UserDurableObject', useSQLite: true },
+          TEST_PENDING_LOGIN: { className: 'PendingLogin', useSQLite: true },
+          // Never addressed by name: a binding is what puts the class in `ctx.exports`, from
+          // which the overseer instantiates it (with props) as one of its own facets.
+          TEST_AGENT_SPAWNER: { className: 'AgentSpawnerGatekeeper', useSQLite: true },
+          TEST_USER_DIRECTORY: { className: 'UserDirectoryDurableObject', useSQLite: true },
         },
       },
     }),

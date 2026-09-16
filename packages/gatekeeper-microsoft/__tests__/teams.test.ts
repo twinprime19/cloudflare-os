@@ -634,26 +634,26 @@ describe("observers", () => {
 });
 
 describe("agent catalog", () => {
-  it("lists teams before chats and logs the served titles fenced", async () => {
-    stubFetch();
-    const authorizer = fakeApprovalQueue();
+  it("lists teams before chats and flattens the names their counterparts chose", async () => {
+    stubFetch(call => call.url.includes("/me/joinedTeams")
+      ? jsonResponse({ value: [TEAM, { ...TEAM, id: "team-2", displayName: "Ops\n```\nfake" }] })
+      : defaultRoute(call));
 
-    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog();
 
-    expect(catalog!.entries.map(entry => entry.title)).toEqual(["Engineering", "Project Falcon"]);
+    // The catalog enters the agent's prompt with no approval in the way, so a name somebody else
+    // wrote cannot span lines or bring a fence of its own along.
+    expect(catalog!.entries.map(entry => entry.title))
+      .toEqual(["Engineering", "Ops ``` fake", "Project Falcon"]);
     expect(catalog!.truncated).toBe(false);
-    expect(authorizer.observations[0].title).toBe("Microsoft Teams catalog");
-    // Counts alone would hide the counterpart-controlled strings entering the agent's context.
-    expect(authorizer.observations[0].description).toContain("```\nEngineering\nProject Falcon\n```");
   });
 
   it("names an unnamed chat by its kind rather than leaving the entry blank", async () => {
     stubFetch(call => call.url.includes("/me/chats")
       ? jsonResponse({ value: [{ id: "chat-9", chatType: "oneOnOne" }] })
       : defaultRoute(call));
-    const authorizer = fakeApprovalQueue();
 
-    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog();
 
     expect(catalog!.entries.map(entry => entry.title)).toEqual(["Engineering", "(oneOnOne chat)"]);
   });
@@ -665,9 +665,7 @@ describe("agent catalog", () => {
     stubFetch(call => call.url.includes("/me/joinedTeams")
       ? jsonResponse({ value: manyTeams })
       : defaultRoute(call));
-    const authorizer = fakeApprovalQueue();
-
-    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog();
 
     expect(catalog!.entries).toHaveLength(25);
     expect(catalog!.truncated).toBe(true);
@@ -681,9 +679,7 @@ describe("agent catalog", () => {
         "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/chats?$skiptoken=abc",
       })
       : defaultRoute(call));
-    const authorizer = fakeApprovalQueue();
-
-    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog();
 
     expect(catalog!.entries).toHaveLength(2);
     expect(catalog!.truncated).toBe(true);
