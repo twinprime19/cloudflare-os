@@ -39,6 +39,20 @@ export class SharePointUrlError extends Error {
   }
 }
 
+/**
+ * Whether a host is SharePoint Online's, matched on a label boundary so `sharepoint.com` itself and
+ * `sharepoint.com.evil` both fail.
+ *
+ * Exported because whoever routes a pasted URL needs the answer before parsing has succeeded: once
+ * the host is SharePoint the user meant this resource, so the parser's own refusal — which names the
+ * shape to paste — is what should reach them, rather than a message about an unconnectable URL.
+ */
+export function isSharePointHost(hostname: string): boolean {
+  let lowered = hostname.toLowerCase();
+  return lowered.endsWith(SHAREPOINT_HOST_SUFFIX) &&
+      lowered.length > SHAREPOINT_HOST_SUFFIX.length;
+}
+
 /** The parts of a list URL that identify the list, decoded. */
 export type SharePointListUrl = {
   /** The SharePoint Online host, lowercased: `contoso.sharepoint.com`. */
@@ -79,8 +93,7 @@ export function parseSharePointListUrl(url: string): SharePointListUrl {
   }
 
   let hostname = parsed.hostname.toLowerCase();
-  if (!hostname.endsWith(SHAREPOINT_HOST_SUFFIX) ||
-      hostname.length === SHAREPOINT_HOST_SUFFIX.length) {
+  if (!isSharePointHost(hostname)) {
     throw new SharePointUrlError(`That URL is not on a ${SHAREPOINT_HOST_SUFFIX} host.`);
   }
 

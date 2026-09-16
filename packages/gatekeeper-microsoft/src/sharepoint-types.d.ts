@@ -9,7 +9,14 @@
 // Column shapes mirror what the Graph client normalises a list's schema into; nothing here is a
 // SharePoint wire shape.
 
-/** A pagination cursor. Call `next()` until it returns `null`; an empty batch is not exhaustion. */
+/**
+ * A pagination cursor. Call `next()` until it returns `null`, and dispose it when finished,
+ * including when stopping early. An empty batch is not exhaustion — a filtered page can come back
+ * empty mid-walk.
+ *
+ * A cursor refuses to page indefinitely: after a bounded number of pages `next()` throws, so narrow
+ * the query with `where` instead of walking a whole list.
+ */
 export type SharePointCursor<T> = import("@gadgets/workshop-shared/gatekeeper").Cursor<T>;
 
 // ── Plain data types ────────────────────────────────────────────────
@@ -105,7 +112,8 @@ export type SharePointSubmissionOutcome = "failed" | "rejected";
  * whose submission ended the same way.
  */
 export interface SharePointSubmissionError extends Error {
-  name: "SharePointSubmissionError";
+  /** An RPC hop may rebuild the error and lose this, so discriminate on `outcome` instead. */
+  name: string;
   outcome: SharePointSubmissionOutcome;
   /** True when SharePoint throttled the write, so an approver can simply retry it. */
   throttled: boolean;
@@ -134,7 +142,8 @@ export interface SharePointListSession {
    * One item by id.
    *
    * Accepts either a SharePoint item id or a provisional id from `createItem()`. A provisional id
-   * is only meaningful to the session that issued it.
+   * is the gatekeeper's own bookkeeping for this list, not a SharePoint id — it keeps resolving
+   * from any later session on the same binding, so it is worth storing rather than discarding.
    */
   getItem(id: string): Promise<ListItem>;
 

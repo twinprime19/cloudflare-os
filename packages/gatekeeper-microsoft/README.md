@@ -94,11 +94,14 @@ The list is matched on the URL name after `/Lists/` (not the display name, which
 the list may change). Site and list **ids** are resolved once, at introduction, so the binding keeps
 working after a rename. The binding's title is the list's display name.
 
-Two failures are worth recognizing:
+Three failures are worth recognizing:
 
-- `The Microsoft gatekeeper cannot connect this URL: …` — the address is not a SharePoint list
-  address at all (no `/Lists/` segment, no list name after it, wrong host, or `http`). No Graph call
-  was made.
+- `<what is wrong>. Expected a SharePoint list URL like https://<tenant>.sharepoint.com/…` — the
+  address is on a SharePoint host but does not name a list: no `/Lists/` segment, no list name after
+  it, `http` instead of `https`, or a share mode that carries no path. The first sentence says which.
+  No Graph call was made.
+- `The Microsoft gatekeeper cannot connect this URL: …` — the address is not on a SharePoint host at
+  all, so it is not one this gatekeeper connects. No Graph call was made.
 - `Could not open that SharePoint list: … Check the URL and that your account can open it.` — the
   address parsed, but Graph would not resolve the site or the list for this account. The middle part
   is Microsoft's own reason.
@@ -106,9 +109,10 @@ Two failures are worth recognizing:
 ### Columns a gadget can read and write
 
 `getColumns()` reports each column's **internal name** (the key `createItem()`, `select`, and
-`where` all use), display name, type, `required`, and a `choices` list for choice columns. Hidden,
-system, and computed columns are not reported at all — except `Title`, which some lists mark
-read-only in a view while still requiring it on create.
+`where` all use), display name, type, `required`, `readOnly`, a `choices` list for choice columns,
+`multiline` for a text column that takes more than one line, and `multiple` for a person or lookup
+column that holds more than one value. Hidden, system, and computed columns are not reported at all
+— except `Title`, which some lists mark read-only in a view while still requiring it on create.
 
 | Type | Read | Write |
 | --- | --- | --- |
@@ -150,10 +154,16 @@ needs a human.
 
 With the rule on and nothing else in flight, `createItem()` waits up to **5 s** for its own action
 to be applied and then returns the real item id — `{id: "218", provisional: false}`. Otherwise it
-returns a provisional id — `{id: "pending-7", provisional: true}` — which is this session's
-bookkeeping, not a SharePoint id. The drain applies one action at a time per list, so three
-submissions a second apart will usually see the first answer with a real id and the rest with
-provisional ones.
+returns a provisional id — `{id: "pending-7", provisional: true}` — which is the gatekeeper's own
+bookkeeping for this list, not a SharePoint id. It is held in the binding's storage, so it keeps
+resolving from any later session; store it rather than discarding it when a session ends. The drain
+applies one action at a time per list, so three submissions a second apart will usually see the
+first answer with a real id and the rest with provisional ones.
+
+A submission decided **against** inside those 5 s never comes back as a provisional id:
+`createItem()` itself throws the same `SharePointSubmissionError` — rejected, failed, or throttled —
+that `getItem()` would have thrown later. Handle those three at the call that submits, not only at
+the lookup.
 
 Pass a provisional id to `getItem()` later to find out what happened. Six outcomes, five of which
 are errors:
@@ -199,6 +209,18 @@ get "Could not verify SharePoint access right now." and can be retried later.
 - **Outcome records are never swept.** One small record per submitted action stays in the binding's
   storage for the binding's lifetime. Harmless at form volumes; a retention policy is a future
   decision, not a current control.
+- **A column added in SharePoint is not picked up while the connection is warm.** The list's schema
+  is cached in memory per Durable Object instance, and the only thing that invalidates it is a Graph
+  4xx at apply time. Since `createItem()` validates against the cached schema *before* submitting, a
+  newly added column never reaches that path — it is refused with `Unknown column "X". Use internal
+  column names from getColumns().`, and `getColumns()` keeps returning the old schema, until the
+  instance goes idle. After adding a column, leave the workspace alone for a few minutes before
+  writing to it.
+- **Reads have their own throttling ceiling.** A read waits out a SharePoint `Retry-After` for at
+  most 10 s (writes get 60 s, since an approval queue rather than a caller is waiting). Past it
+  `getColumns()`, `getItems()` and `getItem()` fail with `SharePoint is throttling this connection
+  and asked to be left alone for N seconds. Try again after that.` Nothing is lost — retry after the
+  stated wait.
 - **Multi-select choice columns look single-valued.** Graph's column definition exposes no
   multi-select flag, so such a column is described as an ordinary `choice` and only accepts one
   string. A multi-value write is expected to be refused by SharePoint — untested, because no list
@@ -214,16 +236,11 @@ get "Could not verify SharePoint access right now." and can be retried later.
 
 ### Rollback
 
-**Withdraw the resource in code; never touch the migration.** To take SharePoint off the connect UI,
-remove its `RESOURCE_SCOPES` entry, its branch in `getGatekeeperClassFor`, and its branch in
-`startResourceConfigurator` (all in `src/microsoft.ts`), and ship that. Existing bindings go inert
-and no new one can be created.
-
-**Keep `SharePointListGatekeeperImpl` exported and keep the `v1-sharepoint-list` migration tag in
-`wrangler.jsonc`.** Tags are appended, never edited or removed: a deploy that no longer declares a
-class the account's migration history holds is rejected, and a `deleted_classes` migration would
-destroy every binding's stored state. A deployment that has applied `v1-sharepoint-list` cannot be
-rolled back past it — recovery is forward.
+Withdrawing SharePoint is the same procedure every resource here uses — withdraw it in code, never
+touch the migration: see
+[Durable Object migrations, and how to back out a resource](#durable-object-migrations-and-how-to-back-out-a-resource).
+The class to keep exported is `SharePointListGatekeeperImpl` and the tag to keep is
+`v1-sharepoint-list`.
 
 De-consenting `Sites.ReadWrite.All` is a separate action in Entra (API permissions on the app
 registration) and affects nothing in this repo. Note that it also breaks the generic "Connect

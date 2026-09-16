@@ -460,16 +460,43 @@ describe("resource surface", () => {
       .rejects.toThrow(/cannot connect this URL/i);
   });
 
-  it("refuses a SharePoint URL that does not name a list, without calling Graph", async () => {
-    // Not a list address is not a SharePoint failure: it is a URL this gatekeeper does not connect,
-    // and the routing error is the one that says which URLs it does.
+  it("says what is wrong with a URL on a SharePoint host, without calling Graph", async () => {
+    // The host says the user meant this resource, so the parser's own refusal is what reaches them:
+    // it names the shape that would have worked, which the routing error does not.
+    const calls = stubSharePointGraph();
+
+    for (const [url, problem] of [
+      ["https://contoso.sharepoint.com/sites/HR", /has no \/Lists\/ segment/],
+      ["https://contoso.sharepoint.com/sites/HR/Lists/", /has no list name after \/Lists\//],
+      ["http://contoso.sharepoint.com/sites/HR/Lists/Requests/AllItems.aspx", /must use https/],
+    ] as const) {
+      await expect(user.getGatekeeperClassFor(url)).rejects.toThrow(problem);
+      await expect(user.getGatekeeperClassFor(url))
+        .rejects.toThrow(/Expected a SharePoint list URL like https:\/\/<tenant>\.sharepoint\.com/);
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it("tells the user to copy the address bar when a share link names a share", async () => {
+    // "Copy link" mode `s` carries an opaque share id instead of the list's path, so nothing here
+    // could resolve it. The hint is the whole value of the message.
+    const calls = stubSharePointGraph();
+
+    await expect(user.getGatekeeperClassFor("https://contoso.sharepoint.com/:l:/s/HR/EaBc123"))
+      .rejects.toThrow("That sharing link identifies a share rather than the list's path. Open " +
+        "the list and copy the URL from your browser's address bar instead.");
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses a SharePoint lookalike host with the routing error, no Graph call", async () => {
+    // Off a real SharePoint host the same parse failure means something else: the URL is not this
+    // vendor's at all, so the routing error that says which URLs it connects is the right answer.
     const calls = stubSharePointGraph();
 
     for (const url of [
-      "https://contoso.sharepoint.com/sites/HR",
-      "https://contoso.sharepoint.com/sites/HR/Lists/",
       "https://contoso.sharepoint.com.evil.example/sites/HR/Lists/Requests/AllItems.aspx",
-      "http://contoso.sharepoint.com/sites/HR/Lists/Requests/AllItems.aspx",
+      "https://sharepoint.com/sites/HR/Lists/Requests/AllItems.aspx",
+      "https://evil.example/contoso.sharepoint.com/Lists/Requests/AllItems.aspx",
     ]) {
       await expect(user.getGatekeeperClassFor(url)).rejects.toThrow(/cannot connect this URL/i);
     }

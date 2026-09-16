@@ -16,7 +16,7 @@ import type { OutlookMailGatekeeperImplProps } from "./outlook-mail";
 import type { TeamsGatekeeperImplProps } from "./teams";
 import type { SharePointListGatekeeperImplProps } from "./sharepoint-list";
 import {
-  SharePointUrlError, parseSharePointListUrl, type SharePointListUrl,
+  SharePointUrlError, isSharePointHost, parseSharePointListUrl, type SharePointListUrl,
 } from "./sharepoint-url";
 import type {
   OutlookMailConfiguratorRpc,
@@ -317,22 +317,6 @@ function logUngrantedResources(requestedScopes: string[], grantedScopes: string[
       missingScopes: entry.scopes.filter(scope => !grantCoversScopes(grantedScopes, [scope])),
       grantedScopes,
     });
-  }
-}
-
-/**
- * The list a pasted URL names, or undefined when it does not name one.
- *
- * A URL that is not a list address is not a SharePoint failure — it is a URL this vendor does not
- * connect at all, so it falls through to the routing error that says so rather than to a message
- * about SharePoint.
- */
-function tryParseSharePointListUrl(url: string): SharePointListUrl | undefined {
-  try {
-    return parseSharePointListUrl(url);
-  } catch (err) {
-    if (err instanceof SharePointUrlError) return undefined;
-    throw err;
   }
 }
 
@@ -1079,7 +1063,17 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     // them here, once, is what makes the binding survive the list being renamed or moved later —
     // and it is also the first moment the account's own access to the list is tested, so a URL the
     // user cannot open fails while they are still looking at the picker.
-    let listUrl = tryParseSharePointListUrl(url);
+    //
+    // A parse failure on a SharePoint host is shown as the parser wrote it: the user meant this
+    // resource, and only that message names what to paste instead. Off a SharePoint host the same
+    // failure means something else — the URL is not this vendor's at all — so it falls through to
+    // the routing error below.
+    let listUrl: SharePointListUrl | undefined;
+    try {
+      listUrl = parseSharePointListUrl(url);
+    } catch (err) {
+      if (!(err instanceof SharePointUrlError) || isSharePointHost(parsed.hostname)) throw err;
+    }
     if (listUrl) {
       let { siteId, listId } = await this.#resolveSharePointList(listUrl);
       let props: SharePointListGatekeeperImplProps = {
