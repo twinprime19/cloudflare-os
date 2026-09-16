@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { RpcStub } from 'capnweb'
 import { Switch, Textarea, Input, Button, Tabs, useKumoToastManager } from '@cloudflare/kumo'
-import { Hexagon, ShieldWarning, UserPlus } from '@phosphor-icons/react'
+import { Hexagon, MagnifyingGlass, ShieldWarning, UserPlus } from '@phosphor-icons/react'
 import { useAuthenticatedApi } from './AuthContext'
 import { AdminApi, AdminFormat, AdminResourceVendor, AmbientGatekeeperMode, MAX_INSTANCE_INSTRUCTIONS_LENGTH, MAX_ANNOUNCEMENT_LENGTH, MAX_SITE_NAME_LENGTH, DEFAULT_SITE_NAME, BannerColor, BANNER_COLORS, DEFAULT_BANNER_COLOR } from '@gadgets/workshop-shared/api'
 import { t } from '@lingui/core/macro'
@@ -78,6 +78,10 @@ export default function AdminPage() {
   const [signupsEnabled, setSignupsEnabled] = useState(true)
   const [savingSignups, setSavingSignups] = useState(false)
 
+  // Whether users may search the user directory to find collaborators.
+  const [userSearchEnabled, setUserSearchEnabled] = useState(false)
+  const [savingUserSearch, setSavingUserSearch] = useState(false)
+
   // Gatekeeper resource config, and the set of resource keys ("vendorId\u0000urlPattern") busy toggling.
   const [resourceVendors, setResourceVendors] = useState<AdminResourceVendor[]>([])
   const [resourceBusy, setResourceBusy] = useState<Set<string>>(new Set())
@@ -92,6 +96,7 @@ export default function AdminPage() {
   // Populate all editor state from a freshly-fetched settings view.
   const applySettings = (view: Awaited<ReturnType<RpcStub<AdminApi>['getSettings']>>) => {
     setSignupsEnabled(view.signupsEnabled)
+    setUserSearchEnabled(view.userSearchEnabled)
     setSavedSiteName(view.siteName)
     setSiteNameDraft(view.siteName)
     setSiteLogoUrl(view.siteLogo?.url ?? null)
@@ -296,6 +301,21 @@ export default function AdminPage() {
     }
   }
 
+  const handleUserSearchToggle = async (enabled: boolean) => {
+    if (!admin) return
+    setSavingUserSearch(true)
+    setUserSearchEnabled(enabled) // optimistic
+    try {
+      await admin.api.setUserSearchEnabled(enabled)
+    } catch (err) {
+      setUserSearchEnabled(!enabled) // revert
+      const message = err instanceof Error ? err.message : 'Update failed'
+      toasts.add({ title: message, variant: 'error' })
+    } finally {
+      setSavingUserSearch(false)
+    }
+  }
+
   const handleSaveSiteName = async () => {
     if (!admin) return
     setSavingSiteName(true)
@@ -418,26 +438,51 @@ export default function AdminPage() {
         />
       )}
 
-      {/* Sign-ups */}
+      {/* Sign-ups and user search */}
       {activeTab === 'access' && (
-        <div className="bg-kumo-elevated border border-kumo-line rounded-xl p-6">
-          <div className="flex items-center gap-4">
-            <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center bg-kumo-tint">
-              <UserPlus size={18} className="text-kumo-subtle" />
+        <>
+          <div className="bg-kumo-elevated border border-kumo-line rounded-xl p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center bg-kumo-tint">
+                <UserPlus size={18} className="text-kumo-subtle" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-semibold text-kumo-strong"><Trans>Allow new sign-ups</Trans></h2>
+                <p className="text-sm text-kumo-subtle mt-0.5">
+                  <Trans>When off, existing users can still log in but no new accounts can be created.</Trans>
+                </p>
+              </div>
+              <Switch
+                aria-label={t`Allow new sign-ups`}
+                checked={signupsEnabled}
+                disabled={savingSignups}
+                onCheckedChange={handleSignupsToggle}
+              />
             </div>
-            <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-semibold text-kumo-strong"><Trans>Allow new sign-ups</Trans></h2>
-              <p className="text-sm text-kumo-subtle mt-0.5">
-                <Trans>When off, existing users can still log in but no new accounts can be created.</Trans>
-              </p>
-            </div>
-            <Switch
-              checked={signupsEnabled}
-              disabled={savingSignups}
-              onCheckedChange={handleSignupsToggle}
-            />
           </div>
-        </div>
+
+          <div className="bg-kumo-elevated border border-kumo-line rounded-xl p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center bg-kumo-tint">
+                <MagnifyingGlass size={18} className="text-kumo-subtle" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-semibold text-kumo-strong"><Trans>Allow user search</Trans></h2>
+                <p className="text-sm text-kumo-subtle mt-0.5">
+                  <Trans>Let users find other accounts by name or email when sharing a workspace. When off,
+                  people can only be invited by their exact username or email. Applies on each
+                  user&rsquo;s next connection.</Trans>
+                </p>
+              </div>
+              <Switch
+                aria-label={t`Allow user search`}
+                checked={userSearchEnabled}
+                disabled={savingUserSearch}
+                onCheckedChange={handleUserSearchToggle}
+              />
+            </div>
+          </div>
+        </>
       )}
 
       {/* Site name */}

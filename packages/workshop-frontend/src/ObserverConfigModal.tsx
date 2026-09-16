@@ -19,6 +19,7 @@ import { t } from '@lingui/core/macro'
 import { WorkshopButton } from './components/WorkshopControls'
 import Avatar from './components/Avatar'
 import { AccountsSubscriberAdapter } from './accountsSubscriber'
+import { openConnectWindow } from './connectHandoff'
 
 // Shown when a non-owner opens a shared Gadget that reads data through one or more gatekeeper
 // bindings, and they haven't yet chosen which of their own connected accounts to use for each one.
@@ -213,11 +214,10 @@ export default function ObserverConfigModal({
         await authenticatedApi.provisionAmbientAccount(vendorId)
       } else {
         const required = requiredResourceUrlPatterns(need, vendor)
-        const { url } = await authenticatedApi.connectAccount(
+        openConnectWindow(await authenticatedApi.connectAccount(
           vendorId,
           required.length > 0 ? required : undefined,
-        )
-        window.open(url, '_blank', 'noopener,noreferrer')
+        ))
       }
     } catch (err) {
       console.error('Failed to initiate connection:', err)
@@ -230,9 +230,9 @@ export default function ObserverConfigModal({
   const handleReconnect = async (accountId: number) => {
     setReconnecting(accountId)
     try {
-      const { url } = await authenticatedApi.reconnectAccount(accountId)
-      window.open(url, '_blank', 'noopener,noreferrer')
-      // Subscription fires add() with credentialsValid:true on completion, clearing `reconnecting`.
+      openConnectWindow(await authenticatedApi.reconnectAccount(accountId))
+      // The popup redeems the ticket itself; the account arrives through the accounts subscription,
+      // whose add() with credentialsValid:true clears `reconnecting`.
     } catch (err) {
       console.error('Failed to initiate reconnection:', err)
       toasts.add({ title: 'Failed to start re-authentication flow', variant: 'error' })
@@ -250,8 +250,8 @@ export default function ObserverConfigModal({
     if (missing.length === 0) return
     setGranting(account.id)
     try {
-      const { url } = await authenticatedApi.ensureAccountResources(account.id, missing)
-      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      const flow = await authenticatedApi.ensureAccountResources(account.id, missing)
+      if (flow) openConnectWindow(flow)
       else {
         // The gatekeeper confirmed this account already has access. Update the modal so the user can
         // continue without an OAuth flow.

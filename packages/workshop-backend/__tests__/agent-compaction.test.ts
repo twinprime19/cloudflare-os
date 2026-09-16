@@ -103,6 +103,13 @@ describe("compaction trigger", () => {
     })).toEqual({inputBudget: 1_000_000, maxOutputTokens: undefined});
   });
 
+  it("sizes GPT-5.6 compaction against its cheaper input tier, not its window", () => {
+    for (let model of ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"]) {
+      expect(getModelTokenLimits({provider: "openai", model, apiToken: ""}))
+          .toEqual({inputBudget: 272_000, maxOutputTokens: 128_000});
+    }
+  });
+
   // Workers AI rejects a request whose prompt and response cap together exceed the window, so a
   // Cloudflare model configured by hand needs the reservation the model table can't declare for it.
   it("reserves Workers AI output capacity for a model the registry doesn't list", () => {
@@ -359,6 +366,23 @@ describe("compaction checkpoint state", () => {
     expect(state.proposedChange).toBeUndefined();
     // It still counts as a batch, so change IDs stay sequential across the boundary.
     expect(state.nextChangeId).toBe(1);
+  });
+
+  // A delivered call's arguments stay reachable under the name stamped on its message; a message
+  // from before calls were durable carries no name, and its arguments are gone.
+  it("binds a delivered call's arguments by the name stamped on it, and a legacy call not at all",
+      () => {
+    let state = buildState([
+      record(0, agent, {
+        type: "agentCallback", methodName: "run", argsSummary: "[0]: 1", bindingName: "run_ARGS",
+      }),
+      record(1, agent, {type: "agentCallback", methodName: "run", argsSummary: "[0]: 2"}),
+    ], 2);
+
+    expect(state.chatBindings).toEqual([
+      ["APP", {type: "workpiece", id: 1}],
+      ["run_ARGS", {type: "value", messageSequence: 0}],
+    ]);
   });
 
   it("carries a previous checkpoint's proposed state forward", () => {

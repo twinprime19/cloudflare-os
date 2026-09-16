@@ -10,6 +10,9 @@ const AUTH_SCOPES = ["openid", "profile", "email", "User.Read"];
 const IDENTITY_SCOPES = [...AUTH_SCOPES, "offline_access"];
 const DO_ID = "a".repeat(64);
 const INITIATION_NONCE = "n".repeat(64);
+// What the Workshop's callback returns for a completed flow: the origin its handoff page lives on
+// and the single-use ticket that page redeems.
+const HANDOFF = { targetOrigin: "https://workshop.example", ticket: "t".repeat(64) };
 
 const env = {
   CLIENT_ID: "client-id",
@@ -156,10 +159,10 @@ describe("completion redirect", () => {
     expect(body).toContain("…");
   });
 
-  it("closes the popup once the code is redeemed", async () => {
+  it("sends the popup to the Workshop with the ticket once the code is redeemed", async () => {
     await account.setCallback({
-      complete: async () => {}, credentialsExpired: async () => {},
-      credentialsRestored: async () => {},
+      complete: async () => HANDOFF, credentialsExpired: async () => {},
+      reconnectComplete: async () => HANDOFF,
     } as never, INITIATION_NONCE, IDENTITY_SCOPES, false);
     const begun = await account.beginOAuthFlow(INITIATION_NONCE);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
@@ -171,7 +174,12 @@ describe("completion redirect", () => {
       env as never, executionContext as never);
 
     expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
-    await expect(response.text()).resolves.toContain("window.close()");
+    // The ticket rides in the fragment to the Workshop's own handoff page, which redeems it over
+    // the popup's session. Nothing is connected until that redemption.
+    const body = await response.text();
+    expect(body).toContain(`var ticket = "${HANDOFF.ticket}"`);
+    expect(body).toContain(`var target = "${HANDOFF.targetOrigin}"`);
+    expect(body).toContain(`"/connect/handoff#" + encodeURIComponent(ticket)`);
     expect(context.storage.kv.get("refreshToken")).toBe("refresh-1");
   });
 

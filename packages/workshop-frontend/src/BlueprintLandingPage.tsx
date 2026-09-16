@@ -24,6 +24,7 @@ import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER } from './components/menuStyl
 import { useDocumentTitle } from './useDocumentTitle'
 import { AccountsSubscriberAdapter } from './accountsSubscriber'
 import { useDialogSelectPortalContainer } from './useDialogSelectPortalContainer'
+import { openConnectWindow } from './connectHandoff'
 
 interface Props {
   rpcStub: RpcStub<PublicApi>
@@ -195,9 +196,8 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
     if (!authenticatedApi) return
     setConnectingVendor(vendorId)
     try {
-      const result = await authenticatedApi.connectAccount(vendorId)
-      window.open(result.url, '_blank', 'noopener,noreferrer')
-      toasts.add({ title: 'Complete the account connection in the new tab.', variant: 'success' })
+      openConnectWindow(await authenticatedApi.connectAccount(vendorId))
+      toasts.add({ title: 'Complete the account connection in the pop-up window.', variant: 'success' })
     } catch (err) {
       console.error('Failed to initiate connection:', err)
       toasts.add({ title: 'Failed to start connection flow', variant: 'error' })
@@ -210,9 +210,8 @@ export default function BlueprintLandingPage({ rpcStub }: Props) {
     if (!authenticatedApi) return
     setReconnectingAccountId(accountId)
     try {
-      const result = await authenticatedApi.reconnectAccount(accountId)
-      window.open(result.url, '_blank', 'noopener,noreferrer')
-      toasts.add({ title: 'Complete the account reconnect in the new tab.', variant: 'success' })
+      openConnectWindow(await authenticatedApi.reconnectAccount(accountId))
+      toasts.add({ title: 'Complete the account reconnect in the pop-up window.', variant: 'success' })
     } catch (err) {
       console.error('Failed to initiate reconnect:', err)
       toasts.add({ title: 'Failed to start reconnect flow', variant: 'error' })

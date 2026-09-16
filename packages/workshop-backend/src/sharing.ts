@@ -15,11 +15,8 @@
 // re-adding a removed collaborator restores them and, transitively, everyone they had shared with.
 // (Records and revoked keys accumulate in storage; a future GC could reclaim long-dead entries.)
 //
-// NOTE: The `prohibitAllSharing` policy flag intentionally does NOT live here. It is a broader
-// "is this gadget allowed to communicate with anyone other than the owner?" policy (it also
-// gates gatekeeper writes and web fetches) and is expected to grow into a separate policy engine.
-// The Overseer enforces that flag; this module only exposes `hasAnyShares()` so the policy can
-// ask about the current sharing state.
+// NOTE: The sensitive-data (`containsRestrictedData`) policy intentionally does NOT live here; the
+// Overseer enforces it. This module only answers questions about the sharing graph.
 
 import { AiChatAuthorInfo, CollaboratorInfo, PermissionEdge, CollaboratorRole, AffectedCollaborator }
     from "@gadgets/workshop-shared/api";
@@ -160,26 +157,6 @@ export class SharingManager {
    */
   constructor(private storage: SharingStorage, private ownerProfileId: string) {}
 
-  // ---------------------------------------------------------------------------------------
-  // Sharing-state queries
-
-  /**
-   * True if anyone other than the owner can currently access the gadget. Used by the Overseer's
-   * `prohibitAllSharing` policy to decide whether a sensitive observation must be blocked.
-   *
-   * Because removed collaborators and revoked links linger in storage (the lazy revocation model;
-   * see the module header and removeCollaborator/revokeShareLink), this must reflect *current*
-   * reachability, not mere table membership: a collaborator with a live path from the owner, or
-   * an un-revoked share link whose keys anyone could still redeem.
-   */
-  hasAnyShares(): boolean {
-    if (this.computeEffectiveRoles().size > 0) return true;
-    for (let link of this.#listLinks()) {
-      if (!link.revoked) return true;
-    }
-    return false;
-  }
-
   // Every share link, revoked or not. Aliases are skipped.
   *#listLinks(): Generator<ShareLinkRecord> {
     for (let record of this.storage.shareKeys.list()) {
@@ -219,6 +196,10 @@ export class SharingManager {
    * collaborators are redeemed without any RPC.
    *
    * A key whose link is revoked behaves like an unknown key (it cannot be redeemed).
+   *
+   * TODO: The edge is written before the redeeming open()'s observer verification runs, so a
+   * recipient whose verification fails lingers in listCollaborators until removed or the link is
+   * revoked.
    */
   async redeemShareKey(opts: {
     rawKey: string;
@@ -292,8 +273,8 @@ export class SharingManager {
 
   /**
    * Add a collaborator with a `user` edge from the caller, granting `role`. The caller is
-   * responsible for resolving `profile` (via RPC) and for any policy checks (e.g.
-   * `prohibitAllSharing`). The caller may not grant a role higher than their own effective role.
+   * responsible for resolving `profile` (via RPC) and for any policy checks. The caller may not
+   * grant a role higher than their own effective role.
    */
   addCollaborator(opts: {
     caller: SharingCaller;

@@ -184,7 +184,7 @@ function makeCallback(options: {
   let profileCalls = 0;
 
   const pendingStub = {
-    deliver: async (token: string) => { delivered.push(token); },
+    deliver: async (token: string, _ticketHash: string) => { delivered.push(token); },
     fail: async (reason: string) => { failures.push(reason); },
   };
   const userStub = {
@@ -208,8 +208,10 @@ function makeCallback(options: {
     },
   };
   // BLUEPRINTS holds the admin config (absent = defaults, so signups are open); AVATARS is the KV
-  // namespace the seeded photo lands in.
+  // namespace the seeded photo lands in; PUBLIC_BASE_URL is the origin the sign-in handoff ticket
+  // is bound to (complete() refuses to run without it).
   const callbackEnv = {
+    PUBLIC_BASE_URL: "http://localhost:8787",
     BLUEPRINTS: { get: async () => null },
     AVATARS: {
       put: async (key: string, value: Uint8Array) => { avatars.set(key, value); },

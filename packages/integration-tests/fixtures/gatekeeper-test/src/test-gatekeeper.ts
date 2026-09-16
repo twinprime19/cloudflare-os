@@ -4,9 +4,8 @@
 // command. Every shipping public gatekeeper can do that only at a cost that would dominate the test:
 // the OAuth ones need a whole vendor's auth surface mocked before an account exists at all, and the
 // Context Library only refuses once an observation has been *recorded*, which takes a gadget read
-// session (so a Worker Loader), a slash-command invocation, or an AI-chat catalog snapshot. It is also
-// a singleton, so it can never produce the two simultaneously-failing bindings one of these cases
-// needs.
+// session (so a Worker Loader) or a slash-command invocation. It is also a singleton, so it can never
+// produce the two simultaneously-failing bindings one of these cases needs.
 //
 // So the overseer's own logic -- collect every failure, re-prompt once, then name what failed -- is
 // tested against this fixture, where an outcome is one HTTP call away. Realism about a *particular*
@@ -32,10 +31,11 @@
 import { DurableObject, RpcTarget, WorkerEntrypoint, type RpcStub } from "cloudflare:workers";
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import type {
-  AccountDescription, ActionKind, ApprovalQueue, Gatekeeper, GatekeeperConnectCallback,
-  GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier, ResourceDescription,
-  ResourceConfiguratorFrame, SupportedResource, VendorDescription,
+  AccountDescription, ActionKind, AgentCatalog, ApprovalQueue, ConnectHandoff, Gatekeeper,
+  GatekeeperConnectCallback, GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier,
+  ResourceDescription, ResourceConfiguratorFrame, SupportedResource, VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
 import type {
   ChatGatewayRpcTarget, GadgetResponse,
 } from "@gadgets/workshop-shared/external-message-gateway";
@@ -268,9 +268,11 @@ export class PendingSignIn extends DurableObject<Cloudflare.Env> {
 
   /**
    * Finish the flow as `email`, which becomes the account's authenticated email -- the identity the
-   * Workshop signs the user in as. Throws if the nonce doesn't match or the flow was already used.
+   * Workshop signs the user in as. Returns the handoff the browser must present to the Workshop's
+   * /connect/handoff page: nothing is signed in until that ticket is confirmed. Throws if the nonce
+   * doesn't match or the flow was already used.
    */
-  async complete(nonce: string, email: string): Promise<void> {
+  async complete(nonce: string, email: string): Promise<ConnectHandoff> {
     const expected = this.ctx.storage.kv.get<string>("nonce");
     const callback = this.ctx.storage.kv.get<Fetcher<GatekeeperConnectCallback>>("callback");
     if (!expected || !callback || nonce !== expected) {
@@ -280,7 +282,7 @@ export class PendingSignIn extends DurableObject<Cloudflare.Env> {
     // second session.
     this.ctx.storage.kv.delete("nonce");
     this.ctx.storage.kv.delete("callback");
-    await callback.complete(
+    return await callback.complete(
       this.ctx.exports.TestAccount({ props: { label: email, authenticated: true } }));
   }
 }
@@ -367,6 +369,10 @@ export class TestAccount
     throw new Error("The test gatekeeper has no resource configurator; bind a URL directly.");
   }
 
+  commitReconnect(_stageId: string): Promise<void> {
+    throw new Error("The test gatekeeper has no credentials to reconnect.");
+  }
+
   reconnect(): Promise<{ url: string }> {
     throw new Error("The test gatekeeper has no credentials to reconnect.");
   }
@@ -395,7 +401,8 @@ export class TestVerifier
 // Gatekeeper (one per bound resource, running as a facet under the gadget's Overseer)
 
 export interface TestSession {
-  readValue(): Promise<number>;
+  /** `restricted` marks the observation `containsRestrictedData`. */
+  readValue(restricted?: boolean): Promise<number>;
   writeValue(value: number): Promise<number>;
   writeValues(values: number[]): Promise<number[]>;
 }
@@ -412,10 +419,11 @@ class TestSessionTarget extends RpcTarget implements TestSession {
     this.approvalQueue = approvalQueue.dup();
   }
 
-  async readValue(): Promise<number> {
+  async readValue(restricted?: boolean): Promise<number> {
     await this.approvalQueue.authorizeObservation({
       title: "Read the test value",
       description: "Read the deterministic value exposed by the integration-test gatekeeper.",
+      ...(restricted ? { containsRestrictedData: true } : {}),
     });
     return 42;
   }
@@ -481,6 +489,11 @@ export class TestGatekeeper
   async startSession(approvalQueue: RpcStub<ApprovalQueue>): Promise<TestSession> {
     return new TestSessionTarget(
         approvalQueue, control(this.ctx.exports), this.ctx.props.label);
+  }
+
+  /** No discovery index: the ambient fixture is reached through its session alone. */
+  async getAgentCatalog(): Promise<AgentCatalog | null> {
+    return null;
   }
 
   /**
@@ -570,7 +583,8 @@ export default {
     // The sign-in URL connectAccount() handed the Workshop, as opened by the browser. `?email=` takes
     // the place of the provider's own login page: it is where the person completing the flow says who
     // they are, and it becomes the account's authenticated email.
-    // GET /sign-in/<flowId>/<nonce>?email=... -> the self-closing popup page a real one serves.
+    // GET /sign-in/<flowId>/<nonce>?email=... -> the connect-handoff page a real one serves, which
+    // carries the ticket the pop-up presents to the Workshop.
     if (url.pathname.startsWith(SIGN_IN_PREFIX) && req.method === "GET") {
       const [flowId, nonce, ...extra] = url.pathname.slice(SIGN_IN_PREFIX.length).split("/");
       if (!isNonEmptyString(flowId) || !isNonEmptyString(nonce) || extra.length > 0) {
@@ -582,14 +596,16 @@ export default {
       if (!email?.includes("@")) {
         return badRequest("`email` must be a query parameter holding an email address");
       }
+      let handoff: ConnectHandoff;
       try {
         const flow = ctx.exports.PendingSignIn.get(ctx.exports.PendingSignIn.idFromString(flowId));
-        await flow.complete(nonce, email);
+        handoff = await flow.complete(nonce, email);
       } catch (err) {
         return badRequest(`the sign-in flow could not be completed: ${err}`);
       }
-      return new Response("<!doctype html><title>Signed in</title><script>window.close()</script>",
-                          { headers: { "Content-Type": "text/html;charset=utf-8" } });
+      // The same completion page every real gatekeeper serves: it sends the pop-up to the Workshop's
+      // /connect/handoff page with the ticket, which is what actually finishes the sign-in.
+      return htmlResponse(connectHandoffPageHtml(handoff));
     }
 
     // What this gatekeeper offers as sign-in profile hints, so a test can check the name and avatar

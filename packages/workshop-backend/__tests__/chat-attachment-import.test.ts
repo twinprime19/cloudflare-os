@@ -260,7 +260,7 @@ describe("importChatAttachments document conversion", () => {
   // by hand.
   it("propagates the sharing-lockdown refusal", () => withChat(async impl => {
     stubConversion(impl);
-    impl.storage.prohibitAllSharing.put(true);
+    impl.storage.containsRestrictedData.put(true);
 
     await expect(impl.importChatAttachments(
         CHAT_ID,
