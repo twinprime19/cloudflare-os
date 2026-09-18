@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { SESSION_IDLE_CLOSE_CODE } from '@gadgets/workshop-shared/api'
 
 // The module keeps its flag and waiters in module scope, the way `main.tsx` keeps the connection
 // itself, so each test imports a fresh copy rather than sharing state through the suite.
@@ -6,6 +7,9 @@ async function freshModule() {
   vi.resetModules()
   return await import('./connectionPause')
 }
+
+// The pause policy compares sockets by identity only, so a bare object stands in for one.
+const socket = () => ({}) as WebSocket
 
 describe('connectionPause', () => {
   it('drops the socket once and stays paused on repeated pauses', async () => {
@@ -47,6 +51,55 @@ describe('connectionPause', () => {
     await expect(first).resolves.toBe(true)
     await expect(second).resolves.toBe(true)
     expect(m.isConnectionPaused()).toBe(false)
+  })
+
+  it('parks on the server idle close of the socket in use, whatever the tab is doing', async () => {
+    const m = await freshModule()
+    const drop = vi.fn<() => void>()
+    m.installDropSocketHandler(drop)
+    const live = socket()
+    m.noteSocketOpened(live)
+
+    // Every other close code is an ordinary outage: the reconnect loop owns those.
+    m.noteSocketClosed(live, 1006)
+    expect(m.isConnectionPaused()).toBe(false)
+    expect(drop).not.toHaveBeenCalled()
+
+    m.noteSocketClosed(live, SESSION_IDLE_CLOSE_CODE)
+    expect(m.isConnectionPaused()).toBe(true)
+    expect(drop).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores an idle close from a socket the reconnect loop already replaced', async () => {
+    const m = await freshModule()
+    const drop = vi.fn<() => void>()
+    m.installDropSocketHandler(drop)
+    const obsolete = socket()
+    m.noteSocketOpened(obsolete)
+    m.noteSocketOpened(socket())
+
+    m.noteSocketClosed(obsolete, SESSION_IDLE_CLOSE_CODE)
+    expect(m.isConnectionPaused()).toBe(false)
+    expect(drop).not.toHaveBeenCalled()
+  })
+
+  it('stays parked after an idle close until a deliberate resume', async () => {
+    const m = await freshModule()
+    m.installDropSocketHandler(() => {})
+    const live = socket()
+    m.noteSocketOpened(live)
+    m.noteSocketClosed(live, SESSION_IDLE_CLOSE_CODE)
+
+    // The parked waiter is the next dial; nothing but a resume releases it.
+    let dialed = false
+    void m.waitWhilePaused().then(() => { dialed = true })
+    m.noteSocketClosed(live, SESSION_IDLE_CLOSE_CODE)
+    await Promise.resolve()
+    expect(dialed).toBe(false)
+
+    m.resumeConnection()
+    await Promise.resolve()
+    expect(dialed).toBe(true)
   })
 
   it('ignores resume when not paused and can pause again after resuming', async () => {

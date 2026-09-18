@@ -630,9 +630,11 @@ export default function GadgetEditor() {
   const [_hasBindings, setHasBindings] = useState(false)
   const [isAgentActive, setIsAgentActive] = useState(false)
   // Idle tabs drop their socket so the workspace's Durable Objects can go idle; never while the
-  // selected chat is streaming or the server is waiting on a client-hosted observer callback.
-  // Nothing resumes by itself: sending from the composer does, and so does this chip.
-  const paused = useWorkspaceIdle(isAgentActive || observerConfig !== null)
+  // selected chat is streaming. An unanswered observer dialog is not work -- the server is parked
+  // on a client-controlled await, holding the Durable Object open -- so it no longer defers the
+  // pause; `useWorkspaceOpen` cancels the dialog when the pause lands. Nothing resumes by itself:
+  // sending from the composer does, and so does this chip.
+  const paused = useWorkspaceIdle(isAgentActive)
   const connectionChip = paused
     ? <ReconnectingChip onClick={resumeConnection}><Trans>Paused — click to reconnect</Trans></ReconnectingChip>
     : showReconnecting ? <ReconnectingChip /> : null
@@ -1360,6 +1362,10 @@ export default function GadgetEditor() {
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-kumo-subtle"><Trans>Loading workspace…</Trans></p>
+          {/* A pause can land before the workspace ever opened -- the re-issued `openGadget` then
+              queues on the parked connection -- and this branch has no top bar to carry the chip.
+              Without it the tab would sit on the spinner with no way back but a reload. */}
+          {connectionChip}
         </div>
         {observerConfig && (
           <ObserverConfigModal

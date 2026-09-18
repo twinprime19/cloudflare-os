@@ -14,7 +14,13 @@ import './styles.css'
 import FrontendErrorBoundary from './FrontendErrorBoundary'
 import { installWorkshopErrorReporting, reportIssue } from './errorReporting'
 import { applySiteFavicon, cacheBustSiteLogoUrl } from './siteLogoUtils'
-import { installDropSocketHandler, isConnectionPaused, waitWhilePaused } from './connectionPause'
+import {
+  installDropSocketHandler,
+  isConnectionPaused,
+  noteSocketClosed,
+  noteSocketOpened,
+  waitWhilePaused,
+} from './connectionPause'
 import { getBackendHost } from './connectHandoff'
 
 // ---------------------------------------------------------------------------
@@ -85,11 +91,22 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 };
 
-function startConnection(): RpcStub<PublicApi> {
+// Why the server was dialed, reported so the backend's session log can tell an automatic redial
+// after an outage from a resume the user asked for.
+type OpenReason = 'initial' | 'redial' | 'resume';
+
+function startConnection(reason: OpenReason): RpcStub<PublicApi> {
   lastConnectTime = Date.now();
   const apiHost = getBackendHost();
-  const wsUrl = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + apiHost + '/api';
-  const stub = newWebSocketRpcSession<PublicApi>(wsUrl);
+  const wsUrl = (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + apiHost
+      + '/api?open=' + reason;
+  // Own the socket instead of handing capnweb a URL: the close code is the only place the server
+  // can say "this session's workspace lease expired", and this listener is registered before
+  // capnweb's, so the pause is set before `handleBroken` publishes a replacement connection.
+  const ws = new WebSocket(wsUrl);
+  noteSocketOpened(ws);
+  ws.addEventListener('close', event => noteSocketClosed(ws, event.code));
+  const stub = newWebSocketRpcSession<PublicApi>(ws);
   stub.onRpcBroken(handleBroken);
   return stub;
 }
@@ -105,16 +122,22 @@ async function reconnect(): Promise<RpcStub<PublicApi>> {
   // Fast recovery from one-off blips: skip the first backoff if the dying connection was up a while.
   let skipSleep = Date.now() - lastConnectTime >= INITIAL_BACKOFF_MS;
   let backoff = INITIAL_BACKOFF_MS;
+  // Latched, not per-attempt: once a deliberate resume released this loop, every attempt it still
+  // needs to reach the server belongs to that resume.
+  let releasedByResume = false;
   for (;;) {
     // A deliberate pause (idle tab) parks here instead of dialing; on resume, dial at once.
-    if (await waitWhilePaused()) skipSleep = true;
+    if (await waitWhilePaused()) {
+      skipSleep = true;
+      releasedByResume = true;
+    }
     if (!skipSleep) {
       await sleep(backoff * (0.85 + 0.3 * Math.random()));  // jittered against stampedes
       backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
     }
     skipSleep = false;
 
-    const candidate = startConnection();
+    const candidate = startConnection(releasedByResume ? 'resume' : 'redial');
     try {
       await withTimeout(candidate.ping(), RECONNECT_PROBE_TIMEOUT_MS);
     } catch (probeError) {
@@ -179,7 +202,7 @@ window.addEventListener('online', () => void probeOnWake());
 
 // Current stub. handleBroken() will replace this on disconnect.
 installWorkshopErrorReporting()
-let currentStub = startConnection();
+let currentStub = startConnection('initial');
 // Disposal fires onRpcBroken → handleBroken, the same path probeOnWake uses; during an outage the
 // placeholder is already published and the parked loop is all that is needed.
 installDropSocketHandler(() => { if (!isConnectionLost) disposeQuietly(currentStub); });

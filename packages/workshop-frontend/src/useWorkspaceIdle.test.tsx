@@ -4,8 +4,22 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installDropSocketHandler, isConnectionPaused, resumeConnection } from './connectionPause'
-import { HIDDEN_PAUSE_MS, IDLE_TICK_MS, VISIBLE_IDLE_PAUSE_MS, useWorkspaceIdle } from './useWorkspaceIdle'
+import { SESSION_IDLE_CLOSE_CODE } from '@gadgets/workshop-shared/api'
+import {
+  installDropSocketHandler,
+  isConnectionPaused,
+  noteSocketClosed,
+  noteSocketOpened,
+  resumeConnection,
+  waitWhilePaused,
+} from './connectionPause'
+import {
+  HIDDEN_PAUSE_MS,
+  IDLE_TICK_MS,
+  VISIBLE_IDLE_PAUSE_MS,
+  noteWorkspaceActivity,
+  useWorkspaceIdle,
+} from './useWorkspaceIdle'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -15,6 +29,15 @@ function elapse(ms: number) {
 
 function fire(type: string) {
   act(() => { window.dispatchEvent(new Event(type, { bubbles: true })) })
+}
+
+// The pause policy compares sockets by identity only, so a bare object stands in for one.
+function closeIdle() {
+  const socket = {} as WebSocket
+  act(() => {
+    noteSocketOpened(socket)
+    noteSocketClosed(socket, SESSION_IDLE_CLOSE_CODE)
+  })
 }
 
 describe('useWorkspaceIdle', () => {
@@ -125,7 +148,7 @@ describe('useWorkspaceIdle', () => {
     expect(isConnectionPaused()).toBe(true)
   })
 
-  it('counts focus inside an iframe as input', async () => {
+  it('pauses a tab whose gadget iframe is focused but untouched', async () => {
     const iframe = document.createElement('iframe')
     iframe.tabIndex = 0  // jsdom only focuses elements it deems focusable
     document.body.append(iframe)  // outside the root's container, which React clears on render
@@ -133,14 +156,59 @@ describe('useWorkspaceIdle', () => {
     iframe.focus()
     expect(document.activeElement).toBe(iframe)
 
-    elapse(VISIBLE_IDLE_PAUSE_MS * 2)
+    elapse(VISIBLE_IDLE_PAUSE_MS)
+    expect(latest).toBe(true)
+    expect(isConnectionPaused()).toBe(true)
+    expect(drop).toHaveBeenCalledTimes(1)
+    iframe.remove()
+  })
+
+  it('defers the pause when the iframe reports input through noteWorkspaceActivity', async () => {
+    await mount()
+    elapse(VISIBLE_IDLE_PAUSE_MS - IDLE_TICK_MS * 2)
+    act(() => noteWorkspaceActivity())
+
+    elapse(IDLE_TICK_MS * 4)
     expect(latest).toBe(false)
     expect(isConnectionPaused()).toBe(false)
 
-    iframe.blur()
-    elapse(VISIBLE_IDLE_PAUSE_MS)
+    elapse(VISIBLE_IDLE_PAUSE_MS - IDLE_TICK_MS * 2)
     expect(latest).toBe(true)
-    iframe.remove()
+    expect(isConnectionPaused()).toBe(true)
+  })
+
+  it('parks on a server idle close whatever the tab thinks it is doing, and stays parked', async () => {
+    await mount(true)  // an agent is streaming, so the tab's own clock would never fire
+    fire('keydown')    // and the user typed a moment ago
+    closeIdle()
+    expect(latest).toBe(true)
+    expect(isConnectionPaused()).toBe(true)
+    expect(drop).toHaveBeenCalledTimes(1)
+
+    // Zero dials from here: the parked waiter is the reconnect loop's next dial, and neither half
+    // an hour of ticks, nor input, nor looking at the tab again releases it.
+    let dialed = false
+    void waitWhilePaused().then(() => { dialed = true })
+    elapse(30 * 60_000)
+    fire('pointerdown')
+    setVisibility('hidden')
+    setVisibility('visible')
+    elapse(30 * 60_000)
+    await act(async () => {})
+    expect(dialed).toBe(false)
+    expect(isConnectionPaused()).toBe(true)
+    expect(drop).toHaveBeenCalledTimes(1)
+  })
+
+  it('parks a thawed frozen tab whose queued idle close lands after the visibility event', async () => {
+    await mount()
+    // Frozen while hidden: no tick ran, so the tab never reached a threshold of its own. On thaw
+    // the visibility event arrives first, and looking at a tab is not input.
+    setVisibility('hidden')
+    setVisibility('visible')
+    closeIdle()
+    expect(latest).toBe(true)
+    expect(isConnectionPaused()).toBe(true)
   })
 
   it('pauses again after a resume once the idle threshold elapses anew', async () => {
