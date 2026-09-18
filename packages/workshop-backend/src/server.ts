@@ -1,7 +1,7 @@
 import { RpcStub, RpcTarget, newHttpBatchRpcResponse, newWebSocketRpcSession, RpcSessionOptions } from "capnweb";
 import { validateRpc } from "capnweb-validate";
 import type { JWTPayload } from "jose";
-import { PublicApi, AuthenticatedApi, Overseer, GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, AiGatewayInfo, AiModelProvider, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, ObserverConfigCallback, BlueprintLibrarySummary, BlueprintPublicInfo, BlueprintUserSummary, BlueprintBindingAssignment, AgentSpawnerConfig, WorkpieceId, BLUEPRINT_SCREENSHOT_PATH_PREFIX, BLUEPRINT_SCREENSHOT_R2_PREFIX, blueprintScreenshotUrl, ServerConfig, CloudflareUsageInfo, CloudflareAccountOption, LoginAttempt, GatekeeperAppInfo, AdminApi, GatekeeperVendorInfo, OutputFormatOffer, ListOutputsResult, UserDirectoryRecord, createOpenGadgetError, getOpenGadgetErrorCode, OPEN_GADGET_ERROR_CODES, AUTH_ERROR_CODES, createAuthError, ConnectFlowStart } from '@gadgets/workshop-shared/api';
+import { PublicApi, AuthenticatedApi, Overseer, GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, AiGatewayInfo, AiModelProvider, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, ObserverConfigCallback, BlueprintLibrarySummary, BlueprintPublicInfo, BlueprintUserSummary, BlueprintBindingAssignment, AgentSpawnerConfig, WorkpieceId, BLUEPRINT_SCREENSHOT_PATH_PREFIX, BLUEPRINT_SCREENSHOT_R2_PREFIX, blueprintScreenshotUrl, ServerConfig, CloudflareUsageInfo, CloudflareAccountOption, LoginAttempt, GatekeeperAppInfo, AdminApi, GatekeeperVendorInfo, OutputFormatOffer, ListOutputsResult, UserDirectoryRecord, createOpenGadgetError, getOpenGadgetErrorCode, OPEN_GADGET_ERROR_CODES, AUTH_ERROR_CODES, createAuthError, ConnectFlowStart, SESSION_IDLE_CLOSE_CODE } from '@gadgets/workshop-shared/api';
 import type { UiFeatureFlags } from "@gadgets/workshop-shared/feature-flags";
 import { getServerConfig } from "./deployment-config.js";
 import { isPasswordAuthEnabled, getAuthGatekeeperAllowlist } from "./auth/config.js";
@@ -40,6 +40,26 @@ const logger = createWorkshopLogger("workshop.server");
 let bundledBlueprintInstallStarted = false;
 
 const USER_SEARCH_POLICY_CACHE_TTL_MS = 30_000;
+
+// Why the browser dialled this socket. Read from the URL, so it is untrusted: anything else is
+// reported as "unknown" rather than passed through, since the whole point is to tell an automatic
+// redial from a deliberate resume without guessing from timing.
+const SESSION_OPEN_REASONS: ReadonlySet<string> = new Set(["initial", "redial", "resume"]);
+
+function readOpenReason(url: URL): string {
+  let reason = url.searchParams.get("open");
+  return reason !== null && SESSION_OPEN_REASONS.has(reason) ? reason : "unknown";
+}
+
+// A workspace Durable Object ended this session's lease on it because nobody was using it. Kept
+// distinct from every other session abort because the socket carries a different close code for
+// it: the browser parks on the idle code and never redials, where a generic disconnect reconnects.
+class IdleSessionError extends Error {
+  constructor(gadgetId: string) {
+    super(`idle session lease expired (gadget ${gadgetId})`);
+    this.name = "IdleSessionError";
+  }
+}
 
 function publicBlueprintInfo(id: string, metadata: BlueprintPublicInfo['metadata']): BlueprintPublicInfo {
   return {
@@ -99,6 +119,9 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
 
   #userId: DurableObjectId;
   #userSearchPolicyCache?: { expiresAt: number; promise: Promise<boolean> };
+
+  // Workspaces this session currently holds open, by workspace id.
+  #liveWorkspaces = new Set<string>();
 
   #userSearchEnabled(): Promise<boolean> {
     let cached = this.#userSearchPolicyCache;
@@ -233,6 +256,21 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
     return resolveUiFeatureFlags(this.env, this.#userId.name!);
   }
 
+  // One `workspace.session.closed` per open, whatever ended it; an `opened` with no `closed` is the
+  // signature of a workspace nothing ever released.
+  #workspaceClosed(gadgetId: string, reason: "client" | "idle" | "lost", openedAt: number): void {
+    this.#liveWorkspaces.delete(gadgetId);
+    logger.info("workspace session closed", {
+      event: "workspace.session.closed", gadgetId, reason, durationMs: Date.now() - openedAt,
+    });
+    // One workspace going idle says nothing about the others on this socket, and the client already
+    // dropped this one's stub when it navigated away, so nothing would reopen it. The socket only
+    // carries the idle close once this was the last workspace left on the session.
+    if (reason === "idle" && this.#liveWorkspaces.size === 0) {
+      this.abortSession(new IdleSessionError(gadgetId));
+    }
+  }
+
   async #openGadgetInternal(id: string, shareKey?: string,
                             configureObservers?: RpcStub<ObserverConfigCallback>)
       : Promise<NativeRpcStub<Overseer>> {
@@ -259,11 +297,24 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
     //   gadget at a time (since each tab is a separate client), so it's probably fine for now.
     let closed = false;
     let started = false;
-    let notifyClosed = () => {
+    let openedAt = Date.now();
+    // Recorded synchronously as the notification arrives, before anything can await: the workspace
+    // aborts itself moments after telling us its lease expired, so a reason read after an await
+    // would be read from an object that is already gone.
+    let closeReason: "client" | "idle" = "client";
+    let notifyClosed = (reason?: "idle") => {
+      // The workspace can both notify and then be torn down (the idle reap aborts its Durable
+      // Object right after notifying); the open gets one close, attributed to what arrived first.
+      if (closed) return;
       closed = true;
+      if (reason === "idle") closeReason = "idle";
+      // A notification that beats open()'s return belongs to a session that never started; the
+      // failure path below reports that one instead, so it stays out of the lifecycle pairing.
+      if (started) this.#workspaceClosed(id, closeReason, openedAt);
     };
     (notifyClosed as any)[Symbol.dispose] = () => {
       if (started && !closed) {
+        this.#workspaceClosed(id, "lost", openedAt);
         // this.ctx.abort() would be nicer here, but it is still marked experimental in the
         // workers runtime.
         this.abortSession(new Error(`lost connection to workspace DO (gadget ${id})`));
@@ -283,6 +334,10 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
       throw err;
     }
     started = true;
+    this.#liveWorkspaces.add(id);
+    logger.info("workspace session opened", {
+      event: "workspace.session.opened", gadgetId: id,
+    });
     recordAnalytics(this.ctx, this.env, {
       event_name: "gadget_opened",
       user_id: userId,
@@ -898,12 +953,27 @@ export default {
         accessPayload = payload;
       }
 
+      // Only sockets get a lifecycle: a batch POST is one request, not a session. An `opened` with
+      // no matching `session.closed` is what a retained-but-dead session looks like in the logs.
+      if (req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
+        logger.info("api session opened", {
+          event: "session.opened", openReason: readOpenReason(url),
+        });
+      }
+
       // HACK: Implement `abortSession` callback by closing the websocket.
       // TODO: When ctx.abort() becomes non-experimental, consider using that instead.
       let abortController = new AbortController();
       let abortSession = (reason: Error) => {
-        // Closing the socket fails no invocation, so nothing else logs this.
-        logger.warn("aborting api session", { event: "session.abort", error: reason });
+        // Closing the socket fails no invocation, so nothing else logs this. An expired lease is
+        // the routine end of a session nobody was using, so it is reported at info; every other
+        // abort means something went wrong for a session that was still wanted.
+        let fields = { event: "session.abort", error: reason } as const;
+        if (reason instanceof IdleSessionError) {
+          logger.info("aborting api session", fields);
+        } else {
+          logger.warn("aborting api session", fields);
+        }
         abortController.abort(reason);
       };
 
@@ -957,13 +1027,52 @@ function newWorkersWebSocketRpcResponse(
   let stub = newWebSocketRpcSession(server, localMain, options);
 
   // -- ADDED FOR GADGETS --
+  let startedAt = Date.now();
+  // Counted, never logged per frame: the count is what separates a quiet-but-live session from one
+  // whose browser is long gone, and one line per frame would drown the log.
+  let inboundFrames = 0;
+  let closeLogged = false;
+  let logClosed = (reason: string, closeCode?: number) => {
+    // Close and error can both fire for one socket, and an abort closes it from this side; the
+    // session gets exactly one `closed`, attributed to whichever cause got here first.
+    if (closeLogged) return;
+    closeLogged = true;
+    logger.info("api session closed", {
+      event: "session.closed", reason,
+      ...(closeCode === undefined ? {} : { closeCode }),
+      durationMs: Date.now() - startedAt, inboundFrames,
+    });
+  };
+
+  server.addEventListener("message", () => { ++inboundFrames; });
+  server.addEventListener("close", event => { logClosed("client", event.code); });
+  server.addEventListener("error", () => { logClosed("error"); });
+
   if (options?.abortSignal) {
-    if (options.abortSignal.aborted) {
+    let signal = options.abortSignal;
+    let abort = () => {
+      if (signal.reason instanceof IdleSessionError) {
+        logClosed("idle", SESSION_IDLE_CLOSE_CODE);
+        // Close before disposing the session: the browser reads this code to decide to park rather
+        // than redial, and disposing first would close the socket with Cap'n Web's own code.
+        try {
+          server.close(SESSION_IDLE_CLOSE_CODE, "idle");
+        } catch (err) {
+          // The socket can already be gone (a client that disconnected as the lease expired).
+          // Disposing the session below is what actually releases what it was holding.
+          logger.debug("idle close on a socket that was already gone", {
+            event: "session.close.failed", error: err,
+          });
+        }
+      } else {
+        logClosed("abort");
+      }
       stub[Symbol.dispose]();
+    };
+    if (signal.aborted) {
+      abort();
     } else {
-      options.abortSignal.addEventListener("abort", () => {
-        stub[Symbol.dispose]();
-      });
+      signal.addEventListener("abort", abort);
     }
   }
   // -- END ADDED FOR GADGETS --

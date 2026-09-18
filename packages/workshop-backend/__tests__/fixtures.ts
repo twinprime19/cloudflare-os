@@ -2,6 +2,7 @@
 // a putAction record factory, and a fake overseer client forged over
 // OverseerDurableObject.prototype.open.
 
+import { vi } from "vitest";
 import { RpcStub as NativeRpcStub } from "cloudflare:workers";
 import { createTypedStorage, collection } from "@gadgets/typed-storage";
 import type { Collection, Singleton } from "@gadgets/typed-storage";
@@ -87,6 +88,14 @@ export async function openFakeOverseer(
       joinSession: () => () => {},
       joinPresence: () => () => {},
       joinOutputsFanout: () => () => {},
+      // The client-activity lease: open() arms it, the forged interface renews it on every call
+      // and registers its idle notification, so the fake answers all of it. The renewal is a spy --
+      // which calls reach it is what session-lease-provenance.test.ts asserts -- while the real
+      // clock is exercised against a real Durable Object in __integration__/session-lease.test.ts.
+      noteClientRpc: vi.fn(),
+      enterClientRpc: () => {},
+      exitClientRpc: () => {},
+      addIdleNotifier: () => () => {},
       ensureObserver: async () => {},
       syncOutputsTo: async () => {},
       // What open() consults for a non-owner's role: the permission-graph lookup and observer
