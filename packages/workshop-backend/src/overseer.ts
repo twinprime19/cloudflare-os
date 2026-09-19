@@ -1718,9 +1718,10 @@ class OverseerImpl implements AgentHooks {
   #leaseExpiryCommitted = false;
 
   // One per live client interface, telling its front Worker session that the workspace went idle
-  // (registered by the interface's constructor, removed by its [Symbol.dispose]). Held as closures
-  // rather than reached through a wrapped method on purpose: the wrappers renew the lease, and our
-  // own push must never do that.
+  // (registered by the interface's constructor, removed by its [Symbol.dispose]), plus one for each
+  // open still in progress, which has a front Worker session to tell before it has an interface to
+  // tell it with (see OverseerDurableObject.open). Held as closures rather than reached through a
+  // wrapped method on purpose: the wrappers renew the lease, and our own push must never do that.
   #idleNotifiers = new Set<() => Promise<void>>();
 
   // Drains of pending agent calls currently in flight, by chat (see drainPendingAgentCalls).
@@ -10187,131 +10188,146 @@ export class OverseerDurableObject extends DurableObject<Cloudflare.Env> {
     // controlled by the client, and a session parked there forever is one the lease must end.
     this.impl.noteClientRpc();
 
-    let firstOpen = !this.impl.ownerId;
-    if (firstOpen) {
-      // This Overseer hasn't been initialized yet.
-      await this.ctx.blockConcurrencyWhile(async () => {
-        // Verify that the owner believes it exists. The owner account must be initialized with
-        // any new gadgets first before the gadget is actually opened.
-        let owner = this.impl.users.get(this.impl.users.idFromString(userId));
-        let meta = await owner.getGadget(this.ctx.id.toString());
-        if (!meta) {
-          throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceNotFound);
-        }
-        if (meta.owner) {
-          // The user's DO contains a record indicating that this gadget was shared to them by
-          // some other owner. This gadget may have existed in the past, and then was deleted,
-          // which does not proactively clean up share recipient's references. We need to treat
-          // this as missing otherwise we'll inadvertently create a new gadget with this ID
-          // belonging to a different user than the original.
-          throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceNotFound);
-        }
+    // Tell the front Worker if the lease expires before this call returns. Registered here, ahead of
+    // every await: an open parked on a step the client controls -- the observer-configuration dialog,
+    // a share-key redemption -- is exactly the session the lease exists to end, and without this the
+    // reap would find nobody to notify, abort, and leave the browser with a failed open rather than
+    // the paused state. Removed in the `finally` below, so it never outlives the call, whether it
+    // returns or throws. The argument stub is called directly rather than a dup: it lives exactly as
+    // long as this call, which is precisely this notification's lifetime.
+    let unregisterIdleNotifier = this.impl.addIdleNotifier(
+        async () => { await notifyClosed("idle"); });
+    try {
+      let firstOpen = !this.impl.ownerId;
+      if (firstOpen) {
+        // This Overseer hasn't been initialized yet.
+        await this.ctx.blockConcurrencyWhile(async () => {
+          // Verify that the owner believes it exists. The owner account must be initialized with
+          // any new gadgets first before the gadget is actually opened.
+          let owner = this.impl.users.get(this.impl.users.idFromString(userId));
+          let meta = await owner.getGadget(this.ctx.id.toString());
+          if (!meta) {
+            throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceNotFound);
+          }
+          if (meta.owner) {
+            // The user's DO contains a record indicating that this gadget was shared to them by
+            // some other owner. This gadget may have existed in the past, and then was deleted,
+            // which does not proactively clean up share recipient's references. We need to treat
+            // this as missing otherwise we'll inadvertently create a new gadget with this ID
+            // belonging to a different user than the original.
+            throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceNotFound);
+          }
 
-        // Owner says we exist, so let's initialize ourselves.
-        this.impl.ownerId = userId;
+          // Owner says we exist, so let's initialize ourselves.
+          this.impl.ownerId = userId;
 
-        this.impl.storage.ownerId.put(userId);
+          this.impl.storage.ownerId.put(userId);
 
-        this.#initializeNewWorkspace();
-      });
-    }
-
-    let isOwner = (userId == this.impl.ownerId);
-
-    // Cache the owner's profileId in memory when the owner opens.
-    if (isOwner) {
-      this.impl.ownerProfileId = profileId;
-    }
-
-    // Make singleton gatekeepers (e.g. the Context Library) available to the agent as unnamed
-    // capsules. Idempotent and best-effort, so a library hiccup never blocks opening the gadget.
-    // On the very first open we block so the agent's first turn sees the capsules; later opens let the
-    // reconcile run in the background to keep cross-DO latency off the hot path.
-    let ensureCapsules = this.impl.ensureAmbientCapsules().catch((err) => {
-      this.impl.logger.error("failed to ensure singleton gatekeeper capsules", {
-        event: "singleton.capsules.ensure.failed", error: err,
-      });
-    });
-    if (firstOpen) {
-      await ensureCapsules;
-    }
-
-    let owner = this.impl.users.get(this.impl.users.idFromString(this.impl.ownerId!));
-    let clientUser = isOwner
-        ? owner
-        : this.impl.users.get(this.impl.users.idFromString(userId));
-
-    // Refresh the owner's outputs index. Pushes are best-effort, and workspaces predating the
-    // index have never pushed at all, so re-syncing on open is what corrects both.
-    if (isOwner) {
-      this.impl.markOutputsDirty();
-    }
-
-    // The caller's effective role. The owner always has "build".
-    let role: CollaboratorRole = "build";
-
-    if (!isOwner) {
-      let sharing = await this.impl.getSharingManager();
-
-      // If a share key was provided, redeem it. The owner already has full access and should not
-      // appear in the collaborators table.
-      if (shareKey) {
-        await sharing.redeemShareKey({
-          rawKey: shareKey,
-          profileId,
-          fetchProfile: () => clientUser.whoami(),
+          this.#initializeNewWorkspace();
         });
       }
 
-      // Ambient reconciliation may attach Gatekeepers after open() starts. Finish it before taking
-      // the observer snapshot so every capability exposed to this collaborator has an observer.
-      await ensureCapsules;
+      let isOwner = (userId == this.impl.ownerId);
 
-      // Check authorization: compute the caller's effective role from the permission graph, then
-      // verify they may observe everything this Gadget has read through its in-scope gatekeepers,
-      // configuring their connected accounts if needed. Observer verification runs only after a
-      // valid role is confirmed, so it never reveals gatekeeper or resource metadata to an
-      // unauthorized user.
-      //
-      // An unauthorized caller (no effective role -- never had access, or was removed) gets a
-      // distinct denial without workspace metadata. A removed collaborator who reconnects after
-      // their session is force-restarted lands here and sees the terminal access-denied page.
-      let effectiveRole = await this.impl.authorizeCollaborator(
-          profileId, clientUser, {configureCb: configureObservers});
-      if (!effectiveRole) {
-        throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceAccessDenied);
+      // Cache the owner's profileId in memory when the owner opens.
+      if (isOwner) {
+        this.impl.ownerProfileId = profileId;
       }
-      role = effectiveRole;
 
-      // Fire-and-forget a call to the collaborator's user DO so the gadget appears on
-      // (or is refreshed on) their home page.
-      let title = this.impl.storage.title.get();
-      let gadgetId = this.impl.ctx.id.toString();
-      void (async () => {
-        try {
-          const ownerProfile = await owner.whoami();
-          await clientUser.recordSharedGadgetOpen(gadgetId, title, ownerProfile, role);
-        } catch (err) {
-          this.impl.logger.warn("failed to record shared gadget open", {
-            event: "shared.gadget.open.record.failed", gadgetId, error: err,
+      // Make singleton gatekeepers (e.g. the Context Library) available to the agent as unnamed
+      // capsules. Idempotent and best-effort, so a library hiccup never blocks opening the gadget.
+      // On the very first open we block so the agent's first turn sees the capsules; later opens let the
+      // reconcile run in the background to keep cross-DO latency off the hot path.
+      let ensureCapsules = this.impl.ensureAmbientCapsules().catch((err) => {
+        this.impl.logger.error("failed to ensure singleton gatekeeper capsules", {
+          event: "singleton.capsules.ensure.failed", error: err,
+        });
+      });
+      if (firstOpen) {
+        await ensureCapsules;
+      }
+
+      let owner = this.impl.users.get(this.impl.users.idFromString(this.impl.ownerId!));
+      let clientUser = isOwner
+          ? owner
+          : this.impl.users.get(this.impl.users.idFromString(userId));
+
+      // Refresh the owner's outputs index. Pushes are best-effort, and workspaces predating the
+      // index have never pushed at all, so re-syncing on open is what corrects both.
+      if (isOwner) {
+        this.impl.markOutputsDirty();
+      }
+
+      // The caller's effective role. The owner always has "build".
+      let role: CollaboratorRole = "build";
+
+      if (!isOwner) {
+        let sharing = await this.impl.getSharingManager();
+
+        // If a share key was provided, redeem it. The owner already has full access and should not
+        // appear in the collaborators table.
+        if (shareKey) {
+          await sharing.redeemShareKey({
+            rawKey: shareKey,
+            profileId,
+            fetchProfile: () => clientUser.whoami(),
           });
-          return;
         }
-        // Catch up whatever happened while they were away; changes from here on reach them
-        // through the session fan-out (joinOutputsFanout).
-        await this.impl.syncOutputsTo(clientUser);
-      })();
-    }
 
-    if (role === "use") {
-      // "use" collaborators get a restricted capability exposing only the gadget UI.
-      return new UseOverseerInterface(
-          this.impl, profileId, userId, notifyClosed.dup());
-    }
+        // Ambient reconciliation may attach Gatekeepers after open() starts. Finish it before taking
+        // the observer snapshot so every capability exposed to this collaborator has an observer.
+        await ensureCapsules;
 
-    return new OverseerClientInterface(
-        this.impl, profileId, userId, isOwner, notifyClosed.dup(),
-        ensureCapsules);
+        // Check authorization: compute the caller's effective role from the permission graph, then
+        // verify they may observe everything this Gadget has read through its in-scope gatekeepers,
+        // configuring their connected accounts if needed. Observer verification runs only after a
+        // valid role is confirmed, so it never reveals gatekeeper or resource metadata to an
+        // unauthorized user.
+        //
+        // An unauthorized caller (no effective role -- never had access, or was removed) gets a
+        // distinct denial without workspace metadata. A removed collaborator who reconnects after
+        // their session is force-restarted lands here and sees the terminal access-denied page.
+        let effectiveRole = await this.impl.authorizeCollaborator(
+            profileId, clientUser, {configureCb: configureObservers});
+        if (!effectiveRole) {
+          throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceAccessDenied);
+        }
+        role = effectiveRole;
+
+        // Fire-and-forget a call to the collaborator's user DO so the gadget appears on
+        // (or is refreshed on) their home page.
+        let title = this.impl.storage.title.get();
+        let gadgetId = this.impl.ctx.id.toString();
+        void (async () => {
+          try {
+            const ownerProfile = await owner.whoami();
+            await clientUser.recordSharedGadgetOpen(gadgetId, title, ownerProfile, role);
+          } catch (err) {
+            this.impl.logger.warn("failed to record shared gadget open", {
+              event: "shared.gadget.open.record.failed", gadgetId, error: err,
+            });
+            return;
+          }
+          // Catch up whatever happened while they were away; changes from here on reach them
+          // through the session fan-out (joinOutputsFanout).
+          await this.impl.syncOutputsTo(clientUser);
+        })();
+      }
+
+      if (role === "use") {
+        // "use" collaborators get a restricted capability exposing only the gadget UI.
+        return new UseOverseerInterface(
+            this.impl, profileId, userId, notifyClosed.dup());
+      }
+
+      return new OverseerClientInterface(
+          this.impl, profileId, userId, isOwner, notifyClosed.dup(),
+          ensureCapsules);
+    } finally {
+      // Both returns above hand back an already-constructed interface, whose constructor has
+      // registered its own notification, so this removal runs after the handover, never between.
+      unregisterIdleNotifier();
+    }
   }
 
   #getExternalChat(externalChatKey: string): ExternalChatRecord | undefined {

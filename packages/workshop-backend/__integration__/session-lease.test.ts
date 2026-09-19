@@ -349,6 +349,107 @@ describe("workspace client-activity lease", () => {
         .toEqual({ code: IDLE_CLOSE_CODE, reason: "idle" });
   });
 
+  // (e) two opens of one workspace
+  it("keeps the socket while a second open of the same workspace is still held", async () => {
+    const logs = spyOnLogs();
+    const { session, authenticated } = await signIn("reopened");
+
+    // The open the page keeps: a dialog holds this one for as long as it is on screen.
+    const retained = await authenticated.newGadget();
+    const retainedId = (await retained.getMetadata()).id;
+    // A second open of the SAME workspace, as a list handler makes to read or rename it, released
+    // as soon as it is done. What the page holds is untouched by that release.
+    const temporary = await authenticated.openGadget(retainedId);
+    expect(await temporary.getMetadata()).toEqual(expect.objectContaining({ id: retainedId }));
+    temporary[Symbol.dispose]();
+    await waitFor("the temporary open to be released", () =>
+        loggedEvents(logs, "workspace.session.closed")
+            .find(fields => fields.gadgetId === retainedId));
+
+    // A different workspace on the same socket, whose stub the client leaked, so its lease ends it.
+    const leaked = await authenticated.newGadget();
+    const leakedId = (await leaked.getMetadata()).id;
+
+    advanceBeyondTheLease();
+    expect(await retained.getMetadata()).toEqual(expect.objectContaining({ id: retainedId }));
+    await runAlarm(leakedId);
+
+    await waitFor("the leaked workspace to be reported closed", () =>
+        loggedEvents(logs, "workspace.session.closed")
+            .find(fields => fields.gadgetId === leakedId));
+    // The socket is left alone: the page still has an open on the first workspace, even though an
+    // earlier open of that same workspace was released.
+    expect(session.closes).toEqual([]);
+    expect(await retained.getMetadata()).toEqual(expect.objectContaining({ id: retainedId }));
+
+    // That surviving open is what decides: once its own lease expires, nothing is left and the
+    // socket carries the idle close.
+    advanceBeyondTheLease();
+    await runAlarm(retainedId);
+
+    expect(await waitFor("the idle close", () => session.closes[0]))
+        .toEqual({ code: IDLE_CLOSE_CODE, reason: "idle" });
+  });
+
+  // (e) an open that never returned
+  it("tells the browser to park when the lease expires while an open is still parked", async () => {
+    const logs = spyOnLogs();
+    const { authenticated } = await signIn("parked");
+    using workspace = await authenticated.newGadget();
+    const metadata = await workspace.getMetadata();
+
+    // A collaborator's open parked on the account-configuration dialog: the workspace asks which
+    // connected accounts to use and the client never answers, which is one of the sessions the
+    // lease exists to end. Staged by replacing the authorization step, where that dialog is
+    // awaited -- the prompt itself needs a live gatekeeper this harness cannot create. The object
+    // runs in this isolate, so the parked call is observed through this counter.
+    let parkedOpens = 0;
+    await runInDurableObject(overseerStub(metadata.id), instance => {
+      asImpl(instance).authorizeCollaborator = () => {
+        ++parkedOpens;
+        return new Promise(() => {});
+      };
+    });
+
+    const collaboratorSession = await connect();
+    const collaboratorAccount = await createAccount(collaboratorSession.publicApi, "collab");
+    const collaborator =
+        await collaboratorSession.publicApi.authenticate(collaboratorAccount.token);
+    // Never resolves until the workspace ends the call; the rejection is collected here so it is
+    // handled whenever it arrives, along with what the socket had already seen by then.
+    let closesSeenWhenOpenFailed = -1;
+    const parkedOpen = (async () => await collaborator.openGadget(metadata.id))()
+        .then(() => undefined, (error: unknown) => {
+          closesSeenWhenOpenFailed = collaboratorSession.closes.length;
+          return error;
+        });
+    await waitFor("the collaborator's open to park", () => parkedOpens > 0 || undefined);
+
+    advanceBeyondTheLease();
+    await runAlarm(metadata.id);
+
+    // The parked open is notified like any live interface and then fails with the abort, and its
+    // socket carries the idle close, so the browser parks instead of redialling into the same wait.
+    expect(await parkedOpen).toBeInstanceOf(Error);
+    expect(await waitFor("the idle close on the collaborator's socket",
+        () => collaboratorSession.closes[0]))
+        .toEqual({ code: IDLE_CLOSE_CODE, reason: "idle" });
+    // And the close is what the browser learns first: the session closes before the failed open is
+    // rethrown, so what settles the call is the closed connection rather than a delivered error. A
+    // client that redials on a failed open therefore cannot beat the idle code to it.
+    expect(closesSeenWhenOpenFailed).toBe(1);
+    expect(String(await parkedOpen)).not.toContain(LEASE_ABORT_REASON);
+    expect(loggedEvents(logs, "workspace.session.open.idle")).toEqual([
+      expect.objectContaining({ gadgetId: metadata.id, durationMs: expect.any(Number) }),
+    ]);
+    // An open that never logged `opened` gets no `closed`: the pair that measures what a session
+    // holds counts only opens that started, and the owner's is the only pair here.
+    expect(loggedEvents(logs, "workspace.session.opened")
+        .filter(fields => fields.gadgetId === metadata.id)).toHaveLength(1);
+    expect(loggedEvents(logs, "workspace.session.closed")
+        .filter(fields => fields.gadgetId === metadata.id)).toHaveLength(1);
+  });
+
   // (e) navigation
   it("leases only the workspace a navigating client still holds", async () => {
     const logs = spyOnLogs();
@@ -536,11 +637,13 @@ describe("workspace client-activity lease", () => {
 });
 
 // The lease state lives on the workspace's OverseerImpl, which is TypeScript-private on the Durable
-// Object. Reaching it is a visibility escape for the two cases the alarm cannot stage on its own:
-// putting outstanding agent work in front of the reap, and running the reap concurrently with a
-// client call.
+// Object. Reaching it is a visibility escape for the cases the alarm cannot stage on its own:
+// putting outstanding agent work in front of the reap, running the reap concurrently with a client
+// call, and parking an open on the step where a collaborator's account-configuration dialog is
+// awaited.
 type OverseerImplForTest = {
   reapIdleSession(): Promise<void>;
+  authorizeCollaborator: (...args: unknown[]) => Promise<unknown>;
   storage: {
     pendingAgentCalls: { put(record: object): void; delete(key: string): void };
     gadgetResponseDeliveries: { put(record: object): void };

@@ -120,8 +120,13 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   #userId: DurableObjectId;
   #userSearchPolicyCache?: { expiresAt: number; promise: Promise<boolean> };
 
-  // Workspaces this session currently holds open, by workspace id.
-  #liveWorkspaces = new Set<string>();
+  // How many workspace opens this session currently holds: one increment per open that started, one
+  // decrement per `workspace.session.closed`. Counted per open and not per workspace id, because a
+  // page can hold two opens of the same workspace at once -- a list handler opening a temporary
+  // handle while a dialog keeps its own, or a double-rendered component opening twice -- and keying
+  // by id would let the first release forget the other, closing the socket under a workspace the
+  // page is still using.
+  #liveOpens = 0;
 
   #userSearchEnabled(): Promise<boolean> {
     let cached = this.#userSearchPolicyCache;
@@ -259,14 +264,14 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   // One `workspace.session.closed` per open, whatever ended it; an `opened` with no `closed` is the
   // signature of a workspace nothing ever released.
   #workspaceClosed(gadgetId: string, reason: "client" | "idle" | "lost", openedAt: number): void {
-    this.#liveWorkspaces.delete(gadgetId);
+    --this.#liveOpens;
     logger.info("workspace session closed", {
       event: "workspace.session.closed", gadgetId, reason, durationMs: Date.now() - openedAt,
     });
     // One workspace going idle says nothing about the others on this socket, and the client already
     // dropped this one's stub when it navigated away, so nothing would reopen it. The socket only
-    // carries the idle close once this was the last workspace left on the session.
-    if (reason === "idle" && this.#liveWorkspaces.size === 0) {
+    // carries the idle close once no open at all is left on the session.
+    if (reason === "idle" && this.#liveOpens === 0) {
       this.abortSession(new IdleSessionError(gadgetId));
     }
   }
@@ -300,20 +305,25 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
     let openedAt = Date.now();
     // Recorded synchronously as the notification arrives, before anything can await: the workspace
     // aborts itself moments after telling us its lease expired, so a reason read after an await
-    // would be read from an object that is already gone.
-    let closeReason: "client" | "idle" = "client";
+    // would be read from an object that is already gone. Kept on an object because the failure path
+    // below reads it in the scope that declares it, where flow analysis sees only the initial value
+    // -- the notification that changes it is delivered from outside this function.
+    let close: { reason: "client" | "idle" } = { reason: "client" };
     let notifyClosed = (reason?: "idle") => {
       // The workspace can both notify and then be torn down (the idle reap aborts its Durable
       // Object right after notifying); the open gets one close, attributed to what arrived first.
       if (closed) return;
       closed = true;
-      if (reason === "idle") closeReason = "idle";
+      if (reason === "idle") close.reason = "idle";
       // A notification that beats open()'s return belongs to a session that never started; the
       // failure path below reports that one instead, so it stays out of the lifecycle pairing.
-      if (started) this.#workspaceClosed(id, closeReason, openedAt);
+      if (started) this.#workspaceClosed(id, close.reason, openedAt);
     };
     (notifyClosed as any)[Symbol.dispose] = () => {
       if (started && !closed) {
+        // Latched like the notification above: the open is counted once, so whichever of the two
+        // ends it first must be the only one that decrements.
+        closed = true;
         this.#workspaceClosed(id, "lost", openedAt);
         // this.ctx.abort() would be nicer here, but it is still marked experimental in the
         // workers runtime.
@@ -331,13 +341,30 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
       if (getOpenGadgetErrorCode(err) === OPEN_GADGET_ERROR_CODES.workspaceAccessDenied) {
         await this.#user.forgetSharedGadget(id);
       }
+      // The workspace told us its lease expired and then aborted, which is what failed this call:
+      // the open was parked on a step the client controls (the observer-configuration dialog, a
+      // share-key redemption), and those are the sessions the lease exists to end. It never logged
+      // an `opened`, so it gets no `closed`; what the browser still needs is the idle close code, so
+      // it parks on the paused state instead of redialling straight back into the same wait.
+      if (close.reason === "idle") {
+        logger.info("workspace open released by an expired lease", {
+          event: "workspace.session.open.idle", gadgetId: id, durationMs: Date.now() - openedAt,
+        });
+        if (this.#liveOpens === 0) this.abortSession(new IdleSessionError(id));
+      }
       throw err;
     }
     started = true;
-    this.#liveWorkspaces.add(id);
+    ++this.#liveOpens;
     logger.info("workspace session opened", {
       event: "workspace.session.opened", gadgetId: id,
     });
+    // The notification can also land between open() producing its result and this continuation
+    // running: the reap notifies, then flushes, then aborts, and a parked open answered inside that
+    // window returns normally. The notification skipped the close because nothing had started yet,
+    // so it is settled here; otherwise this open would stay counted forever and the socket would
+    // never carry the idle close again.
+    if (closed) this.#workspaceClosed(id, close.reason, openedAt);
     recordAnalytics(this.ctx, this.env, {
       event_name: "gadget_opened",
       user_id: userId,
