@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   isConnectionPaused,
   pauseConnection,
   resumeConnection,
   subscribeConnectionPause,
 } from './connectionPause'
+import { useConnectionPaused } from './useConnectionPaused'
 
 /** Hidden tabs pause after this long. */
 export const HIDDEN_PAUSE_MS = 5 * 60_000
@@ -46,7 +47,7 @@ export function noteWorkspaceActivity(): void {
  * never outlives the only thing that would wake it.
  */
 export function useWorkspaceIdle(busy: boolean): boolean {
-  const [paused, setPaused] = useState(isConnectionPaused)
+  const paused = useConnectionPaused()
   const busyRef = useRef(busy)
   busyRef.current = busy
 
@@ -74,7 +75,6 @@ export function useWorkspaceIdle(busy: boolean): boolean {
     }
 
     const unsubscribe = subscribeConnectionPause(() => {
-      setPaused(isConnectionPaused())
       // A resume is a request in flight; give it a full idle window before the next pause.
       if (!isConnectionPaused()) noteWorkspaceActivity()
     })
