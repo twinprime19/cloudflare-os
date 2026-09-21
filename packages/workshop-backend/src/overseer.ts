@@ -1685,33 +1685,12 @@ class OverseerImpl implements AgentHooks {
   // than the remainder of a window that started while they were waiting.
   #lastWorkEndedAt?: number;
 
-  // When the reap last left this workspace alone *despite* an expired deadline -- work outstanding,
-  // a call in flight, or the kill switch off -- so the window restarts from that decision instead
-  // of re-firing immediately on a deadline already behind it. A check that found the lease simply
-  // renewed leaves this untouched, or a workspace nobody is using would get close to two leases
+  // When the reap last left this workspace alone *despite* an expired deadline -- work outstanding
+  // or the kill switch off -- so the window restarts from that decision instead of re-firing
+  // immediately on a deadline already behind it. A check that found the lease simply renewed
+  // leaves this untouched, or a workspace nobody is using would get close to two leases
   // (see reapIdleSession).
   #lastLeaseCheckAt?: number;
-
-  // Calls from a browser running right now. The reap defers while one is in flight: whoever made
-  // it is demonstrably still there. open() is excluded -- it parks on awaits the client controls
-  // (share-key redemption, the observer-config dialog), which are the very sessions the lease
-  // exists to end.
-  #inflightClientRpcs = 0;
-
-  // When the oldest of those calls arrived. The count alone cannot be trusted indefinitely: a call
-  // whose caller disappears mid-flight is cancelled, and a cancelled call's continuation never
-  // runs, so nothing would ever decrement it -- and a browser disappearing mid-call is precisely
-  // the case this mechanism exists for. A call still running a full lease later is therefore no
-  // longer taken as evidence that someone is here; the price is that a single client call running
-  // longer than a lease, with no other traffic on the workspace, can be cut short.
-  //
-  // Only the *first* call of a batch is timed: the field is set when the count goes zero to one and
-  // cleared when it returns to zero, so calls that arrive while others are running inherit the
-  // oldest arrival rather than recording their own. That errs in the safe direction -- the worst it
-  // does is cut a young call short at the bound above, which the price already covers, and it can
-  // never hold the deferral open past the bound and latch the workspace, which is the failure mode
-  // being guarded against.
-  #oldestInflightClientRpcAt?: number;
 
   // Set once the reap has decided to end this incarnation. From there on every client call is
   // refused: the flush before the abort must be the last write this object performs.
@@ -1928,23 +1907,11 @@ class OverseerImpl implements AgentHooks {
     if (firstOfThisIncarnation) this.#updateAlarm();
   }
 
-  // A browser call is starting: refuse it if the object is already committed to going away, and
-  // count it so the reap defers while it runs. Paired with exitClientRpc by the call wrapper.
-  enterClientRpc(): void {
+  // A browser call is starting: refuse it if the object is already committed to going away, so no
+  // call is accepted only to be thrown away by the abort. Called by the call wrapper before the
+  // renewal (see noteClientRpcOnCalls).
+  assertLeaseLive(): void {
     if (this.#leaseExpiryCommitted) throw new WorkspaceSessionExpiredError();
-    if (this.#inflightClientRpcs++ === 0) this.#oldestInflightClientRpcAt = Date.now();
-  }
-
-  exitClientRpc(): void {
-    if (this.#inflightClientRpcs === 0) return;
-    if (--this.#inflightClientRpcs === 0) this.#oldestInflightClientRpcAt = undefined;
-  }
-
-  // Whether a client call that arrived within the last lease is still running (see
-  // #oldestInflightClientRpcAt).
-  #hasRecentClientRpcInFlight(now: number): boolean {
-    return this.#inflightClientRpcs > 0 &&
-        now - this.#oldestInflightClientRpcAt! < SESSION_LEASE_MS;
   }
 
   // Register a live client interface's idle notification. Returns a function that removes it.
@@ -2052,10 +2019,10 @@ class OverseerImpl implements AgentHooks {
   // the workspace went idle, flush, and abort. Called by alarm() after runAlarmTasks has finished
   // every other concern and re-armed what remains, so an expiry never drops scheduled work.
   //
-  // The decision is made in one synchronous step after a single await. Anything that arrives while
-  // that await is in flight either renews the lease (and is seen below) or, once the decision is
-  // committed, is refused outright -- there is no window in which a fresh client call is accepted
-  // and then thrown away by the abort.
+  // The decision is made in one synchronous step after a single await, and needs no accounting of
+  // calls still running: a client call renews the lease on entry, so one younger than a lease is
+  // already inside the deadline checked below, and a call that lands after the decision is
+  // committed is refused rather than accepted and then thrown away by the abort.
   async reapIdleSession(): Promise<void> {
     if (this.#leaseExpiryCommitted) return;
 
@@ -2082,22 +2049,21 @@ class OverseerImpl implements AgentHooks {
     let liveInterfaces = this.#idleNotifiers.size;
     let switchedOff = killSwitch === SESSION_LEASE_OFF;
 
-    if (switchedOff || this.#hasAgentWork() || this.#hasRecentClientRpcInFlight(now) ||
-        now < this.#leaseDeadline()) {
+    if (switchedOff || this.#hasAgentWork() || now < this.#leaseDeadline()) {
       if (switchedOff) {
         this.logger.info("session lease check skipped by the kill switch", {
           event: "overseer.session.lease.skipped", idleMs, liveInterfaces,
         });
       }
       // Restart the window only when the deadline really has passed: a check that deferred to
-      // outstanding work, to a call in flight, or to the kill switch must not re-fire immediately
-      // on a deadline already behind it. A check that simply arrived early leaves the clock alone,
-      // so the recompute below re-arms at exactly the last activity plus one lease; moving it here
-      // would grant a workspace nobody is using close to a second lease, since the alarm is armed
-      // once per incarnation (see noteClientRpc) and therefore usually fires early.
+      // outstanding work or to the kill switch must not re-fire immediately on a deadline already
+      // behind it. A check that simply arrived early leaves the clock alone, so the recompute below
+      // re-arms at exactly the last activity plus one lease; moving it here would grant a workspace
+      // nobody is using close to a second lease, since the alarm is armed once per incarnation
+      // (see noteClientRpc) and therefore usually fires early.
       // The invariant either way: the next check is one lease after the later of the last activity
       // and the last check, and never later than one lease after the last activity unless one of
-      // those three deferrals moved it.
+      // those two deferrals moved it.
       if (now >= this.#leaseDeadline()) this.#lastLeaseCheckAt = now;
       this.#updateAlarm();
       return;
@@ -5368,12 +5334,11 @@ class OverseerImpl implements AgentHooks {
   // calls are not evidence that anyone is here at all.
   //
   // A facet call renews the lease but, unlike a call on one of the wrapped capability classes, is
-  // neither counted in flight nor refused once expiry is committed. Both are safe. The renewal is
-  // an in-memory write made before the call is forwarded, so a facet call that arrives before the
-  // reap's decision is seen by it, and one that arrives after it cannot leave a durable write
-  // behind: the reap flushes this object with ctx.storage.sync() and aborts in the same
-  // continuation, awaiting nothing in between, and the input gate admits no other event until that
-  // continuation ends.
+  // not refused once expiry is committed. That is safe. The renewal is an in-memory write made
+  // before the call is forwarded, so a facet call that arrives before the reap's decision is seen
+  // by it, and one that arrives after it cannot leave a durable write behind: the reap flushes this
+  // object with ctx.storage.sync() and aborts in the same continuation, awaiting nothing in
+  // between, and the input gate admits no other event until that continuation ends.
   //
   // Since facet stubs currently can't be sent over RPC, the stub is wrapped in a Proxy to make it
   // look like an RpcTarget instead.
@@ -10183,9 +10148,8 @@ export class OverseerDurableObject extends DurableObject<Cloudflare.Env> {
              notifyClosed: NativeRpcStub<(reason?: "idle") => void>,
              shareKey?: string,
              configureObservers?: RpcStub<ObserverConfigCallback>): Promise<Overseer> {
-    // A browser is opening this workspace: arm the lease. Not counted as an in-flight client call,
-    // because what this call waits on below (share-key redemption, the observer-config dialog) is
-    // controlled by the client, and a session parked there forever is one the lease must end.
+    // A browser is opening this workspace: arm the lease. Renewed here directly because this method
+    // is not one of the wrapped client calls (see noteClientRpcOnCalls).
     this.impl.noteClientRpc();
 
     // Tell the front Worker if the lease expires before this call returns. Registered here, ahead of
@@ -11033,13 +10997,16 @@ const clientActivity = Symbol("clientActivity");
 // a visibility escape, not a claim about the type.
 type ClientCallTarget = { impl: OverseerImpl; [clientActivity]?: () => void };
 
-// Renew the client-activity lease on every call a browser makes on `cls`, and count the call while
-// it runs so the reap defers to it (see OverseerImpl.reapIdleSession).
+// Renew the client-activity lease on every call a browser makes on `cls`, and refuse the call
+// outright once the workspace has committed to expiring (see OverseerImpl.reapIdleSession).
+// Renewing on entry is what lets the reap decide from the deadline alone, with no accounting of
+// calls still running: a call that arrived less than a lease ago has already moved the deadline
+// past now.
 //
 // Provenance decides, never class membership: the agent, hook deliveries and binding loopbacks
 // construct the very same capability classes, and their calls say nothing about whether a user is
 // present. Only a browser-facing construction site passes the provenance callback, and only
-// instances carrying it are counted. Applied after the class body so it composes with
+// instances carrying it renew. Applied after the class body so it composes with
 // @validateRpc() whatever that decorator leaves on the prototype.
 function noteClientRpcOnCalls(cls: {prototype: object}): void {
   let proto = cls.prototype;
@@ -11058,18 +11025,9 @@ function noteClientRpcOnCalls(cls: {prototype: object}): void {
         let renew = this[clientActivity];
         if (renew === undefined) return original.apply(this, args);
 
-        this.impl.enterClientRpc();  // throws if the lease has already expired
+        this.impl.assertLeaseLive();  // throws if the lease has already expired
         renew();
-        let exit = () => this.impl.exitClientRpc();
-        try {
-          let result = original.apply(this, args);
-          if (result instanceof Promise) return result.finally(exit);
-          exit();
-          return result;
-        } catch (error) {
-          exit();
-          throw error;
-        }
+        return original.apply(this, args);
       },
     });
   }

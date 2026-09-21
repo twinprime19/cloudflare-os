@@ -93,8 +93,7 @@ export async function openFakeOverseer(
       // which calls reach it is what session-lease-provenance.test.ts asserts -- while the real
       // clock is exercised against a real Durable Object in __integration__/session-lease.test.ts.
       noteClientRpc: vi.fn(),
-      enterClientRpc: () => {},
-      exitClientRpc: () => {},
+      assertLeaseLive: () => {},
       addIdleNotifier: () => () => {},
       ensureObserver: async () => {},
       syncOutputsTo: async () => {},
