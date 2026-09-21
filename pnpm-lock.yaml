@@ -955,6 +955,9 @@ importers:
       wrangler:
         specifier: 'catalog:'
         version: 4.128.0(@cloudflare/workers-types@5.20260903.1)
+      xlsx:
+        specifier: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+        version: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
 
   packages/mcp-shared:
     dependencies:
@@ -1058,6 +1061,9 @@ importers:
       diff3:
         specifier: ^0.0.3
         version: 0.0.3
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       isomorphic-git:
         specifier: ^1.40.0
         version: 1.40.5
@@ -1067,6 +1073,9 @@ importers:
       pako:
         specifier: ^2.1.0
         version: 2.2.0
+      xlsx:
+        specifier: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+        version: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
       yjs:
         specifier: ^13.6.32
         version: 13.6.32
@@ -5714,6 +5723,12 @@ packages:
       utf-8-validate:
         optional: true
 
+  xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz:
+    resolution: {integrity: sha512-oLDq3jw7AcLqKWH2AhCpVTZl8mf6X2YReP+Neh0SJUzV/BdZYjth94tG5toiMB1PPrYtxOCfaoUCkvtuH+3AJA==, tarball: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz}
+    version: 0.20.3
+    engines: {node: '>=0.8'}
+    hasBin: true
+
   xml-name-validator@5.0.0:
     resolution: {integrity: sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==}
     engines: {node: '>=18'}
@@ -10273,6 +10288,8 @@ snapshots:
   ws@8.21.0: {}
 
   ws@8.21.3: {}
+
+  xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz: {}
 
   xml-name-validator@5.0.0: {}
 

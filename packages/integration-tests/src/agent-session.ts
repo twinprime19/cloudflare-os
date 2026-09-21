@@ -1,8 +1,9 @@
 import type { RpcPromise, RpcStub } from "capnweb";
 import type {
   ActionHistoryFilter, ActionHistoryPage, AiChatAuthorInfo, AiChatHistoryPage, AiChatMessage,
-  AiChatMetadata, AiChatStreamEvent, AiChatSubscriber, AiModelConfig, AuthenticatedApi, GadgetClient,
-  Overseer, PublicApi, WorkpieceId, WorkpieceSummary, WorkpiecesSubscriber,
+  AiChatMetadata, AiChatStreamEvent, AiChatSubscriber, AiModelConfig, AuthenticatedApi,
+  ChatAttachmentHandle, ChatAttachmentUpload, GadgetClient, Overseer, PublicApi, WorkpieceId,
+  WorkpieceSummary, WorkpiecesSubscriber,
 } from "@gadgets/workshop-shared/api";
 import type { CodeChange } from "@gadgets/workshop-shared/code-change";
 import { ADMIN_USERNAME } from "./harness.js";
@@ -22,6 +23,8 @@ type UserModel = {
 export type AgentTurnOptions = {
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** Handles from `uploadAttachment()`, committed into the message this turn sends. */
+  attachments?: readonly ChatAttachmentHandle[];
 };
 
 /** Configuration for one fresh local Workshop account and workspace. */
@@ -66,6 +69,11 @@ export type ProvisionalGadget = { client: RpcStub<GadgetClient>; chatId: number 
 export interface WorkshopAgentSession extends AsyncDisposable {
   readonly username: string;
   runTurn(prompt: string, options?: AgentTurnOptions): Promise<AgentTurnResult>;
+  /**
+   * Upload one attachment, as the composer does before the user hits send. The returned handle
+   * goes back unchanged in the next `runTurn`'s `attachments`.
+   */
+  uploadAttachment(attachment: ChatAttachmentUpload): Promise<ChatAttachmentHandle>;
   approveActionsAndWait(
       ids: readonly [number, ...number[]], options?: AgentTurnOptions): Promise<AgentTurnResult>;
   listActions(options?: ActionListOptions): Promise<ActionHistoryPage>;
@@ -376,11 +384,18 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
     }
     const observer = new TurnObserver(
         chatId, options.timeoutMs ?? this.#turnTimeoutMs, options.signal, prompt);
+    const attachments = options.attachments === undefined ? undefined : [...options.attachments];
     const operation = chatId === undefined
-      ? () => this.#startChat(prompt, observer)
+      ? () => this.#startChat(prompt, observer, attachments)
       : () => this.#awaitRpc(
-          this.#workspace.sendChatMessage(chatId, prompt, this.#modelId), chatId, observer);
+          this.#workspace.sendChatMessage(chatId, prompt, this.#modelId, undefined, attachments),
+          chatId, observer);
     return this.#observeOperation(observer, operation);
+  }
+
+  uploadAttachment(attachment: ChatAttachmentUpload): Promise<ChatAttachmentHandle> {
+    this.#assertOpen();
+    return this.#workspace.uploadChatAttachment(attachment, this.#modelId);
   }
 
   async approveActionsAndWait(
@@ -474,8 +489,9 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
     return this.close();
   }
 
-  async #startChat(prompt: string, observer: TurnObserver): Promise<void> {
-    const creating = this.#workspace.newChat(prompt, this.#modelId);
+  async #startChat(prompt: string, observer: TurnObserver,
+                   attachments?: ChatAttachmentHandle[]): Promise<void> {
+    const creating = this.#workspace.newChat(prompt, this.#modelId, undefined, attachments);
     this.#pendingRpcs.add(creating);
     creating.then(chatId => {
       const status = observer.outcome?.status;

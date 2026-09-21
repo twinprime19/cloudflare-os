@@ -3172,6 +3172,16 @@ export type ChatAttachmentRef = ChatAttachmentHandle & {
 
   /** Inlined bytes for small image attachments. Present only for images. */
   content?: Uint8Array;
+
+  /**
+   * The document's original MIME type, when the upload was converted on the way in and `mimeType`
+   * describes the stored text rather than the file the user picked. Absent on attachments stored
+   * as they arrived, and on messages written before this was recorded.
+   *
+   * The ref is the only place this survives once an attachment is committed, so it is what tells a
+   * later reader -- replay especially -- what kind of document produced the stored text.
+   */
+  convertedFrom?: string;
 };
 
 /** Whether attachment bytes can be decoded and inlined into the agent's prompt as text. */

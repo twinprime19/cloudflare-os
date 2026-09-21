@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import * as XLSX from "xlsx";
 import {
   assertChatMessageWithinBudget,
   validateChatAttachmentUpload,
@@ -61,6 +62,27 @@ function pdfBytes(totalBytes = 64): Uint8Array {
   return bytes;
 }
 
+// A real one-sheet workbook. Spreadsheets are parsed rather than converted, so a stub archive no
+// longer stands in for one: the bytes have to be a workbook the parser can read.
+function workbookBytes(bookType: XLSX.BookType): Uint8Array {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([["Region", "Units"], ["North", 5], ["South", 7]]),
+    "Sales",
+  );
+  return new Uint8Array(XLSX.write(workbook, { type: "array", bookType }) as ArrayBuffer);
+}
+
+// Every spreadsheet type the workbook path claims, with the writer format that produces it.
+const SPREADSHEETS: readonly (readonly [string, XLSX.BookType, string])[] = [
+  [XLSX_MIME_TYPE, "xlsx", "quarterly.xlsx"],
+  [XLS_MIME_TYPE, "biff8", "quarterly.xls"],
+  [XLSM_MIME_TYPE, "xlsm", "quarterly.xlsm"],
+  [XLSB_MIME_TYPE, "xlsb", "quarterly.xlsb"],
+  [ODS_MIME_TYPE, "ods", "quarterly.ods"],
+];
+
 type ToMarkdownStub = ReturnType<typeof vi.fn>;
 
 function makeConversionEnv(markdown = "# Converted\n\nBody text.") {
@@ -77,17 +99,14 @@ function makeConversionEnv(markdown = "# Converted\n\nBody text.") {
 }
 
 describe("document upload conversion", () => {
-  it("converts every office document for every provider", async () => {
+  it("converts every prose document for every provider", async () => {
     // No provider has a native input for these formats, so the conversion decision cannot depend
     // on the model -- unlike PDF, which has native paths and is covered separately below.
+    // Spreadsheets are convertible types too, but they take the workbook path instead; see the
+    // spreadsheet suite below.
     const documents: readonly (readonly [string, Uint8Array, string])[] = [
       [DOCX_MIME_TYPE, ooxmlBytes(), "quarterly.docx"],
-      [XLSX_MIME_TYPE, ooxmlBytes(), "quarterly.xlsx"],
-      [XLS_MIME_TYPE, oleBytes(), "quarterly.xls"],
-      [XLSM_MIME_TYPE, ooxmlBytes(), "quarterly.xlsm"],
-      [XLSB_MIME_TYPE, ooxmlBytes(), "quarterly.xlsb"],
       [ODT_MIME_TYPE, odfBytes(), "quarterly.odt"],
-      [ODS_MIME_TYPE, odfBytes(), "quarterly.ods"],
     ];
 
     for (const provider of ["cloudflare", "ollama", "anthropic", "openai", "google"] as const) {
@@ -231,7 +250,7 @@ describe("document upload conversion", () => {
     const { getEnv } = makeConversionEnv("   \n  ");
 
     await expect(validateChatAttachmentUpload(
-      { mimeType: XLSX_MIME_TYPE, content: ooxmlBytes(), name: "empty.xlsx" },
+      { mimeType: ODT_MIME_TYPE, content: odfBytes(), name: "empty.odt" },
       "cloudflare",
       getEnv,
     )).rejects.toThrow("No readable text");
@@ -343,6 +362,78 @@ describe("document upload conversion", () => {
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "notes.docx" },
       "cloudflare",
     )).rejects.toThrow("Documents cannot be read in this context.");
+  });
+});
+
+describe("spreadsheet upload parsing", () => {
+  it("reads every spreadsheet format in the isolate instead of converting it", async () => {
+    for (const [mimeType, bookType, name] of SPREADSHEETS) {
+      const { toMarkdown, getEnv } = makeConversionEnv();
+
+      const result = await validateChatAttachmentUpload(
+        { mimeType, content: workbookBytes(bookType), name },
+        "cloudflare",
+        getEnv,
+      );
+
+      // Flattening a workbook into Markdown loses what makes it a workbook, and costs a Workers
+      // AI round trip to do it; the rows are stored and the model reads a summary of them.
+      expect(toMarkdown).not.toHaveBeenCalled();
+      expect(result.attachment.mimeType).toBe("text/markdown");
+      expect(result.convertedFrom).toBe(mimeType);
+      expect(result.attachment.name).toBe(name);
+      expect(result.workbook!.meta.sheets).toEqual([
+        { name: "Sales", rowCount: 3, colCount: 2, chunkRowStarts: [0] },
+      ]);
+      expect(result.workbook!.meta.cellCount).toBe(6);
+      expect(new TextDecoder().decode(result.attachment.content))
+        .toContain(`## Sheet "Sales" (3 rows × 2 cols)`);
+    }
+  });
+
+  it("returns the rows to store beside the summary", async () => {
+    const result = await validateChatAttachmentUpload(
+      { mimeType: XLSX_MIME_TYPE, content: workbookBytes("xlsx"), name: "quarterly.xlsx" },
+      "cloudflare",
+      makeConversionEnv().getEnv,
+    );
+
+    // The attachment holds the summary; the data the model computes over comes back separately,
+    // for the caller to store as chunks.
+    const chunks = result.workbook!.sheets[0].chunks;
+    expect(result.workbook!.sheets.map(sheet => sheet.name)).toEqual(["Sales"]);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].rowStart).toBe(0);
+    expect(JSON.parse(new TextDecoder().decode(chunks[0].bytes)))
+      .toEqual([["Region", "Units"], ["North", 5], ["South", 7]]);
+  });
+
+  it("reads a spreadsheet with no conversion environment at all", async () => {
+    // Nothing on this path leaves the isolate, so it does not need the Workers AI binding a
+    // document conversion needs -- and stays available where conversion is refused.
+    const result = await validateChatAttachmentUpload(
+      { mimeType: XLSX_MIME_TYPE, content: workbookBytes("xlsx"), name: "quarterly.xlsx" },
+      "cloudflare",
+    );
+
+    expect(result.attachment.mimeType).toBe("text/markdown");
+    expect(result.workbook!.meta.cellCount).toBe(6);
+  });
+
+  it("rejects a spreadsheet above the raw size cap before parsing it", async () => {
+    // Bytes that clear the container checks but are no workbook: reaching the parser would fail
+    // with its own message, so the size message proves the cap ran first.
+    await expect(validateChatAttachmentUpload(
+      { mimeType: XLSX_MIME_TYPE, content: ooxmlBytes(11 * 1024 * 1024), name: "huge.xlsx" },
+      "cloudflare",
+    )).rejects.toThrow("Documents must be 10 MB or smaller.");
+  });
+
+  it("rejects a spreadsheet whose bytes are not a workbook", async () => {
+    await expect(validateChatAttachmentUpload(
+      { mimeType: XLSX_MIME_TYPE, content: ooxmlBytes(), name: "fake.xlsx" },
+      "cloudflare",
+    )).rejects.toThrow("This spreadsheet could not be read.");
   });
 });
 

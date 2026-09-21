@@ -3,6 +3,7 @@ import { applyCodeChange, codeChangeSerializedSize, replaceSpanChange, type Code
   type CodeChange, type FileChange } from '@gadgets/workshop-shared/code-change';
 import { PDF_MIME_TYPE, modelApiSupportsPdfAttachments } from './chat-attachment-pdf';
 import { MAX_CHAT_ATTACHMENT_BYTES, MAX_CHAT_ATTACHMENTS_PER_MESSAGE, sanitizeChatAttachmentMimeType, shouldConvertUpload } from './chat-attachment-validation';
+import { SPREADSHEET_MIME_TYPES, workbookBindingName } from './chat-attachment-workbook';
 import { AgentCatalog, ObservationDescription } from '@gadgets/workshop-shared/gatekeeper';
 import { createWorkshopLogger } from "./observability";
 import { Type } from "@earendil-works/pi-ai";
@@ -215,12 +216,14 @@ export type SeedBindingInfo = {
 
 /**
  * One entry of the chat's binding map: what a name in the agent's executeCode `env` resolves to.
- * Either a workpiece (a gadget or gatekeeper -- the overseer distinguishes at env-build time) or
- * the value arguments of an agent callback.
+ * A workpiece (a gadget or gatekeeper -- the overseer distinguishes at env-build time), the value
+ * arguments of an agent callback, or a spreadsheet attached to the chat, whose rows the agent
+ * reads through the binding instead of receiving them as text (see workbook-binding.d.ts).
  */
 export type ChatBindingEntry =
   | { type: "workpiece"; id: WorkpieceId }
-  | { type: "value"; messageSequence: number };
+  | { type: "value"; messageSequence: number }
+  | { type: "attachment"; id: string };
 
 /**
  * Stores replay state for one compacted chat prefix. Checkpoints are immutable, and a chat keeps
@@ -333,8 +336,9 @@ export type AgentGadgetInfo = {
 // if it used one today.)
 async function resolveBindingDescription(
     name: string | number,
+    chatId: number,
     chatBindings: Map<string, ChatBindingEntry>,
-    hooks: Pick<AgentHooks, "describeBinding">): Promise<string> {
+    hooks: Pick<AgentHooks, "describeBinding" | "describeAttachmentBinding">): Promise<string> {
   let entry = chatBindings.get(`${name}`);
   if (!entry) throw new Error(`There is no binding named "${name}" in your env.`);
   switch (entry.type) {
@@ -343,6 +347,10 @@ async function resolveBindingDescription(
     case "value":
       return `env.${name} is the arguments array of a call delivered to this agent (one element ` +
           `per parameter of the call). Any RPC stubs among them may be called directly.`;
+    case "attachment":
+      // The bare name here, not the `env.`-prefixed form the workpiece description takes: the
+      // workbook description writes the `env.` form itself.
+      return hooks.describeAttachmentBinding(chatId, `${name}`, entry.id);
     default:
       return entry satisfies never;
   }
@@ -546,6 +554,14 @@ export interface AgentHooks {
    * incorporated into the returned description.)
    */
   describeBinding(envName: string, id: WorkpieceId): Promise<string>;
+
+  /**
+   * Describe the spreadsheet attachment bound as `envName` in the chat's env -- its file name and
+   * the shape of each sheet, plus the API the binding offers in executeCode -- for the agent's
+   * describeBinding tool. `id` is a chat attachment id, and the chat is passed so the description
+   * is refused for an attachment that is not this chat's.
+   */
+  describeAttachmentBinding(chatId: number, envName: string, id: string): Promise<string>;
 
   /**
    * Add a binding to the given gadget, pointing at the given workpiece. The binding is provisional
@@ -1308,8 +1324,10 @@ export async function importMailAttachments(
     throw new Error(`There is no binding named "${binding}" in your env.`);
   }
   if (entry.type !== "workpiece") {
-    throw new Error(`env.${binding} holds the arguments of an agent callback, not a connection ` +
-        `to a mailbox.`);
+    let held = entry.type === "attachment"
+        ? `is a spreadsheet attached to this chat`
+        : `holds the arguments of an agent callback`;
+    throw new Error(`env.${binding} ${held}, not a connection to a mailbox.`);
   }
   // Resolved -- and required to be a connection -- before any method is called on it, so a Gadget
   // cannot serve attachments by implementing these method names.
@@ -1966,6 +1984,27 @@ async function runAgentPass(
             if (msg.attachments?.length) {
               let parts: (TextContent | ImageContent)[] = [];
               if (content) parts.push({type: "text", text: content});
+              // Spreadsheets are the one attachment the model never receives in full: the message
+              // carries a structural summary, and every row stays in storage behind an env binding
+              // the agent reads in executeCode (see workbook-binding.d.ts). Names are derived here,
+              // synchronously and in message order, before any attachment body is fetched -- the
+              // fetches below run concurrently, and a name that depended on how they interleaved
+              // would differ between the live turn and its replays, leaving the conversation's
+              // earlier `env.NAME` references pointing at the wrong workbook.
+              //
+              // An attachment from before workbooks were bound has no `convertedFrom` and binds
+              // nothing, so such messages replay byte for byte as they always have.
+              let workbookNames = new Map<string, string>();
+              for (let attachment of msg.attachments) {
+                if (attachment.convertedFrom === undefined ||
+                    !SPREADSHEET_MIME_TYPES.has(attachment.convertedFrom)) {
+                  continue;
+                }
+                let name = workbookBindingName(
+                    attachment.name, new Set([...chatBindings.keys(), ...claimedNames]));
+                chatBindings.set(name, {type: "attachment", id: attachment.id});
+                workbookNames.set(attachment.id, name);
+              }
               let attachmentParts = await Promise.all(msg.attachments.map(
                   async (attachment): Promise<(TextContent | ImageContent)[]> => {
                 let filename = attachment.name ? ` (${attachment.name})` : "";
@@ -1977,9 +2016,15 @@ async function runAgentPass(
                     mimeType: attachment.mimeType,
                   }];
                 } else if (isTextLikeAttachmentMimeType(attachment.mimeType)) {
+                  // A workbook's summary text is followed by the way to reach the rows it elides.
+                  let workbookName = workbookNames.get(attachment.id);
+                  let binding = workbookName === undefined ? `` :
+                      `\n\nFull data is available in executeCode as env.${workbookName} ` +
+                      `(call describeBinding("${workbookName}") for its API).`;
                   return [{
                     type: "text",
-                    text: `\n\n[Attached text file${filename}]\n${new TextDecoder().decode(data)}`,
+                    text: `\n\n[Attached text file${filename}]\n` +
+                        `${new TextDecoder().decode(data)}${binding}`,
                   }];
                 } else if (attachment.mimeType === PDF_MIME_TYPE &&
                            modelApiSupportsPdfAttachments(handle.model.api)) {
@@ -2173,7 +2218,7 @@ async function runAgentPass(
                 case "describeBinding":
                   toolOutput = {
                     text: await resolveBindingDescription(
-                        toolCall.input.name, chatBindings, hooks),
+                        toolCall.input.name, chatId, chatBindings, hooks),
                   };
                   break;
                 case "setBindingHook":
@@ -3239,7 +3284,7 @@ async function runAgentPass(
       }),
       execute: async (toolCallId, {name}) => {
         try {
-          return toolResult(await resolveBindingDescription(name, chatBindings, hooks));
+          return toolResult(await resolveBindingDescription(name, chatId, chatBindings, hooks));
         } catch (error) {
           toolCallNotes.set(toolCallId, {
             error: toolErrorText(error)

@@ -25,9 +25,11 @@
     "capnweb-validate": "catalog:",
     "diff": "catalog:",
     "diff3": "^0.0.3",
+    "fflate": "^0.8.3",
     "isomorphic-git": "^1.40.0",
     "jose": "^6.2.8",
     "pako": "^2.1.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yjs": "^13.6.32",
     "zod": "^4.4.3"
   },

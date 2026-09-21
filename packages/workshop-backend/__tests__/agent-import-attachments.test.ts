@@ -1,17 +1,22 @@
-// The agent's importAttachments tool: pulling files out of a connected mailbox and into the chat.
+// The agent's importAttachments tool: pulling files out of a connected mailbox and into the chat,
+// plus the replay of the messages such files land in.
 //
 // What is pinned here: the bytes go from the connection to the import hook and nowhere else (never
 // into the tool result the model reads); a request is screened from the listing before anything is
 // downloaded, using the upload pipeline's own conversion rules and per-file cap; every failure mode
 // produces its own actionable message with the underlying error text intact; and a chat log
 // containing a completed import replays without the import happening again.
+//
+// The last suite covers the other half of replay for attached files: a spreadsheet's rows are
+// bound into the chat's env instead of being sent as text, which is derived fresh on every turn
+// and so has to be identical on every turn.
 
 import { describe, expect, it, vi } from "vitest";
 import { importMailAttachments, runAgent } from "../src/agent.js";
 import type { AgentHooks, ChatBindingEntry } from "../src/agent.js";
 import type { ModelHandle } from "../src/ai-models.js";
 import type {
-  AiChatAuthorInfo, AiChatMessage, ChatAttachmentUpload,
+  AiChatAuthorInfo, AiChatMessage, ChatAttachmentRef, ChatAttachmentUpload,
 } from "@gadgets/workshop-shared/api";
 
 const CHAT_ID = 7;
@@ -437,7 +442,7 @@ function importedChatLog(): AiChatMessage[] {
   ];
 }
 
-function replayHooks(): AgentHooks {
+function replayHooks(overrides: Record<string, unknown> = {}): AgentHooks {
   return {
     listGadgetInfo: () => [],
     getChatAgentContext: () => ({chatId: CHAT_ID}),
@@ -460,7 +465,31 @@ function replayHooks(): AgentHooks {
     commitChatCompaction: () => {},
     consumeCapturedActions: () => undefined,
     consumeCapturedConnectionRequests: () => [],
+    ...overrides,
   } as unknown as AgentHooks;
+}
+
+/**
+ * Runs one turn and returns the model context the turn's single request was built from: the whole
+ * point of replay, and the only place it is observable. The request fails, which ends the turn
+ * right after the context is captured.
+ */
+async function capturedReplayContext(hooks: AgentHooks): Promise<any[]> {
+  let captured: any[] = [];
+  let handle = {
+    model: {api: "anthropic", provider: "anthropic", id: "claude-sonnet-4-5", name: "Claude"},
+    stream: (_model: unknown, context: {messages: any[]}) => {
+      captured = context.messages;
+      throw new Error("stop: context captured");
+    },
+  } as unknown as ModelHandle;
+  let modelConfig = {provider: "anthropic", model: "claude-sonnet-4-5", apiToken: "token"} as const;
+  let author: AiChatAuthorInfo = {type: "agent", id: "claude", name: "Agent"};
+
+  await expect(runAgent(
+      hooks, handle, CHAT_ID, author, new AbortController().signal,
+      {type: "user", id: "alice@example.com", name: "Alice"}, modelConfig)).rejects.toThrow();
+  return captured;
 }
 
 describe("chat history replay of an import", () => {
@@ -491,5 +520,151 @@ describe("chat history replay of an import", () => {
 
     // The imported file itself replays as chat content, exactly like a user upload.
     expect(JSON.stringify(captured)).toContain("Total: 42");
+  });
+});
+
+// ---------------------------------------------------------------------------------------
+// Replay of a spreadsheet attachment: the message carries only the workbook's summary, and the
+// rows behind it are reached through an env binding the replay registers (workbook-binding.d.ts).
+// The derivation runs on every turn, so what is pinned here is that it produces the same names and
+// the same text every time -- and that an attachment from before workbooks were bound, which has
+// no `convertedFrom`, replays exactly as it always has.
+
+const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const WORKBOOK_SUMMARY = `Workbook big.xlsx — 1 sheet, 6 cells.`;
+const ALICE: AiChatAuthorInfo = {type: "user", id: "alice@example.com", name: "Alice"};
+const AGENT_AUTHOR: AiChatAuthorInfo = {type: "agent", id: "claude", name: "Agent"};
+
+function attachmentRef(overrides: Partial<ChatAttachmentRef> = {}): ChatAttachmentRef {
+  return {
+    id: "file-1",
+    mimeType: "text/markdown",
+    name: "big.xlsx",
+    size: WORKBOOK_SUMMARY.length,
+    convertedFrom: XLSX_MIME_TYPE,
+    ...overrides,
+  };
+}
+
+/** A chat whose one user message carries the given attachments. */
+function attachmentChatLog(attachments: ChatAttachmentRef[],
+                           extra: AiChatMessage[] = []): AiChatMessage[] {
+  return [
+    {chatId: CHAT_ID, sequence: 1, timestamp: new Date(0), author: ALICE,
+     type: "message", message: "What does this workbook say?", attachments},
+    ...extra,
+  ];
+}
+
+/** The text of every model message in one captured context, concatenated. */
+function contextText(captured: any[]): string {
+  return captured.map(message => typeof message.content === "string"
+      ? message.content
+      : (message.content ?? []).map((part: any) => part.text ?? "").join("")).join("\n");
+}
+
+describe("chat history replay of a spreadsheet attachment", () => {
+  it("binds the workbook into the chat's env and says so under the summary", async () => {
+    let describeAttachmentBinding = vi.fn(
+        async (_chatId: number, envName: string, _id: string) => `API of ${envName}`);
+    let captured = await capturedReplayContext(replayHooks({
+      loadChatHistory: () => ({
+        checkpoint: undefined, measuredTokens: 0,
+        chatMessages: attachmentChatLog([attachmentRef()], [
+          // A describeBinding call in the log is what makes the registered binding observable:
+          // replay resolves the name through the same path the live tool takes.
+          {chatId: CHAT_ID, sequence: 2, timestamp: new Date(0), author: AGENT_AUTHOR,
+           type: "message", message: "Checking.", toolCalls: [{
+             toolCallId: "call-1",
+             toolName: "describeBinding",
+             input: {name: "big_xlsx"},
+             output: "(recorded)",
+           }]},
+        ]),
+      }),
+      getChatAttachmentData: async () => bytes(WORKBOOK_SUMMARY),
+      describeAttachmentBinding,
+    }));
+
+    let text = contextText(captured);
+    expect(text).toContain(`[Attached text file (big.xlsx)]\n${WORKBOOK_SUMMARY}`);
+    expect(text).toContain(
+        `\n\nFull data is available in executeCode as env.big_xlsx ` +
+        `(call describeBinding("big_xlsx") for its API).`);
+
+    // The binding resolves as an attachment of this chat, and its description is served by the
+    // workbook hook rather than the workpiece one.
+    expect(describeAttachmentBinding).toHaveBeenCalledWith(CHAT_ID, "big_xlsx", "file-1");
+    expect(text).toContain("API of big_xlsx");
+  });
+
+  it("replays an attachment with no convertedFrom exactly as before", async () => {
+    // Everything attached before workbooks were bound -- and every non-spreadsheet document --
+    // lands here: no binding, no sentence, the same text the model has always seen.
+    let describeAttachmentBinding = vi.fn();
+    let captured = await capturedReplayContext(replayHooks({
+      loadChatHistory: () => ({
+        checkpoint: undefined, measuredTokens: 0,
+        chatMessages: attachmentChatLog([
+          attachmentRef({name: "notes.md", convertedFrom: undefined}),
+        ]),
+      }),
+      getChatAttachmentData: async () => bytes("Total: 42"),
+      describeAttachmentBinding,
+    }));
+
+    let userMessage = captured.find(message => message.role === "user");
+    expect(userMessage.content).toEqual([
+      {type: "text", text: "What does this workbook say?"},
+      {type: "text", text: "\n\n[Attached text file (notes.md)]\nTotal: 42"},
+    ]);
+    expect(describeAttachmentBinding).not.toHaveBeenCalled();
+  });
+
+  it("names two same-named workbooks in order, identically on every replay", async () => {
+    let hooks = () => replayHooks({
+      loadChatHistory: () => ({
+        checkpoint: undefined, measuredTokens: 0,
+        chatMessages: attachmentChatLog([
+          attachmentRef({id: "file-1"}),
+          attachmentRef({id: "file-2"}),
+        ]),
+      }),
+      getChatAttachmentData: async (_chatId: number, id: string) =>
+          bytes(`${WORKBOOK_SUMMARY} (${id})`),
+    });
+
+    let first = contextText(await capturedReplayContext(hooks()));
+    let second = contextText(await capturedReplayContext(hooks()));
+
+    expect(first).toContain("as env.big_xlsx (call describeBinding(\"big_xlsx\")");
+    expect(first).toContain("as env.big_xlsx_2 (call describeBinding(\"big_xlsx_2\")");
+    // Same log, same names, same text: replay is what every later turn is rebuilt from.
+    expect(second).toBe(first);
+  });
+
+  it("keeps the names a compaction checkpoint already bound", async () => {
+    // Checkpoints store the binding map, including attachment entries, and replay starts from it.
+    // A workbook named before the boundary therefore still holds its name afterwards, and the new
+    // one has to take the next.
+    let captured = await capturedReplayContext(replayHooks({
+      loadChatHistory: () => ({
+        checkpoint: {
+          chatId: CHAT_ID,
+          compactedTo: 1,
+          summary: "Earlier: the user attached big.xlsx (env.big_xlsx).",
+          chatBindings: [["big_xlsx", {type: "attachment", id: "file-0"}]],
+          nextChangeId: 1,
+        },
+        measuredTokens: 0,
+        chatMessages: attachmentChatLog([attachmentRef({id: "file-9"})]),
+      }),
+      getChatAttachmentData: async () => bytes(WORKBOOK_SUMMARY),
+    }));
+
+    let text = contextText(captured);
+    expect(text).toContain("Earlier: the user attached big.xlsx (env.big_xlsx).");
+    expect(text).toContain("as env.big_xlsx_2 (call describeBinding(\"big_xlsx_2\")");
+    expect(text).not.toContain("as env.big_xlsx (");
   });
 });
