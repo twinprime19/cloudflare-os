@@ -985,7 +985,7 @@ const AGENT_KEEPALIVE_ALARM_MS = 60_000;
 // holding them keeps this object billing for hours at zero traffic; nothing but our own alarm can
 // notice that, because no event ever runs in that Worker's context again. A user who is present
 // but quiet pays one click on the "Paused" chip. See OverseerImpl.reapIdleSession.
-const SESSION_LEASE_MS = 15 * 60_000;
+const SESSION_LEASE_MS = 10 * 60_000;
 
 // How long the idle notifications sent before the abort may take in total. A notification that
 // never lands costs the client one reconnect (the socket closes without the idle code, so the

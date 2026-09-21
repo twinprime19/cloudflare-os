@@ -36,7 +36,7 @@ const PASSWORD_HASH = new Uint8Array([1, 2, 3]);
 
 // SESSION_LEASE_MS and AGENT_RESPONSE_DELIVERED_RETENTION_MS in src/overseer.ts, which are private
 // to that module. A change there that these do not mirror shows up as a failure here.
-const LEASE_MS = 15 * 60_000;
+const LEASE_MS = 10 * 60_000;
 const DELIVERY_RETENTION_MS = 24 * 60 * 60 * 1000;
 const PAST_THE_LEASE_MS = LEASE_MS + 60_000;
 

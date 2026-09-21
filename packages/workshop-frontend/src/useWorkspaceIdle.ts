@@ -10,7 +10,7 @@ import { useConnectionPaused } from './useConnectionPaused'
 /** Hidden tabs pause after this long. */
 export const HIDDEN_PAUSE_MS = 5 * 60_000
 /** Visible tabs pause after this long without input. */
-export const VISIBLE_IDLE_PAUSE_MS = 15 * 60_000
+export const VISIBLE_IDLE_PAUSE_MS = 10 * 60_000
 /** Poll cadence. An interval with timestamps survives background-tab throttling; one long timeout does not. */
 export const IDLE_TICK_MS = 30_000
 
