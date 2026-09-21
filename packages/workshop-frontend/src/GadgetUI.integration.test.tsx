@@ -25,6 +25,12 @@ vi.mock('@cloudflare/kumo', () => ({
   Text: ({ children }: { children: ReactNode }) => children,
 }))
 
+const { noteWorkspaceActivity } = vi.hoisted(() => ({ noteWorkspaceActivity: vi.fn<() => void>() }))
+vi.mock('./useWorkspaceIdle', async importOriginal => ({
+  ...await importOriginal<typeof import('./useWorkspaceIdle')>(),
+  noteWorkspaceActivity,
+}))
+
 import GadgetUI from './GadgetUI'
 
 interface TestGadget {
@@ -187,6 +193,36 @@ describe('GadgetUI RPC recovery', () => {
     expect(container.querySelector('iframe')!.srcdoc).toContain(
       '<meta name="viewport" content="width=device-width, initial-scale=1">',
     )
+  })
+
+  it('forwards iframe input to the workspace idle clock, and ignores foreign frames', async () => {
+    const gadget = fakeGadget('activity', 'document.body.textContent = "activity"')
+    await act(async () => {
+      root.render(<GadgetUI gadget={gadget.stub} height="100px" />)
+    })
+    await vi.waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+    const iframe = container.querySelector('iframe')!
+
+    // The sandbox reports input at most once per 10 s; the parent's tick is 30 s.
+    const injected = decodeURIComponent(iframe.srcdoc)
+    expect(injected).toContain("window.parent.postMessage({ type: 'activity' }, '*')")
+    expect(injected).toContain('now - lastActivitySent < 10000')
+
+    noteWorkspaceActivity.mockClear()
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'activity' },
+      origin: 'null',
+      source: iframe.contentWindow,
+    }))
+    expect(noteWorkspaceActivity).toHaveBeenCalledOnce()
+
+    // A frame that is not ours cannot keep the workspace awake.
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'activity' },
+      origin: 'https://attacker.invalid',
+      source: window,
+    }))
+    expect(noteWorkspaceActivity).toHaveBeenCalledOnce()
   })
 
   it('keeps the iframe while redirecting calls to the replacement gadget client', async () => {

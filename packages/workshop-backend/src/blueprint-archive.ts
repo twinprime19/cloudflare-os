@@ -14,6 +14,16 @@ export const FEATURED_BLUEPRINTS_KEY = '.featured';
  */
 export const ADMIN_CONFIG_KEY = '.adminConfig';
 
+/**
+ * Reserved key in the BLUEPRINTS KV namespace switching the workspace idle lease off (value
+ * `off`); any other value, or no key at all, leaves it on. It lives in KV so the switch can be
+ * flipped without a deploy; see the session lease in overseer.ts.
+ */
+export const SESSION_LEASE_KEY = '.sessionLease';
+
+/** The only value of SESSION_LEASE_KEY that means anything: the lease is not enforced. */
+export const SESSION_LEASE_OFF = 'off';
+
 const BLUEPRINT_ARCHIVE_MAGIC = 0xec2e2d3a2300e317n;
 const BLUEPRINT_ARCHIVE_VERSION = 1;
 const BLUEPRINT_ARCHIVE_PREFIX_BYTES = 24;
@@ -35,7 +45,7 @@ export type BlueprintKvRecord = {
 };
 
 export function isReservedBlueprintKey(id: string): boolean {
-  return id === FEATURED_BLUEPRINTS_KEY || id === ADMIN_CONFIG_KEY;
+  return id === FEATURED_BLUEPRINTS_KEY || id === ADMIN_CONFIG_KEY || id === SESSION_LEASE_KEY;
 }
 
 export function reviveBlueprintMetadata(metadata: BlueprintMetadata): BlueprintMetadata {

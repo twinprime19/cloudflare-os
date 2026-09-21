@@ -36,7 +36,7 @@ import WORKTREE_BINDING_TYPES from "./worktree-binding.txt";
 import { deploymentOutputForBlueprint, FormatOffer, listFormatOffers, readAdminConfig } from "./admin-config";
 import { chatChangeStatuses, foldProposedChanges, type ChangeBatch } from "./agent-compaction";
 import { ambientGatekeeperMode } from "./provisioning-policy";
-import { listFeaturedBlueprintsFromKv, readBlueprintContent, readBlueprintKvRecord, sanitizeBlueprintOutput } from "./blueprint-archive";
+import { listFeaturedBlueprintsFromKv, readBlueprintContent, readBlueprintKvRecord, sanitizeBlueprintOutput, SESSION_LEASE_KEY, SESSION_LEASE_OFF } from "./blueprint-archive";
 import { WebFetchEnv } from "./web-fetch";
 import { UserDurableObject, UserAiModelRecord, type UserChatContext, type WorkspaceOutputEntry } from "./user";
 import type { AgentSpawnerBinding, CallableAgent, SpawnCallableOptions } from "./agent-spawner-binding";
@@ -980,6 +980,31 @@ const AGENT_RESPONSE_DELIVERED_RETENTION_MS = 24 * 60 * 60 * 1000;
 // recorded) the keep-alive alarm fires. See #agentKeepAliveTime.
 const AGENT_KEEPALIVE_ALARM_MS = 60_000;
 
+// How long this workspace stays resident with nothing arriving from a browser. A client that dies
+// without closing its socket leaves the front Worker holding the capabilities open() returned, and
+// holding them keeps this object billing for hours at zero traffic; nothing but our own alarm can
+// notice that, because no event ever runs in that Worker's context again. A user who is present
+// but quiet pays one click on the "Paused" chip. See OverseerImpl.reapIdleSession.
+const SESSION_LEASE_MS = 10 * 60_000;
+
+// How long the idle notifications sent before the abort may take in total. A notification that
+// never lands costs the client one reconnect (the socket closes without the idle code, so the
+// browser redials), which is strictly better than a workspace nothing can end.
+const SESSION_LEASE_NOTIFY_MS = 5_000;
+
+// The abort reason for an expired lease. The front Worker matches it (see server.ts
+// IdleSessionError) to close the browser socket with the idle code instead of a generic one.
+const SESSION_LEASE_ABORT_REASON = "idle session lease expired";
+
+// Refused by every client capability once the lease has expired: the object flushes and aborts in
+// the same continuation, so there is no session left to serve and no write that could still land.
+class WorkspaceSessionExpiredError extends Error {
+  constructor() {
+    super("This workspace session expired because nobody was using it. Reconnect to continue.");
+    this.name = "WorkspaceSessionExpiredError";
+  }
+}
+
 // Safely convert an unknown thrown value to a human-readable string.
 // Plain objects would otherwise render as "[object Object]".
 function stringifyError(err: unknown): string {
@@ -1645,6 +1670,39 @@ class OverseerImpl implements AgentHooks {
   // True while alarm() runs (see runAlarmTasks); #updateAlarm defers to its end.
   #inAlarmHandler = false;
 
+  // --- The client-activity lease (SESSION_LEASE_MS, reapIdleSession) ---
+
+  // When a browser last reached this incarnation. Undefined until the first such call, which is
+  // what arms the lease; from then on the lease stays armed for this incarnation's lifetime.
+  // Deliberately not a count of retained capabilities: #liveSessions exists for access
+  // enforcement and by design excludes every owner-held capability, so a count would have exactly
+  // today's failure mode -- one capability missed from the count is one workspace nothing ends.
+  // A workspace that really was released is evicted before the alarm, and the incarnation the
+  // alarm then wakes has no client activity and does nothing.
+  #lastClientRpcAt?: number;
+
+  // When the last agent turn ended, so a user gets a full lease to read a finished answer rather
+  // than the remainder of a window that started while they were waiting.
+  #lastWorkEndedAt?: number;
+
+  // When the reap last left this workspace alone *despite* an expired deadline -- work outstanding
+  // or the kill switch off -- so the window restarts from that decision instead of re-firing
+  // immediately on a deadline already behind it. A check that found the lease simply renewed
+  // leaves this untouched, or a workspace nobody is using would get close to two leases
+  // (see reapIdleSession).
+  #lastLeaseCheckAt?: number;
+
+  // Set once the reap has decided to end this incarnation. From there on every client call is
+  // refused: the flush before the abort must be the last write this object performs.
+  #leaseExpiryCommitted = false;
+
+  // One per live client interface, telling its front Worker session that the workspace went idle
+  // (registered by the interface's constructor, removed by its [Symbol.dispose]), plus one for each
+  // open still in progress, which has a front Worker session to tell before it has an interface to
+  // tell it with (see OverseerDurableObject.open). Held as closures rather than reached through a
+  // wrapped method on purpose: the wrappers renew the lease, and our own push must never do that.
+  #idleNotifiers = new Set<() => Promise<void>>();
+
   // Drains of pending agent calls currently in flight, by chat (see drainPendingAgentCalls).
   #pendingCallDrains = new Map<number, Promise<void>>();
 
@@ -1823,6 +1881,9 @@ class OverseerImpl implements AgentHooks {
   #unregisterRunningAgent(chatId: number) {
     this.#runningAgents.delete(chatId);
     this.storage.activeAgents.delete(chatId);
+    // Work finishing counts as someone being here: the user who started the turn is about to read
+    // its answer, and they may do so without touching the server at all.
+    this.#lastWorkEndedAt = Date.now();
     this.#updateAlarm();
     if (this.#runningAgents.size === 0) {
       // One -> zero running agents: wake any `alarm()` waiter.
@@ -1831,6 +1892,48 @@ class OverseerImpl implements AgentHooks {
       }
       this.#allAgentsIdleWaiters = [];
     }
+  }
+
+  // Renew the client-activity lease. Called only from paths a browser session reaches -- the
+  // wrapped methods of the capabilities open() hands out (see noteClientRpcOnCalls), the gadget
+  // facet's calls, open() itself -- never from our own pushes, a gatekeeper's callbacks, a hook
+  // delivery, the agent, or the alarm.
+  noteClientRpc(): void {
+    let firstOfThisIncarnation = this.#lastClientRpcAt === undefined;
+    this.#lastClientRpcAt = Date.now();
+    // Only the first touch recomputes the alarm: #updateAlarm reads storage, which a keystroke-rate
+    // RPC must not pay for. Later touches move the deadline in memory, and the alarm that then
+    // fires early finds the lease renewed, skips, and re-arms from the new time.
+    if (firstOfThisIncarnation) this.#updateAlarm();
+  }
+
+  // A browser call is starting: refuse it if the object is already committed to going away, so no
+  // call is accepted only to be thrown away by the abort. Called by the call wrapper before the
+  // renewal (see noteClientRpcOnCalls).
+  assertLeaseLive(): void {
+    if (this.#leaseExpiryCommitted) throw new WorkspaceSessionExpiredError();
+  }
+
+  // Register a live client interface's idle notification. Returns a function that removes it.
+  addIdleNotifier(notify: () => Promise<void>): () => void {
+    this.#idleNotifiers.add(notify);
+    return () => { this.#idleNotifiers.delete(notify); };
+  }
+
+  // When the lease expires: a full window after the last sign that someone was here -- a browser
+  // call, the end of an agent turn, or the last check that decided to leave this workspace alone.
+  #leaseDeadline(): number {
+    return Math.max(
+        this.#lastClientRpcAt ?? 0,
+        this.#lastWorkEndedAt ?? 0,
+        this.#lastLeaseCheckAt ?? 0) + SESSION_LEASE_MS;
+  }
+
+  // Whether agent work is outstanding: a running turn, or a recorded call to a callable agent not
+  // yet appended to its chat (see `pendingAgentCalls`).
+  #hasAgentWork(): boolean {
+    return this.#runningAgents.size > 0 ||
+        Array.from(this.storage.pendingAgentCalls.list({ limit: 1 })).length > 0;
   }
 
   // This DO has one alarm, and this is its only writer: the alarm is the earliest of the times at
@@ -1846,8 +1949,7 @@ class OverseerImpl implements AgentHooks {
     let times: number[] = [];
 
     // Outstanding agent work: see #agentKeepAliveTime for why it is set once and held.
-    let hasAgentWork = this.#runningAgents.size > 0 ||
-        Array.from(this.storage.pendingAgentCalls.list({ limit: 1 })).length > 0;
+    let hasAgentWork = this.#hasAgentWork();
     if (!hasAgentWork) {
       this.#agentKeepAliveTime = undefined;
     } else {
@@ -1866,6 +1968,14 @@ class OverseerImpl implements AgentHooks {
     let nextDeliveredRecord = [...this.storage.gadgetResponseDeliveries.deliveredByDeliveredAt.list({ limit: 1 })][0];
     if (nextDeliveredRecord?.status === "delivered") {
       times.push(nextDeliveredRecord.deliveredAt + AGENT_RESPONSE_DELIVERED_RETENTION_MS);
+    }
+
+    // The client-activity lease: once a browser has touched this incarnation, the alarm has to run
+    // to check whether one still is. Independent of agent work -- while a turn runs the check skips
+    // and re-arms -- and excluded once expiry is committed, so the recompute the reap makes before
+    // aborting leaves only the delivery and retention deadlines, never the lease it is ending.
+    if (this.#lastClientRpcAt !== undefined && !this.#leaseExpiryCommitted) {
+      times.push(this.#leaseDeadline());
     }
 
     if (times.length > 0) {
@@ -1903,6 +2013,85 @@ class OverseerImpl implements AgentHooks {
       this.#agentKeepAliveTime = undefined;
       this.#updateAlarm();
     }
+  }
+
+  // End this incarnation if the client-activity lease has expired: tell each live client interface
+  // the workspace went idle, flush, and abort. Called by alarm() after runAlarmTasks has finished
+  // every other concern and re-armed what remains, so an expiry never drops scheduled work.
+  //
+  // The decision is made in one synchronous step after a single await, and needs no accounting of
+  // calls still running: a client call renews the lease on entry, so one younger than a lease is
+  // already inside the deadline checked below, and a call that lands after the decision is
+  // committed is refused rather than accepted and then thrown away by the abort.
+  async reapIdleSession(): Promise<void> {
+    if (this.#leaseExpiryCommitted) return;
+
+    // Nothing to check on a fresh incarnation: the alarm that woke it belonged to a workspace the
+    // platform had already released, which is the expected cost of arming the lease without
+    // counting what holds the object (see #lastClientRpcAt).
+    if (this.#lastClientRpcAt === undefined) return;
+
+    // The kill switch, and the only await before the decision. cacheTtl bounds how long a flip
+    // takes to reach a hot object; a read failure leaves the lease enforced, since KV is not the
+    // authority on whether anyone is here.
+    let killSwitch: string | null = null;
+    try {
+      killSwitch = await this.env.BLUEPRINTS.get(SESSION_LEASE_KEY, {cacheTtl: 60});
+    } catch (error) {
+      this.logger.warn("failed to read the session lease switch", {
+        event: "overseer.session.lease.switch.failed", error,
+      });
+    }
+
+    let now = Date.now();
+    let idleMs = now - Math.max(
+        this.#lastClientRpcAt, this.#lastWorkEndedAt ?? 0, this.#lastLeaseCheckAt ?? 0);
+    let liveInterfaces = this.#idleNotifiers.size;
+    let switchedOff = killSwitch === SESSION_LEASE_OFF;
+
+    if (switchedOff || this.#hasAgentWork() || now < this.#leaseDeadline()) {
+      if (switchedOff) {
+        this.logger.info("session lease check skipped by the kill switch", {
+          event: "overseer.session.lease.skipped", idleMs, liveInterfaces,
+        });
+      }
+      // Restart the window only when the deadline really has passed: a check that deferred to
+      // outstanding work or to the kill switch must not re-fire immediately on a deadline already
+      // behind it. A check that simply arrived early leaves the clock alone, so the recompute below
+      // re-arms at exactly the last activity plus one lease; moving it here would grant a workspace
+      // nobody is using close to a second lease, since the alarm is armed once per incarnation
+      // (see noteClientRpc) and therefore usually fires early.
+      // The invariant either way: the next check is one lease after the later of the last activity
+      // and the last check, and never later than one lease after the last activity unless one of
+      // those two deferrals moved it.
+      if (now >= this.#leaseDeadline()) this.#lastLeaseCheckAt = now;
+      this.#updateAlarm();
+      return;
+    }
+
+    this.#leaseExpiryCommitted = true;
+    this.logger.info("session lease expired", {
+      event: "overseer.session.lease.expired", idleMs, liveInterfaces,
+    });
+    // Recompute with the lease now excluded: what remains is the delivery and retention work, which
+    // legitimately re-fires on the next incarnation, or no alarm at all.
+    this.#updateAlarm();
+
+    if (liveInterfaces > 0) {
+      // Capped, not awaited to completion: a notification travels to a front Worker whose context
+      // may never run an event again, and a workspace nothing can end is the problem being fixed.
+      await Promise.race([
+        Promise.allSettled(Array.from(this.#idleNotifiers, notify => notify())),
+        scheduler.wait(SESSION_LEASE_NOTIFY_MS),
+      ]);
+    }
+
+    // ctx.abort() does not respect the output gate, so the flush is explicit (as in
+    // scheduleAccessRestart). Nothing may be awaited between the flush and the abort: the input
+    // gate keeps other events out only for as long as this continuation runs, and a write that
+    // landed after the flush would be lost.
+    await this.ctx.storage.sync();
+    this.ctx.abort(SESSION_LEASE_ABORT_REASON, {retryAlarm: false});
   }
 
   #deleteExternalMessageResponseDeliveryRecord(record: ExternalMessageRecord): void {
@@ -5139,9 +5328,22 @@ class OverseerImpl implements AgentHooks {
   // mints; omitted for the owner's and for internal callers (binding loopbacks already live
   // inside a counted session).
   //
+  // `activity` renews the client-activity lease on every call made through the returned stub, and
+  // is passed only by the browser-facing mints (connectToGadget): a user working inside a gadget UI
+  // may touch nothing else for a long time, while the agent's and the binding loopbacks' facet
+  // calls are not evidence that anyone is here at all.
+  //
+  // A facet call renews the lease but, unlike a call on one of the wrapped capability classes, is
+  // not refused once expiry is committed. That is safe. The renewal is an in-memory write made
+  // before the call is forwarded, so a facet call that arrives before the reap's decision is seen
+  // by it, and one that arrives after it cannot leave a durable write behind: the reap flushes this
+  // object with ctx.storage.sync() and aborts in the same continuation, awaiting nothing in
+  // between, and the input gate admits no other event until that continuation ends.
+  //
   // Since facet stubs currently can't be sent over RPC, the stub is wrapped in a Proxy to make it
   // look like an RpcTarget instead.
-  async getGadgetFacet(gadgetId: WorkpieceId, chatId?: number, joinAs?: SessionKind)
+  async getGadgetFacet(gadgetId: WorkpieceId, chatId?: number, joinAs?: SessionKind,
+                       activity?: () => void)
       : Promise<RpcStub<any>> {
     let facet = await this.getGadgetFacetFetcher(gadgetId, chatId);
     let leaveSession = joinAs ? this.joinSession(joinAs) : undefined;
@@ -5179,6 +5381,7 @@ class OverseerImpl implements AgentHooks {
         //   possibly a runtime bug which needs investigation.
         // TODO: Fix exception reporting it tail workers so we can remove this hack.
         return (...args: any[]) => {
+          activity?.();
           let result: Promise<any> = Reflect.apply(method, target, args);
           return result.catch((err: any) => {
             let msg = err;
@@ -9904,11 +10107,14 @@ export class OverseerDurableObject extends DurableObject<Cloudflare.Env> {
    *   alarm() itself runs). If the DO dies *while* the alarm is running, the system retries the
    *   alarm, picking the work up yet again.
    * - External-message responses ready to deliver, and delivered records due to be swept.
+   * - The client-activity lease: whether any browser still reaches this workspace, checked last so
+   *   that ending the object can never drop work another concern had just scheduled.
    *
    * See OverseerImpl.runAlarmTasks for how the concerns are run together.
    */
   async alarm() {
     await this.impl.runAlarmTasks();
+    await this.impl.reapIdleSession();
   }
 
   // Initialize a brand-new workspace's storage. (Before git-backed code storage this also wrote
@@ -9934,137 +10140,158 @@ export class OverseerDurableObject extends DurableObject<Cloudflare.Env> {
 
   /**
    * `notifyClosed` should be invoked when the return `Overseer` stub is disposed, which is used
-   * by AuthenticatedApiImpl.#openGadgetInternal() to detect Durable Object disconnects.
+   * by AuthenticatedApiImpl.#openGadgetInternal() to detect Durable Object disconnects. It is also
+   * invoked with `"idle"` when the client-activity lease expires, which tells the front Worker to
+   * close the browser's socket with the idle code (see OverseerImpl.reapIdleSession).
    */
   async open(userId: string, profileId: string,
-             notifyClosed: NativeRpcStub<() => void>,
+             notifyClosed: NativeRpcStub<(reason?: "idle") => void>,
              shareKey?: string,
              configureObservers?: RpcStub<ObserverConfigCallback>): Promise<Overseer> {
-    let firstOpen = !this.impl.ownerId;
-    if (firstOpen) {
-      // This Overseer hasn't been initialized yet.
-      await this.ctx.blockConcurrencyWhile(async () => {
-        // Verify that the owner believes it exists. The owner account must be initialized with
-        // any new gadgets first before the gadget is actually opened.
-        let owner = this.impl.users.get(this.impl.users.idFromString(userId));
-        let meta = await owner.getGadget(this.ctx.id.toString());
-        if (!meta) {
-          throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceNotFound);
-        }
-        if (meta.owner) {
-          // The user's DO contains a record indicating that this gadget was shared to them by
-          // some other owner. This gadget may have existed in the past, and then was deleted,
-          // which does not proactively clean up share recipient's references. We need to treat
-          // this as missing otherwise we'll inadvertently create a new gadget with this ID
-          // belonging to a different user than the original.
-          throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceNotFound);
-        }
+    // A browser is opening this workspace: arm the lease. Renewed here directly because this method
+    // is not one of the wrapped client calls (see noteClientRpcOnCalls).
+    this.impl.noteClientRpc();
 
-        // Owner says we exist, so let's initialize ourselves.
-        this.impl.ownerId = userId;
+    // Tell the front Worker if the lease expires before this call returns. Registered here, ahead of
+    // every await: an open parked on a step the client controls -- the observer-configuration dialog,
+    // a share-key redemption -- is exactly the session the lease exists to end, and without this the
+    // reap would find nobody to notify, abort, and leave the browser with a failed open rather than
+    // the paused state. Removed in the `finally` below, so it never outlives the call, whether it
+    // returns or throws. The argument stub is called directly rather than a dup: it lives exactly as
+    // long as this call, which is precisely this notification's lifetime.
+    let unregisterIdleNotifier = this.impl.addIdleNotifier(
+        async () => { await notifyClosed("idle"); });
+    try {
+      let firstOpen = !this.impl.ownerId;
+      if (firstOpen) {
+        // This Overseer hasn't been initialized yet.
+        await this.ctx.blockConcurrencyWhile(async () => {
+          // Verify that the owner believes it exists. The owner account must be initialized with
+          // any new gadgets first before the gadget is actually opened.
+          let owner = this.impl.users.get(this.impl.users.idFromString(userId));
+          let meta = await owner.getGadget(this.ctx.id.toString());
+          if (!meta) {
+            throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceNotFound);
+          }
+          if (meta.owner) {
+            // The user's DO contains a record indicating that this gadget was shared to them by
+            // some other owner. This gadget may have existed in the past, and then was deleted,
+            // which does not proactively clean up share recipient's references. We need to treat
+            // this as missing otherwise we'll inadvertently create a new gadget with this ID
+            // belonging to a different user than the original.
+            throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceNotFound);
+          }
 
-        this.impl.storage.ownerId.put(userId);
+          // Owner says we exist, so let's initialize ourselves.
+          this.impl.ownerId = userId;
 
-        this.#initializeNewWorkspace();
-      });
-    }
+          this.impl.storage.ownerId.put(userId);
 
-    let isOwner = (userId == this.impl.ownerId);
-
-    // Cache the owner's profileId in memory when the owner opens.
-    if (isOwner) {
-      this.impl.ownerProfileId = profileId;
-    }
-
-    // Make singleton gatekeepers (e.g. the Context Library) available to the agent as unnamed
-    // capsules. Idempotent and best-effort, so a library hiccup never blocks opening the gadget.
-    // On the very first open we block so the agent's first turn sees the capsules; later opens let the
-    // reconcile run in the background to keep cross-DO latency off the hot path.
-    let ensureCapsules = this.impl.ensureAmbientCapsules().catch((err) => {
-      this.impl.logger.error("failed to ensure singleton gatekeeper capsules", {
-        event: "singleton.capsules.ensure.failed", error: err,
-      });
-    });
-    if (firstOpen) {
-      await ensureCapsules;
-    }
-
-    let owner = this.impl.users.get(this.impl.users.idFromString(this.impl.ownerId!));
-    let clientUser = isOwner
-        ? owner
-        : this.impl.users.get(this.impl.users.idFromString(userId));
-
-    // Refresh the owner's outputs index. Pushes are best-effort, and workspaces predating the
-    // index have never pushed at all, so re-syncing on open is what corrects both.
-    if (isOwner) {
-      this.impl.markOutputsDirty();
-    }
-
-    // The caller's effective role. The owner always has "build".
-    let role: CollaboratorRole = "build";
-
-    if (!isOwner) {
-      let sharing = await this.impl.getSharingManager();
-
-      // If a share key was provided, redeem it. The owner already has full access and should not
-      // appear in the collaborators table.
-      if (shareKey) {
-        await sharing.redeemShareKey({
-          rawKey: shareKey,
-          profileId,
-          fetchProfile: () => clientUser.whoami(),
+          this.#initializeNewWorkspace();
         });
       }
 
-      // Ambient reconciliation may attach Gatekeepers after open() starts. Finish it before taking
-      // the observer snapshot so every capability exposed to this collaborator has an observer.
-      await ensureCapsules;
+      let isOwner = (userId == this.impl.ownerId);
 
-      // Check authorization: compute the caller's effective role from the permission graph, then
-      // verify they may observe everything this Gadget has read through its in-scope gatekeepers,
-      // configuring their connected accounts if needed. Observer verification runs only after a
-      // valid role is confirmed, so it never reveals gatekeeper or resource metadata to an
-      // unauthorized user.
-      //
-      // An unauthorized caller (no effective role -- never had access, or was removed) gets a
-      // distinct denial without workspace metadata. A removed collaborator who reconnects after
-      // their session is force-restarted lands here and sees the terminal access-denied page.
-      let effectiveRole = await this.impl.authorizeCollaborator(
-          profileId, clientUser, {configureCb: configureObservers});
-      if (!effectiveRole) {
-        throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceAccessDenied);
+      // Cache the owner's profileId in memory when the owner opens.
+      if (isOwner) {
+        this.impl.ownerProfileId = profileId;
       }
-      role = effectiveRole;
 
-      // Fire-and-forget a call to the collaborator's user DO so the gadget appears on
-      // (or is refreshed on) their home page.
-      let title = this.impl.storage.title.get();
-      let gadgetId = this.impl.ctx.id.toString();
-      void (async () => {
-        try {
-          const ownerProfile = await owner.whoami();
-          await clientUser.recordSharedGadgetOpen(gadgetId, title, ownerProfile, role);
-        } catch (err) {
-          this.impl.logger.warn("failed to record shared gadget open", {
-            event: "shared.gadget.open.record.failed", gadgetId, error: err,
+      // Make singleton gatekeepers (e.g. the Context Library) available to the agent as unnamed
+      // capsules. Idempotent and best-effort, so a library hiccup never blocks opening the gadget.
+      // On the very first open we block so the agent's first turn sees the capsules; later opens let the
+      // reconcile run in the background to keep cross-DO latency off the hot path.
+      let ensureCapsules = this.impl.ensureAmbientCapsules().catch((err) => {
+        this.impl.logger.error("failed to ensure singleton gatekeeper capsules", {
+          event: "singleton.capsules.ensure.failed", error: err,
+        });
+      });
+      if (firstOpen) {
+        await ensureCapsules;
+      }
+
+      let owner = this.impl.users.get(this.impl.users.idFromString(this.impl.ownerId!));
+      let clientUser = isOwner
+          ? owner
+          : this.impl.users.get(this.impl.users.idFromString(userId));
+
+      // Refresh the owner's outputs index. Pushes are best-effort, and workspaces predating the
+      // index have never pushed at all, so re-syncing on open is what corrects both.
+      if (isOwner) {
+        this.impl.markOutputsDirty();
+      }
+
+      // The caller's effective role. The owner always has "build".
+      let role: CollaboratorRole = "build";
+
+      if (!isOwner) {
+        let sharing = await this.impl.getSharingManager();
+
+        // If a share key was provided, redeem it. The owner already has full access and should not
+        // appear in the collaborators table.
+        if (shareKey) {
+          await sharing.redeemShareKey({
+            rawKey: shareKey,
+            profileId,
+            fetchProfile: () => clientUser.whoami(),
           });
-          return;
         }
-        // Catch up whatever happened while they were away; changes from here on reach them
-        // through the session fan-out (joinOutputsFanout).
-        await this.impl.syncOutputsTo(clientUser);
-      })();
-    }
 
-    if (role === "use") {
-      // "use" collaborators get a restricted capability exposing only the gadget UI.
-      return new UseOverseerInterface(
-          this.impl, profileId, userId, notifyClosed.dup());
-    }
+        // Ambient reconciliation may attach Gatekeepers after open() starts. Finish it before taking
+        // the observer snapshot so every capability exposed to this collaborator has an observer.
+        await ensureCapsules;
 
-    return new OverseerClientInterface(
-        this.impl, profileId, userId, isOwner, notifyClosed.dup(),
-        ensureCapsules);
+        // Check authorization: compute the caller's effective role from the permission graph, then
+        // verify they may observe everything this Gadget has read through its in-scope gatekeepers,
+        // configuring their connected accounts if needed. Observer verification runs only after a
+        // valid role is confirmed, so it never reveals gatekeeper or resource metadata to an
+        // unauthorized user.
+        //
+        // An unauthorized caller (no effective role -- never had access, or was removed) gets a
+        // distinct denial without workspace metadata. A removed collaborator who reconnects after
+        // their session is force-restarted lands here and sees the terminal access-denied page.
+        let effectiveRole = await this.impl.authorizeCollaborator(
+            profileId, clientUser, {configureCb: configureObservers});
+        if (!effectiveRole) {
+          throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceAccessDenied);
+        }
+        role = effectiveRole;
+
+        // Fire-and-forget a call to the collaborator's user DO so the gadget appears on
+        // (or is refreshed on) their home page.
+        let title = this.impl.storage.title.get();
+        let gadgetId = this.impl.ctx.id.toString();
+        void (async () => {
+          try {
+            const ownerProfile = await owner.whoami();
+            await clientUser.recordSharedGadgetOpen(gadgetId, title, ownerProfile, role);
+          } catch (err) {
+            this.impl.logger.warn("failed to record shared gadget open", {
+              event: "shared.gadget.open.record.failed", gadgetId, error: err,
+            });
+            return;
+          }
+          // Catch up whatever happened while they were away; changes from here on reach them
+          // through the session fan-out (joinOutputsFanout).
+          await this.impl.syncOutputsTo(clientUser);
+        })();
+      }
+
+      if (role === "use") {
+        // "use" collaborators get a restricted capability exposing only the gadget UI.
+        return new UseOverseerInterface(
+            this.impl, profileId, userId, notifyClosed.dup());
+      }
+
+      return new OverseerClientInterface(
+          this.impl, profileId, userId, isOwner, notifyClosed.dup(),
+          ensureCapsules);
+    } finally {
+      // Both returns above hand back an already-constructed interface, whose constructor has
+      // registered its own notification, so this removal runs after the handover, never between.
+      unregisterIdleNotifier();
+    }
   }
 
   #getExternalChat(externalChatKey: string): ExternalChatRecord | undefined {
@@ -10757,15 +10984,68 @@ function joinSessionPresence(
   };
 }
 
+// The key the provenance callback is stored under on a browser-owned capability. A symbol, not a
+// name: these classes are RPC surfaces, so a named own property holding a function is a method the
+// client can call and one capnweb-validate's codegen emits into the generated validator. A
+// symbol-keyed property is returned by neither getOwnPropertyNames nor that codegen, so it stays
+// internal bookkeeping.
+const clientActivity = Symbol("clientActivity");
+
+// What the client-activity wrapper needs from an instance of the classes it wraps: the workspace
+// the call lands on, and -- only on an instance a browser session owns -- the touch that renews its
+// lease. `impl` is TypeScript-private on all of them, so the wrapper reads it structurally; that is
+// a visibility escape, not a claim about the type.
+type ClientCallTarget = { impl: OverseerImpl; [clientActivity]?: () => void };
+
+// Renew the client-activity lease on every call a browser makes on `cls`, and refuse the call
+// outright once the workspace has committed to expiring (see OverseerImpl.reapIdleSession).
+// Renewing on entry is what lets the reap decide from the deadline alone, with no accounting of
+// calls still running: a call that arrived less than a lease ago has already moved the deadline
+// past now.
+//
+// Provenance decides, never class membership: the agent, hook deliveries and binding loopbacks
+// construct the very same capability classes, and their calls say nothing about whether a user is
+// present. Only a browser-facing construction site passes the provenance callback, and only
+// instances carrying it renew. Applied after the class body so it composes with
+// @validateRpc() whatever that decorator leaves on the prototype.
+function noteClientRpcOnCalls(cls: {prototype: object}): void {
+  let proto = cls.prototype;
+  for (let name of Object.getOwnPropertyNames(proto)) {
+    if (name === "constructor") continue;
+    let descriptor = Object.getOwnPropertyDescriptor(proto, name)!;
+    // Only methods: an accessor has no `value` to wrap, and symbol-keyed members -- [Symbol.dispose]
+    // above all -- are not returned here at all, which is right: a client letting go of a
+    // capability is the opposite of activity.
+    if (typeof descriptor.value !== "function") continue;
+    let original = descriptor.value as (...args: unknown[]) => unknown;
+
+    Object.defineProperty(proto, name, {
+      ...descriptor,
+      value: function (this: ClientCallTarget, ...args: unknown[]): unknown {
+        let renew = this[clientActivity];
+        if (renew === undefined) return original.apply(this, args);
+
+        this.impl.assertLeaseLive();  // throws if the lease has already expired
+        renew();
+        return original.apply(this, args);
+      },
+    });
+  }
+}
+
 @validateRpc()
 class OverseerClientInterface extends RpcTarget implements Overseer {
   #clientProfilePromise: Promise<AiChatAuthorInfo> | undefined;
+
+  // This class is constructed only as open()'s return value, so every call on it is a browser call.
+  // See noteClientRpcOnCalls.
+  readonly [clientActivity] = () => this.impl.noteClientRpc();
 
   constructor(private impl: OverseerImpl,
               private clientProfileId: string,
               private clientUserId: string,
               private isOwner: boolean,
-              private notifyClosed: NativeRpcStub<() => void>,
+              private notifyClosed: NativeRpcStub<(reason?: "idle") => void>,
               // Ambient capsule reconciliation started during open(); listSlashCommands() waits for
               // this so ambient providers are attached when possible.
                private slashCommandsReady: Promise<void>) {
@@ -10774,6 +11054,8 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
     this.#leavePresence = joinSessionPresence(
         this.impl, this.clientProfileId, "build", () => this.#getClientProfile());
     this.#leaveOutputsFanout = this.impl.joinOutputsFanout(this.clientUserId);
+    this.#unregisterIdleNotifier = this.impl.addIdleNotifier(
+        async () => { await this.notifyClosed("idle"); });
   }
 
   // We create a new stub for every call so that we don't have to worry about detecting when a
@@ -10794,11 +11076,13 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
   #leaveSession: () => void;
   #leavePresence: () => void;
   #leaveOutputsFanout: () => void;
+  #unregisterIdleNotifier: () => void;
 
   [Symbol.dispose]() {
     this.#leaveSession();
     this.#leavePresence();
     this.#leaveOutputsFanout();
+    this.#unregisterIdleNotifier();
     this.notifyClosed();
     this.notifyClosed[Symbol.dispose]();
   }
@@ -11011,14 +11295,15 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
     // @ts-expect-error An RpcTarget implementing the interface works in place of a stub, but the
     //     type system doesn't know this.
     return new GadgetClientImpl(this.impl, record.id, this.clientUserId,
-        this.#mintedCapabilityKind());
+        this.#mintedCapabilityKind(), this[clientActivity]);
   }
 
   async getGadget(id: WorkpieceId): Promise<RpcStub<GadgetClient>> {
     this.impl.getGadgetRecord(id);  // validate it exists
     // @ts-expect-error An RpcTarget implementing the interface works in place of a stub, but the
     //     type system doesn't know this.
-    return new GadgetClientImpl(this.impl, id, this.clientUserId, this.#mintedCapabilityKind());
+    return new GadgetClientImpl(this.impl, id, this.clientUserId, this.#mintedCapabilityKind(),
+        this[clientActivity]);
   }
 
   async deleteSelf(): Promise<void> {
@@ -11094,7 +11379,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
     // sessions that restart is about to sever (see #gatekeepersPendingRestart).
     this.impl.assertGatekeeperUsable(id);
     return new GatekeeperClientImpl(this.impl, id, this.impl.getGatekeeperFacet(id),
-        undefined, this.#mintedCapabilityKind());
+        undefined, this.#mintedCapabilityKind(), this[clientActivity]);
   }
 
   private async recordConnectionCreated(
@@ -12281,6 +12566,8 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
   }
 }
 
+noteClientRpcOnCalls(OverseerClientInterface);
+
 // Restricted capability handed to "use"-role collaborators. It implements the full `Overseer`
 // interface but permits only the handful of methods needed to render and interact with the
 // gadgets' deployed UIs: getMetadata() (restricted to id/title/owner), a restricted
@@ -12299,16 +12586,22 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
 // whether "use" callers may invoke it.
 @validateRpc()
 class UseOverseerInterface extends RpcTarget implements Overseer {
+  // Constructed only as open()'s return value, so every call on it is a browser call; see
+  // noteClientRpcOnCalls.
+  readonly [clientActivity] = () => this.impl.noteClientRpc();
+
   constructor(private impl: OverseerImpl,
               private clientProfileId: string,
               private clientUserId: string,
-              private notifyClosed: NativeRpcStub<() => void>) {
+              private notifyClosed: NativeRpcStub<(reason?: "idle") => void>) {
     super();
     this.#leaveSession = this.impl.joinSession("use");
     this.#leavePresence = joinSessionPresence(
         this.impl, this.clientProfileId, "use",
         () => retryOnDoReset(() => this.#clientUser.whoami(), this.impl.logger));
     this.#leaveOutputsFanout = this.impl.joinOutputsFanout(this.clientUserId);
+    this.#unregisterIdleNotifier = this.impl.addIdleNotifier(
+        async () => { await this.notifyClosed("idle"); });
   }
 
   // Fresh stub per call; see OverseerClientInterface.#clientUser.
@@ -12328,11 +12621,13 @@ class UseOverseerInterface extends RpcTarget implements Overseer {
   #leaveSession: () => void;
   #leavePresence: () => void;
   #leaveOutputsFanout: () => void;
+  #unregisterIdleNotifier: () => void;
 
   [Symbol.dispose]() {
     this.#leaveSession();
     this.#leavePresence();
     this.#leaveOutputsFanout();
+    this.#unregisterIdleNotifier();
     this.notifyClosed();
     this.notifyClosed[Symbol.dispose]();
   }
@@ -12426,7 +12721,7 @@ class UseOverseerInterface extends RpcTarget implements Overseer {
     }
     // @ts-expect-error An RpcTarget implementing the interface works in place of a stub, but the
     //     type system doesn't know this.
-    return new UseGadgetClientInterface(this.impl, id, this.clientUserId);
+    return new UseGadgetClientInterface(this.impl, id, this.clientUserId, this[clientActivity]);
   }
 
   // --- Denied methods (build-only) ---
@@ -12568,6 +12863,8 @@ class UseOverseerInterface extends RpcTarget implements Overseer {
   async previewRevokeShareLink(_linkId: string): Promise<AffectedCollaborator[]> { this.#deny(); }
 }
 
+noteClientRpcOnCalls(UseOverseerInterface);
+
 // Capability representing one gadget workpiece, handed to "build"-role sessions via
 // Overseer.createGadget()/getGadget().
 //
@@ -12579,9 +12876,17 @@ class UseOverseerInterface extends RpcTarget implements Overseer {
 class GadgetClientImpl extends RpcTarget implements GadgetClient {
   #leaveSession?: () => void;
 
+  // `activity` marks this capability as one a browser session owns, and renews that session's lease
+  // on every call; passed by the browser-facing mints, omitted when the agent, a hook or a binding
+  // loopback builds one. Kept under the `clientActivity` symbol, which keeps it off this class's
+  // RPC surface. See noteClientRpcOnCalls.
+  readonly [clientActivity]?: () => void;
+
   constructor(private impl: OverseerImpl, private id: WorkpieceId,
-      private clientUserId: string, private joinedAs?: SessionKind) {
+      private clientUserId: string, private joinedAs?: SessionKind,
+      activity?: () => void) {
     super();
+    this[clientActivity] = activity;
     if (joinedAs) this.#leaveSession = impl.joinSession(joinedAs);
   }
 
@@ -12626,8 +12931,10 @@ class GadgetClientImpl extends RpcTarget implements GadgetClient {
       interaction_type: "gadget_ui_connected",
     });
     // The facet stub counts exactly as this capability does (joinedAs): it can outlive this
-    // object, and it is the very stub a hook-enable widening's data flows through.
-    return this.impl.getGadgetFacet(this.id, chatId, this.joinedAs);
+    // object, and it is the very stub a hook-enable widening's data flows through. It carries this
+    // capability's provenance for the same reason: working inside the gadget UI is the client
+    // being here.
+    return this.impl.getGadgetFacet(this.id, chatId, this.joinedAs, this[clientActivity]);
   }
 
   async getExportFormats(chatId?: number): Promise<GadgetExportFormat[]> {
@@ -12659,10 +12966,11 @@ class GadgetClientImpl extends RpcTarget implements GadgetClient {
     let record = this.impl.getGadgetRecord(this.id);
     let edge = record.bindings[name];
     if (!edge || edge.pending || !this.impl.storage.gatekeepers.get(edge.target)) return null;
-    // The child capability counts exactly as this one does: it can outlive this object.
+    // The child capability counts exactly as this one does: it can outlive this object, and it
+    // carries the same provenance.
     return new GatekeeperClientImpl(
         this.impl, edge.target, this.impl.getGatekeeperFacet(edge.target),
-        undefined, this.joinedAs);
+        undefined, this.joinedAs, this[clientActivity]);
   }
 
   async bind(name: string, target: WorkpieceId, chatId?: number): Promise<void> {
@@ -12837,6 +13145,8 @@ class GadgetClientImpl extends RpcTarget implements GadgetClient {
   }
 }
 
+noteClientRpcOnCalls(GadgetClientImpl);
+
 // Restricted GadgetClient handed to "use"-role collaborators: it permits only what is needed to
 // render and interact with the gadget's deployed UI, mainline-only. Like UseOverseerInterface,
 // `implements GadgetClient` enforces default-deny at compile time: any new GadgetClient method
@@ -12848,9 +13158,14 @@ class UseGadgetClientInterface extends RpcTarget implements GadgetClient {
   // capability that escaped the count would let a scope widening find no session to sever.
   #leaveSession: () => void;
 
+  // `activity`: see GadgetClientImpl. Only "use" collaborators are ever handed one of these, and
+  // only through their session interface, but the provenance is passed explicitly all the same.
+  readonly [clientActivity]?: () => void;
+
   constructor(private impl: OverseerImpl, private id: WorkpieceId,
-      private clientUserId: string) {
+      private clientUserId: string, activity?: () => void) {
     super();
+    this[clientActivity] = activity;
     this.#leaveSession = impl.joinSession("use");
   }
 
@@ -12897,8 +13212,9 @@ class UseGadgetClientInterface extends RpcTarget implements GadgetClient {
       interaction_type: "gadget_ui_connected",
     });
     // The facet stub counts as a "use" session for its own lifetime, like this interface: it can
-    // outlive this object, and it is the very stub a hook-enable widening's data flows through.
-    return this.impl.getGadgetFacet(this.id, undefined, "use");
+    // outlive this object, and it is the very stub a hook-enable widening's data flows through. It
+    // carries this capability's provenance too (see GadgetClientImpl.connectToGadget).
+    return this.impl.getGadgetFacet(this.id, undefined, "use", this[clientActivity]);
   }
 
   async getExportFormats(chatId?: number): Promise<GadgetExportFormat[]> {
@@ -12932,6 +13248,8 @@ class UseGadgetClientInterface extends RpcTarget implements GadgetClient {
   }
 }
 
+noteClientRpcOnCalls(UseGadgetClientInterface);
+
 @validateRpc()
 class GatekeeperClientImpl<Session extends RpcCompatible<Session>>
     extends RpcTarget implements GatekeeperClient<Session> {
@@ -12939,11 +13257,17 @@ class GatekeeperClientImpl<Session extends RpcCompatible<Session>>
   // #hasCollaboratorSession; omitted for the owner's and for internal construction.
   #leaveSession?: () => void;
 
+  // `activity`: see GadgetClientImpl. Omitted by the internal mints -- a gatekeeper session opened
+  // by a binding loopback is the gadget's own traffic, not a user's.
+  readonly [clientActivity]?: () => void;
+
   constructor(private impl: OverseerImpl, private id: number,
       private facet: Fetcher<Gatekeeper<Session>>,
       private caller: GatekeeperCaller = {from: "user"},
-      joinedAs?: SessionKind) {
+      joinedAs?: SessionKind,
+      activity?: () => void) {
     super();
+    this[clientActivity] = activity;
     if (joinedAs) this.#leaveSession = impl.joinSession(joinedAs);
   }
 
@@ -13005,6 +13329,8 @@ class GatekeeperClientImpl<Session extends RpcCompatible<Session>>
     return record.creationSpec;
   }
 }
+
+noteClientRpcOnCalls(GatekeeperClientImpl);
 
 // ObservationAuthorizer handed to a slash-command provider. Scoped to one Gatekeeper; observations
 // only (no actions or hooks).

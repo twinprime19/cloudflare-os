@@ -343,6 +343,14 @@ function codedErrorFamily<Code extends string>(messages: Record<Code, string>) {
   };
 }
 
+/**
+ * WebSocket close code the Worker uses when it ends an API session because the Overseer's
+ * client-activity lease expired and that workspace was the session's last live one. In the
+ * private 4000-4999 range, so it can never collide with a protocol code. The browser recognises
+ * it and parks its reconnect loop on the "Paused" chip instead of dialing back.
+ */
+export const SESSION_IDLE_CLOSE_CODE = 4001;
+
 /** Stable error codes attached to expected failures from `AuthenticatedApi.openGadget()`. */
 export const OPEN_GADGET_ERROR_CODES = {
   workspaceNotFound: "WORKSPACE_NOT_FOUND",

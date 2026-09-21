@@ -9,6 +9,7 @@ import type {
   ObserverConfigCallback,
   Overseer,
 } from '@gadgets/workshop-shared/api'
+import { isConnectionPaused, subscribeConnectionPause } from './connectionPause'
 import { reportIssue } from './errorReporting'
 import { linkActionLog } from './useActions'
 import { useDocumentTitle } from './useDocumentTitle'
@@ -137,6 +138,13 @@ export function useWorkspaceOpen({
         if (connectionLost) setConnectionLost(false)
       } catch (caught) {
         if (cancelled) return
+        // A deliberate pause drops the socket under whatever this open was still waiting on, so
+        // the rejection describes the pause, not the workspace: no error page and no issue report,
+        // or parking an idle tab would flash a failure and file a report for a workspace that is
+        // fine. Dropping the socket makes `main.tsx` publish a placeholder stub for the connection
+        // it has not made yet, and that re-render re-issues `openGadget`; the call queues on the
+        // placeholder and flushes when the user resumes from the Paused chip.
+        if (isConnectionPaused()) return
         console.error('Failed to load gadget:', caught)
 
         // TODO: Give share-link and observer failures stable codes so this remaining legacy
@@ -179,6 +187,18 @@ export function useWorkspaceOpen({
       disposeAttempt()
     }
   }, [id, authenticatedApi, reloadNonce])
+
+  // An unanswered observer dialog is not work: the server is parked inside `openGadget` waiting on
+  // this client, holding the workspace's Durable Object open, so the tab's idle pause is allowed to
+  // land under it. Cancel the dialog when it does, on the same path as its own Cancel button --
+  // otherwise a modal nobody answered stays on screen over a connection that is gone. The tab then
+  // waits on the Paused chip; resuming re-opens the workspace, which asks again.
+  useEffect(() => {
+    if (!observerConfig) return
+    return subscribeConnectionPause(() => {
+      if (isConnectionPaused()) observerConfig.reject(new Error(OBSERVER_CANCELLED))
+    })
+  }, [observerConfig])
 
   return {
     overseer,
