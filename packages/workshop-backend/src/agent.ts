@@ -1471,6 +1471,14 @@ const MAX_TURN_STEPS = 30;
 // to redirect it.
 const IDENTICAL_FAILED_CALL_LIMIT = 3;
 
+// Shown when a model step hits its output cap having written no text and made no tool calls
+// (typically reasoning that consumed the whole budget). It replaces the step's empty message text
+// rather than following as a second message, so the chat shows one explained reply instead of
+// an empty assistant bubble plus a notice.
+const LENGTH_CAP_NOTICE = "Stopped: the model used its whole output budget on reasoning and " +
+    "wrote no reply. Ask a narrower question, or say \"continue\" and I will answer from where " +
+    "it left off.";
+
 // The per-activation turn budget. It lives in runAgent, not in the pass, because a pass that ends
 // in a compaction reload has still spent the turns it ran (and its repeated failures still
 // count): a per-pass counter would restart on every reload and bound nothing.
@@ -3910,6 +3918,13 @@ async function runAgentPass(
                 Object.assign(result, notes);
               }
               return result;
+            });
+          }
+
+          if (message.stopReason === "length" && msg.message === "" && !msg.toolCalls) {
+            msg.message = LENGTH_CAP_NOTICE;
+            logger.info("agent turn stopped on the output cap without a reply", {
+              event: "agent.turn.stopped", chatId, reason: "length",
             });
           }
 

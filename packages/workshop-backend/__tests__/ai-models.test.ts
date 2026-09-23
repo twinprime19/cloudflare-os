@@ -65,9 +65,64 @@ async function captureRequest(handle: ModelHandle): Promise<CapturedRequest> {
   return capturedRequests[0];
 }
 
+// Runs one request with the given thinking switch and returns the parsed request body.
+async function captureBody(handle: ModelHandle, thinking: boolean)
+    : Promise<Record<string, unknown>> {
+  const stream = await handle.stream(handle.model, {
+    messages: [{ role: "user", content: "hello", timestamp: 0 }],
+  }, { fetch: fetchStub, maxRetries: 0, thinking });
+  const message = await stream.result();
+  expect(message.stopReason).toBe("error");
+  expect(capturedRequests.length).toBe(1);
+  return JSON.parse(capturedRequests[0].body) as Record<string, unknown>;
+}
+
 describe("getModel AI Gateway routing", () => {
   beforeEach(() => {
     capturedRequests.length = 0;
+  });
+
+  describe("reasoning controls in the request body", () => {
+    const GLM_CONFIG: AiModelConfig = { ...WORKERS_AI_CONFIG, model: "@cf/zai-org/glm-5.3-flash" };
+
+    // Workers AI ignores a thinking-disabled request and caps nothing itself, so a reasoning
+    // model always gets low effort -- also on thinking-off calls such as chat titles.
+    it.each([true, false])("sends low reasoning effort to a Workers AI reasoning model " +
+        "(thinking: %s)", async (thinking) => {
+      const handle = getModel(env(), GLM_CONFIG, INITIATOR);
+      expect(handle.model.reasoning).toBe(true);
+      const body = await captureBody(handle, thinking);
+      expect(body.reasoning_effort).toBe("low");
+    }, 15000);
+
+    it.each([true, false])("sends no reasoning effort to a non-reasoning Workers AI model " +
+        "(thinking: %s)", async (thinking) => {
+      const handle = getModel(env(), WORKERS_AI_CONFIG, INITIATOR);
+      expect(handle.model.reasoning).toBe(false);
+      const body = await captureBody(handle, thinking);
+      expect(body).not.toHaveProperty("reasoning_effort");
+    }, 15000);
+
+    it("keeps medium reasoning for OpenAI Responses and turns it off on request", async () => {
+      const config: AiModelConfig = { provider: "openai", model: "gpt-5.2", apiToken: "unused" };
+      const on = await captureBody(getModel(env(), config, INITIATOR), true);
+      expect(on.reasoning).toEqual({ effort: "medium", summary: "auto" });
+      expect(on.include).toEqual(["reasoning.encrypted_content"]);
+      capturedRequests.length = 0;
+      const off = await captureBody(getModel(env(), config, INITIATOR), false);
+      expect(off.reasoning).toEqual({ effort: "none" });
+      expect(off).not.toHaveProperty("reasoning_effort");
+    }, 15000);
+
+    it("keeps Anthropic's provider-default thinking and disables it on request", async () => {
+      const on = await captureBody(getModel(env(), ANTHROPIC_CONFIG, INITIATOR), true);
+      expect(on).not.toHaveProperty("thinking");
+      expect(on).not.toHaveProperty("reasoning_effort");
+      capturedRequests.length = 0;
+      const off = await captureBody(getModel(env(), ANTHROPIC_CONFIG, INITIATOR), false);
+      expect(off.thinking).toEqual({ type: "disabled" });
+      expect(off).not.toHaveProperty("reasoning_effort");
+    }, 15000);
   });
 
   it("routes non-Workers providers through the platform gateway", async () => {

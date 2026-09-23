@@ -315,6 +315,38 @@ it("ends the turn with a notice at the step cap", async () => {
   expect(scripted.remainingSteps()).toBe(0);
 });
 
+it("persists a visible notice when the model stops on its output cap without a reply",
+    async () => {
+  const scripted = useScriptedModel([
+    { text: "", finishReason: "length" },
+    { text: "Here is the answer." },
+  ]);
+  const session = await openScriptedSession();
+
+  const stopped = await session.runTurn("Analyze the sheet.");
+
+  expect(stopped.outcome).toEqual({ status: "completed" });
+  expect(scripted.requests).toHaveLength(1);
+  expect(stopped.history.at(-1)).toMatchObject({
+    type: "message",
+    author: { type: "agent" },
+    message: "Stopped: the model used its whole output budget on reasoning and wrote no reply. " +
+        "Ask a narrower question, or say \"continue\" and I will answer from where it left off.",
+  });
+  expect(stopped.history.at(-1)).not.toHaveProperty("toolCalls");
+
+  const resumed = await session.runTurn("continue");
+
+  expect(resumed.outcome).toEqual({ status: "completed" });
+  expect(scripted.requests).toHaveLength(2);
+  expect(resumed.history.at(-1)).toMatchObject({
+    type: "message",
+    author: { type: "agent" },
+    message: "Here is the answer.",
+  });
+  expect(scripted.remainingSteps()).toBe(0);
+});
+
 it("truncates executeCode output at 32 KiB", async () => {
   const scripted = useScriptedModel([
     executeCodeStep("dump", 'export default async function() { console.log("x".repeat(40_000)); }'),

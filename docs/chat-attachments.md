@@ -216,6 +216,14 @@ Object — relevant here because `readSheet`/`getRows` paging is exactly the kin
 - 30 steps in one turn without finishing stop it with: "Stopped after 30 steps in one turn without
   finishing. Reply to let me continue."
 
+A step the model ends on its output cap (`finish_reason: "length"`) with no reply text and no tool
+calls — typically reasoning that used the whole budget — is saved with this text instead of an
+empty reply: "Stopped: the model used its whole output budget on reasoning and wrote no reply. Ask
+a narrower question, or say "continue" and I will answer from where it left off." A length stop
+that did write some text keeps that text. Workers AI reasoning models (e.g. GLM) are always sent
+`reasoning_effort: "low"` (Workers AI ignores a thinking-disabled request), which keeps a sheet
+analysis from reasoning up to that cap in the first place.
+
 A runtime exception inside `executeCode` is a **successful** tool result — the console log gains an
 `Uncaught exception` line, but the call itself does not error — so only a load failure (e.g. a
 `SyntaxError` in the submitted code) counts toward the repeated-failure guard; a loop that keeps
