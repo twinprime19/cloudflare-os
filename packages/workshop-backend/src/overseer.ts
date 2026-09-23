@@ -1036,6 +1036,31 @@ class WorkspaceSessionExpiredError extends Error {
   }
 }
 
+// Cap on the console output an executeCode run returns to the agent. Every byte of it lands in
+// the model's context (and is replayed on every later step), so a run that prints a whole dataset
+// would swamp the prompt; legitimate compact results are far smaller.
+const MAX_EXECUTE_CODE_OUTPUT_BYTES = 32 * 1024;
+
+// Cuts an executeCode console log to MAX_EXECUTE_CODE_OUTPUT_BYTES of UTF-8, at the last line
+// break that fits (whole lines read better to the model), or -- when the kept part holds no line
+// break -- at the last character boundary that fits, so no character is split. A cut log ends
+// with a notice saying how much was dropped and how to avoid it.
+function capExecuteCodeOutput(log: string): string {
+  let bytes = new TextEncoder().encode(log);
+  if (bytes.length <= MAX_EXECUTE_CODE_OUTPUT_BYTES) return log;
+  let cut = bytes.lastIndexOf(0x0a, MAX_EXECUTE_CODE_OUTPUT_BYTES);
+  if (cut <= 0) {
+    // Back up over UTF-8 continuation bytes (10xxxxxx) to the start of the character that
+    // straddles the cap.
+    cut = MAX_EXECUTE_CODE_OUTPUT_BYTES;
+    while (cut > 0 && (bytes[cut] & 0xc0) === 0x80) --cut;
+  }
+  let kept = new TextDecoder().decode(bytes.subarray(0, cut));
+  let dropped = bytes.length - cut;
+  return `${kept}\n… output truncated at 32 KiB (${dropped} bytes dropped). ` +
+      `Log less: compute in code and print compact results.`;
+}
+
 // Safely convert an unknown thrown value to a human-readable string.
 // Plain objects would otherwise render as "[object Object]".
 function stringifyError(err: unknown): string {
@@ -9271,6 +9296,9 @@ class OverseerImpl implements AgentHooks {
         }).join(" ");
       }).join("\n");
 
+      // The cap applies to what the code logged; the exception suffix is appended after it, so
+      // the failure that ended the run is never among the dropped bytes.
+      log = capExecuteCodeOutput(log);
       if (error !== undefined) {
         log += `\n\nUncaught exception: ${error}`;
       } else if (log === "") {

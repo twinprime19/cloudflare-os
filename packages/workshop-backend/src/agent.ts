@@ -1072,6 +1072,8 @@ Note that this differs from the \`env\` a Gadget's own code sees: a Gadget's ser
 When the user asks you to just do a task that can be done with these bindings, you should use executeCode to perform the task, instead of adding code to a gadget to do it.
 
 The function also receives a \`self\` parameter which is a magic object that points back to this chat thread. Calling any method on \`self\`, like \`self.foo(123)\`, records a callback to this chat, which is delivered to you as a message on a later turn and activates you to respond. The call resolves as soon as the callback is recorded and returns nothing; it never waits for you (so awaiting it within the same executeCode run is fine, but it cannot yield a result). The arguments must be storable: any RPC stubs among them must be persistent stubs. \`self\` can be passed over RPC (e.g. to a subscription method) and stored in a Durable Object's KV storage for long-term callbacks. When a callback is received, its arguments appear in your env as an array, under a name like \`foo_ARGS\` given in the callback message.
+
+Each call runs a fresh module: nothing persists between calls — no variables, imports or results from an earlier call — so re-fetch what you need in each call. The console output is returned to you and capped at 32 KiB. Never log whole arrays or raw rows; compute in code and log compact results (a total, a short table, a few example rows).
 `.trim();
 
 let LIST_CONNECTABLE_RESOURCES_TOOL_DESCRIPTION = `
@@ -1437,6 +1439,25 @@ export async function importMailAttachments(
  * forward and can never pass the newest turn start, so the loop is bounded. `/compact` is done once
  * it has compacted; the model is never prompted.
  */
+// Hard cap on model steps per activation. A productive turn needs far fewer; a turn that reaches
+// it is almost always looping, and every step holds the chat's Durable Object resident.
+const MAX_TURN_STEPS = 30;
+
+// Consecutive steps whose tool calls all failed with byte-identical input that end the turn. A
+// model that resends the same failing call is not going to fix it by trying again; the user has
+// to redirect it.
+const IDENTICAL_FAILED_CALL_LIMIT = 3;
+
+// The per-activation turn budget. It lives in runAgent, not in the pass, because a pass that ends
+// in a compaction reload has still spent the turns it ran (and its repeated failures still
+// count): a per-pass counter would restart on every reload and bound nothing.
+type TurnBudget = {
+  steps: number;
+  // Consecutive completed steps whose tool calls all failed with the same call key (below).
+  identicalFailedCalls: number;
+  lastFailedCallKey?: string;
+};
+
 export async function runAgent(
     hooks: AgentHooks,
     handle: ModelHandle,
@@ -1445,10 +1466,8 @@ export async function runAgent(
     abortSignal: AbortSignal,
     initiator: AiChatAuthorInfo,
     modelConfig: AiModelConfig): Promise<void> {
-  // Turn budget for this activation. It lives out here, not in the pass, because a pass that ends
-  // in a compaction reload has still spent the turns it ran: a per-pass counter would restart on
-  // every reload and bound nothing.
-  let turnCount = {steps: 0};
+  // Turn budget for this activation (see TurnBudget for why it lives out here).
+  let turnCount: TurnBudget = {steps: 0, identicalFailedCalls: 0};
   while (true) {
     let history = hooks.loadChatHistory(chatId);
     let outcome = await runAgentPass(
@@ -1468,7 +1487,7 @@ async function runAgentPass(
     abortSignal: AbortSignal,
     initiator: AiChatAuthorInfo,
     modelConfig: AiModelConfig,
-    turnCount: {steps: number}): Promise<AgentPassOutcome> {
+    turnCount: TurnBudget): Promise<AgentPassOutcome> {
 
   // The workspace's gadget registry, snapshotted at the start of the turn (gadgets provisional
   // to other chats are excluded -- they belong to those chats' proposed changes). This is the
@@ -3765,6 +3784,7 @@ async function runAgentPass(
         // barrier.
 
         let msgs: AiChatMessageBodyWithModelData[] = [];
+        let stepToolCalls: AiToolCall[] = [];
 
         {
           let msg: AiChatMessageBodyWithModelData = {
@@ -3820,6 +3840,7 @@ async function runAgentPass(
           // record.
           msg.modelData = makeStoredAssistantMessage(message);
           msgs.push(msg);
+          stepToolCalls = msg.toolCalls ?? [];
         }
 
         let capturedActions = hooks.consumeCapturedActions(chatId);
@@ -3839,6 +3860,54 @@ async function runAgentPass(
         // that contains the requestConnection tool call (so ordering reads correctly).
         for (let cr of hooks.consumeCapturedConnectionRequests(chatId)) {
           msgs.push(cr);
+        }
+
+        // Loop guards. A step whose calls all failed is compared with the previous one by its
+        // call key: every call's tool name plus its exact arguments, sorted so the order of
+        // calls within a step doesn't matter, and NUL-separated so no name/arguments split can
+        // collide. Any success, or a different failing call, resets the run.
+        if (stepToolCalls.length > 0 && stepToolCalls.every(call => call.error !== undefined)) {
+          let callKey = stepToolCalls
+              .map(call => `${call.toolName}\u0000${JSON.stringify(call.input)}`)
+              .toSorted().join("\n");
+          if (callKey === turnCount.lastFailedCallKey) {
+            ++turnCount.identicalFailedCalls;
+          } else {
+            turnCount.lastFailedCallKey = callKey;
+            turnCount.identicalFailedCalls = 1;
+          }
+        } else {
+          turnCount.lastFailedCallKey = undefined;
+          turnCount.identicalFailedCalls = 0;
+        }
+        // When a guard ends the turn (shouldStopAfterTurn, right after this barrier), say so in
+        // the transcript: otherwise the user sees the agent simply go quiet mid-task. The notice
+        // is an ordinary agent text message with no modelData and no tool calls, committed in
+        // this step's barrier, so the UI renders it as a normal reply and replay hands it to the
+        // next turn's model as plain assistant text after the step's tool results -- a shape
+        // every provider accepts -- telling it why it stopped. The step cap only applies when
+        // the model wanted another step; a step without tool calls ends the turn by itself.
+        let stop: {reason: "repeated-failed-call" | "step-cap", notice: string} | undefined;
+        if (turnCount.identicalFailedCalls >= IDENTICAL_FAILED_CALL_LIMIT) {
+          let toolNames = [...new Set(stepToolCalls.map(call => call.toolName))].join(", ");
+          stop = {
+            reason: "repeated-failed-call",
+            notice: `Stopped: the same ${toolNames} call failed ${IDENTICAL_FAILED_CALL_LIMIT} ` +
+                `times in a row with the same error. Tell me how to proceed, or ask me to try ` +
+                `another approach.`,
+          };
+        } else if (stepToolCalls.length > 0 && turnCount.steps + 1 >= MAX_TURN_STEPS) {
+          stop = {
+            reason: "step-cap",
+            notice: `Stopped after ${MAX_TURN_STEPS} steps in one turn without finishing. ` +
+                `Reply to let me continue.`,
+          };
+        }
+        if (stop) {
+          msgs.push({type: "message", message: stop.notice});
+          logger.info("agent turn stopped by a loop guard", {
+            event: "agent.turn.stopped", chatId, reason: stop.reason,
+          });
         }
 
         // The barrier itself: one transaction persists the step's messages and its buffered
@@ -3908,7 +3977,10 @@ async function runAgentPass(
           abortSignal.aborted ||
           // Hard cap on turns. The budget belongs to the caller, so the reloads below continue
           // it instead of restarting it.
-          turnCount.steps >= 30 ||
+          turnCount.steps >= MAX_TURN_STEPS ||
+          // The same failing tool call keeps coming back; the turn_end barrier has already
+          // committed the notice telling the user why the agent stopped.
+          turnCount.identicalFailedCalls >= IDENTICAL_FAILED_CALL_LIMIT ||
           // End the turn once the agent has successfully requested a connection: it must wait
           // for the user to respond, not keep reasoning in the meantime. (Accept resumes it on a
           // fresh turn; deny just leaves the turn ended.) A rejected requestConnection (e.g.
