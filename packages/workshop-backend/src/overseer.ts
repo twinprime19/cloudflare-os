@@ -32,7 +32,7 @@ import {
 } from "./ai-gateway";
 import { AgentGadgetInfo, AgentHooks, AiChatAgentContext, CHAT_CHANGE_MESSAGE_BUDGET, ChatBindingEntry, SeedBindingInfo, runAgent, summarizeArgs, type AgentStepChange, type AiChatMessageBodyWithModelData, type ChatHistory, type CompactionCheckpoint, type StoredAssistantMessage, type WorktreeTurnAccess } from "./agent";
 import { WorktreeSessionImpl } from "./worktree-session";
-import { WorkbookSessionImpl } from "./workbook-session";
+import { readSheetRange, WorkbookSessionImpl } from "./workbook-session";
 import WORKTREE_BINDING_TYPES from "./worktree-binding.txt";
 import WORKBOOK_BINDING_TYPES from "./workbook-binding.txt";
 import { deploymentOutputForBlueprint, FormatOffer, listFormatOffers, readAdminConfig } from "./admin-config";
@@ -7509,25 +7509,41 @@ class OverseerImpl implements AgentHooks {
   // measured. Replayed describeBinding calls recompute this text, so anything that could change
   // between the live call and a later replay would make the two disagree.
   async describeAttachmentBinding(chatId: number, envName: string, id: string): Promise<string> {
-    let content = this.storage.chatAttachmentContent.get(validateChatAttachmentId(id));
-    if (!content || content.state.type !== "committed" || content.state.chatId !== chatId ||
-        !content.workbook) {
-      throw new Error(`The attachment behind ${envName} is no longer available.`);
-    }
+    let workbook = this.#chatWorkbook(chatId, envName, id);
     let name = this.#chatAttachmentName(chatId, id);
-    let sheets = content.workbook.sheets.map(sheet =>
+    let sheets = workbook.sheets.map(sheet =>
         `${JSON.stringify(sheet.name)} (${formatCount(sheet.rowCount, "row")} × ` +
         `${formatCount(sheet.colCount, "col")})`).join(", ");
     return `Binding: ${envName}\n` +
         `\n` +
         `This binding is the workbook ${fenceUntrustedFileName(name ?? "(unnamed)")} attached ` +
-        `to this chat: ${formatCount(content.workbook.sheets.length, "sheet")} — ${sheets}. The ` +
+        `to this chat: ${formatCount(workbook.sheets.length, "sheet")} — ${sheets}. The ` +
         `attachment text in the conversation is only a summary of it; in executeCode, ` +
         `env.${envName} provides the following API over the full data:\n` +
         `\n` +
         `\`\`\`\n` +
         `${agentApiText(WORKBOOK_BINDING_TYPES)}` +
         `\`\`\`\n`;
+  }
+
+  // AgentHooks implementation: one range of the spreadsheet behind one of the chat's attachment
+  // bindings, as the text of the agent's readSheet tool (workbook-session.ts, readSheetRange).
+  // Refused, exactly as describeAttachmentBinding refuses, for an attachment that is not this
+  // chat's or is gone: only the owning chat's agent may read a user's spreadsheet.
+  async readWorkbookRange(chatId: number, envName: string, id: string, sheet: string,
+                          range: string | undefined): Promise<string> {
+    return readSheetRange(this, id, this.#chatWorkbook(chatId, envName, id), sheet, range);
+  }
+
+  // The stored index of a workbook attachment committed to this chat, or the error both agent
+  // paths give for one that belongs to another chat or is gone.
+  #chatWorkbook(chatId: number, envName: string, id: string): WorkbookMeta {
+    let content = this.storage.chatAttachmentContent.get(validateChatAttachmentId(id));
+    if (!content || content.state.type !== "committed" || content.state.chatId !== chatId ||
+        !content.workbook) {
+      throw new Error(`The attachment behind ${envName} is no longer available.`);
+    }
+    return content.workbook;
   }
 
   // The file name an attachment was uploaded under, from the canonical ref of the message that

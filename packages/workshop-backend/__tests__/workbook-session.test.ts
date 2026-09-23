@@ -5,8 +5,9 @@
 // the boundary between two stored chunks (the one place a paging bug would show as silently
 // missing or repeated rows); ranges are validated with errors that tell the agent how to page; the
 // session opens only for the chat that owns the attachment, and never for a gadget; the binding's
-// description carries the same API text the .d.ts declares; and the binding name derived from a
-// file name is deterministic.
+// description carries the same API text the .d.ts declares; the binding name derived from a
+// file name is deterministic; and readSheet's ranges, caps and rendering -- the text the model
+// reads cells from -- come out exactly as specified.
 //
 // Runs the real OverseerImpl inside workerd over real Durable Object storage, the harness
 // chat-attachment-import.test.ts uses, with the attachment put in place through the real import
@@ -18,7 +19,10 @@ import { runInDurableObject } from "cloudflare:test";
 import * as XLSX from "xlsx";
 import type { AiChatMessage, ChatAttachmentUpload } from "@gadgets/workshop-shared/api";
 import type { OverseerDurableObject } from "../src/overseer.js";
-import { MAX_WORKBOOK_ROWS_PER_CALL } from "../src/workbook-session";
+import {
+  MAX_READ_SHEET_BYTES, MAX_READ_SHEET_ROWS, MAX_WORKBOOK_ROWS_PER_CALL, parseSheetRange,
+  readSheetRows,
+} from "../src/workbook-session";
 import { workbookBindingName } from "../src/chat-attachment-workbook";
 // Vite's ?raw import; resolved relative to this file, so the test below can compare the shipped
 // text module against its source of truth.
@@ -96,6 +100,30 @@ function tallWorkbookUpload(): ChatAttachmentUpload {
     mimeType: XLSX_MIME_TYPE,
     content: buildWorkbook([{ name: "Tall", rows }]),
     name: "tall.xlsx",
+  };
+}
+
+/**
+ * A wide sheet with a blank row between its header and its data, and a numeric run longer than the
+ * attachment text would ever spell out.
+ */
+function wideWorkbookUpload(): ChatAttachmentUpload {
+  let years = Array.from({ length: 12 }, (_, index) => 2020 + index);
+  let values = Array.from({ length: 12 }, (_, index) => index + 1);
+  return {
+    mimeType: XLSX_MIME_TYPE,
+    content: buildWorkbook([{ name: "Plan", rows: [["Label", ...years], [], ["Revenue", ...values]] }]),
+    name: "plan.xlsx",
+  };
+}
+
+/** A blank first row, then one row whose cells together exceed the readSheet byte cap. */
+function oversizedRowWorkbookUpload(): ChatAttachmentUpload {
+  let cells = Array.from({ length: 30 }, (_, index) => `${index}-${"y".repeat(1_000)}`);
+  return {
+    mimeType: XLSX_MIME_TYPE,
+    content: buildWorkbook([{ name: "Wide", rows: [[], cells, ["after"]] }]),
+    name: "wide.xlsx",
   };
 }
 
@@ -315,4 +343,164 @@ describe("workbookBindingName", () => {
         .toBe("big_xlsx_3");
     expect(workbookBindingName(undefined, new Set(["file"]))).toBe("file_2");
   });
+});
+
+describe("parseSheetRange", () => {
+  // Shaped like the sheet the tool was designed against: 394 rows, columns A–AV.
+  const SHEET = { rowCount: 394, colCount: 48 };
+
+  it.each([
+    [undefined, { from: 0, to: 50, colStart: 0, colEnd: 48 }],
+    ["", { from: 0, to: 50, colStart: 0, colEnd: 48 }],
+    ["150:160", { from: 149, to: 160, colStart: 0, colEnd: 48 }],
+    ["A150:AV160", { from: 149, to: 160, colStart: 0, colEnd: 48 }],
+    [" c5:e9 ", { from: 4, to: 9, colStart: 2, colEnd: 5 }],
+    ["7:7", { from: 6, to: 7, colStart: 0, colEnd: 48 }],
+    ["1:200", { from: 0, to: 200, colStart: 0, colEnd: 48 }],
+    // Ends past the sheet clamp to it, rows and columns alike -- so does a page that would be
+    // over the cap if it were not clamped first.
+    ["B390:AZ500", { from: 389, to: 394, colStart: 1, colEnd: 48 }],
+    ["300:600", { from: 299, to: 394, colStart: 0, colEnd: 48 }],
+  ])("reads %j as %j", (range, expected) => {
+    expect(parseSheetRange(range, SHEET)).toEqual(expected);
+  });
+
+  it.each(["A1-B2", "A:B", "1", "A1:B", "1:B2", "AAAA1:B2", "1:2:3"])(
+      "refuses the malformed range %j, showing both forms", range => {
+    expect(() => parseSheetRange(range, SHEET)).toThrow(
+        `Invalid range ${JSON.stringify(range)}. Use "A150:AV160" (cells) or "150:160" ` +
+        `(whole rows); rows count from 1 and both ends are included.`);
+  });
+
+  it("refuses row 0, backwards ranges, and a start past the sheet", () => {
+    expect(() => parseSheetRange("0:5", SHEET)).toThrow(`Invalid range "0:5": rows count from 1.`);
+    expect(() => parseSheetRange("160:150", SHEET)).toThrow(
+        `Invalid range "160:150": it runs backwards. Write the top-left cell first, ` +
+        `e.g. "A150:AV160".`);
+    expect(() => parseSheetRange("C1:A5", SHEET)).toThrow(/it runs backwards/);
+    expect(() => parseSheetRange("400:410", SHEET)).toThrow(
+        "Row 400 is past the end of this sheet, which has 394 rows.");
+    expect(() => parseSheetRange("AW1:AX2", SHEET)).toThrow(
+        "Column AW is past the last column of this sheet, AV.");
+  });
+
+  it("refuses more than 200 rows with the page to read instead", () => {
+    expect(MAX_READ_SHEET_ROWS).toBe(200);
+    expect(() => parseSheetRange("1:201", SHEET)).toThrow(
+        `That range is 201 rows; readSheet returns at most 200 per call. Read it in pages, ` +
+        `e.g. "1:200".`);
+    expect(() => parseSheetRange("A150:AV394", SHEET)).toThrow(
+        `That range is 245 rows; readSheet returns at most 200 per call. Read it in pages, ` +
+        `e.g. "150:349".`);
+  });
+});
+
+describe("readWorkbookRange", () => {
+  it("renders a header line and every cell with its address", () => withWorkbook(
+      async ({ impl, fileId }) => {
+    expect(await impl.readWorkbookRange(CHAT_ID, "QUARTERLY_XLSX", fileId, "Summary", undefined))
+        .toBe(`Sheet "Summary" rows 1–3 of 3, columns A–B (blank rows omitted)\n` +
+            `1 A=KPI B=Value\n` +
+            `2 A=Revenue B=431000\n` +
+            `3 A="As of" B=2026-08-06`);
+  }));
+
+  it("omits blank rows, never collapses a numeric run, and keeps real column letters", () =>
+      withWorkbook(async ({ impl, fileId }) => {
+    let whole = await impl.readWorkbookRange(CHAT_ID, "PLAN_XLSX", fileId, "Plan", "1:3");
+    let lines = whole.split("\n");
+    expect(lines[0]).toBe(`Sheet "Plan" rows 1–3 of 3, columns A–M (blank rows omitted)`);
+    // Row 2 is blank and so has no line; row 3's twelve numbers are each written out, where the
+    // attachment text would have collapsed them to one range entry.
+    expect(lines.slice(1)).toEqual([
+      "1 A=Label B=2020 C=2021 D=2022 E=2023 F=2024 G=2025 H=2026 I=2027 J=2028 K=2029 L=2030 " +
+          "M=2031",
+      "3 A=Revenue B=1 C=2 D=3 E=4 F=5 G=6 H=7 I=8 J=9 K=10 L=11 M=12",
+    ]);
+    expect(whole).not.toContain("nums");
+
+    // A column span keeps each cell's own column letter rather than renumbering from A.
+    expect(await impl.readWorkbookRange(CHAT_ID, "PLAN_XLSX", fileId, "Plan", "C1:E3"))
+        .toBe(`Sheet "Plan" rows 1–3 of 3, columns C–E (blank rows omitted)\n` +
+            `1 C=2021 D=2022 E=2023\n` +
+            `3 C=2 D=3 E=4`);
+  }, wideWorkbookUpload()));
+
+  it("stops at 24 KiB on a whole row and names the range to continue with", () => withWorkbook(
+      async ({ impl, fileId }) => {
+    let text: string = await impl.readWorkbookRange(
+        CHAT_ID, "QUARTERLY_XLSX", fileId, "Ledger", "1:200");
+    let lines = text.split("\n");
+    let notice = lines.at(-1)!;
+    let rowLines = lines.slice(1, -1);
+    let lastRow = Number(rowLines.at(-1)!.split(" ")[0]);
+
+    expect(lines[0]).toBe(`Sheet "Ledger" rows 1–200 of 1,200, columns A–B (blank rows omitted)`);
+    expect(notice).toBe(`… truncated after row ${lastRow} (24 KiB). Continue with range ` +
+        `${lastRow + 1}:200.`);
+    // Whole rows, in order, from the first, within the budget.
+    expect(rowLines.map(line => Number(line.split(" ")[0])))
+        .toEqual(Array.from({ length: lastRow }, (_, index) => index + 1));
+    expect(rowLines.every(line => line.endsWith(`B=${LEDGER_FILLER}`))).toBe(true);
+    expect(new TextEncoder().encode(rowLines.join("\n")).byteLength)
+        .toBeLessThanOrEqual(MAX_READ_SHEET_BYTES);
+    expect(lastRow).toBeLessThan(200);
+
+    // The continuation picks up exactly where the page stopped.
+    let next: string = await impl.readWorkbookRange(
+        CHAT_ID, "QUARTERLY_XLSX", fileId, "Ledger", `${lastRow + 1}:200`);
+    expect(next.split("\n")[1].startsWith(`${lastRow + 1} A=${lastRow} `)).toBe(true);
+
+    // A column-limited page continues with the same columns.
+    let narrow: string = await impl.readWorkbookRange(
+        CHAT_ID, "QUARTERLY_XLSX", fileId, "Ledger", "B1:B200");
+    expect(narrow.split("\n").at(-1)).toMatch(/Continue with range B\d+:B200\.$/);
+  }));
+
+  it("tells the model to read fewer columns when one row alone is over the cap", () =>
+      withWorkbook(async ({ impl, fileId }) => {
+    // Row 1 is blank and costs nothing, so the page stops before row 2 with no rows rendered. The
+    // notice must name row 2 itself; a plain continue hint would point back at the same row forever.
+    let text: string = await impl.readWorkbookRange(CHAT_ID, "WIDE_XLSX", fileId, "Wide", "1:3");
+    expect(text.split("\n")).toEqual([
+      `Sheet "Wide" rows 1–3 of 3, columns A–AD (blank rows omitted)`,
+      `… row 2 alone is over 24 KiB. Read fewer columns of it, e.g. "A2:J2".`,
+    ]);
+    // A narrower read of that row succeeds and continues past it.
+    let narrow: string = await impl.readWorkbookRange(CHAT_ID, "WIDE_XLSX", fileId, "Wide", "A2:J3");
+    expect(narrow.split("\n")[1].startsWith("2 A=0-yyy")).toBe(true);
+    expect(narrow.split("\n").at(-1)).toBe("3 A=after");
+  }, oversizedRowWorkbookUpload()));
+
+  it("reads through the same paging getRows uses, across a chunk seam", () => withWorkbook(
+      async ({ impl, fileId, meta, session }) => {
+    let boundary = meta.sheets[1].chunkRowStarts[1];
+    let shared = readSheetRows(impl, fileId, 1, meta, boundary - 2, boundary + 2);
+    expect(shared).toEqual(await session.getRows("Ledger", boundary - 2, boundary + 2));
+    expect(shared.map(row => row[0])).toEqual(
+        [boundary - 2, boundary - 1, boundary, boundary + 1]);
+
+    let page: string = await impl.readWorkbookRange(
+        CHAT_ID, "QUARTERLY_XLSX", fileId, "Ledger", `${boundary}:${boundary + 1}`);
+    expect(page.split("\n").slice(1).map(line => line.split(" ").slice(0, 2).join(" ")))
+        .toEqual([`${boundary} A=${boundary - 1}`, `${boundary + 1} A=${boundary}`]);
+  }));
+
+  it("names the sheets a wrong sheet name missed, and the problem with a range", () =>
+      withWorkbook(async ({ impl, fileId }) => {
+    await expect(impl.readWorkbookRange(CHAT_ID, "QUARTERLY_XLSX", fileId, "Sales", undefined))
+        .rejects.toThrow(
+            `This workbook has no sheet named "Sales". Its sheets are: "Summary", "Ledger".`);
+    await expect(impl.readWorkbookRange(CHAT_ID, "QUARTERLY_XLSX", fileId, "Summary", "5:6"))
+        .rejects.toThrow("Row 5 is past the end of this sheet, which has 3 rows.");
+  }));
+
+  it("reads only for the chat that owns the attachment", () => withWorkbook(
+      async ({ impl, fileId }) => {
+    await expect(impl.readWorkbookRange(OTHER_CHAT_ID, "QUARTERLY_XLSX", fileId, "Summary",
+        undefined)).rejects.toThrow("The attachment behind QUARTERLY_XLSX is no longer available.");
+    impl.deleteChatAttachmentContent(fileId);
+    await expect(impl.readWorkbookRange(CHAT_ID, "QUARTERLY_XLSX", fileId, "Summary",
+        undefined)).rejects.toThrow("The attachment behind QUARTERLY_XLSX is no longer available.");
+  }));
 });

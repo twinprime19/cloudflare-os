@@ -1,6 +1,7 @@
 // A spreadsheet attachment end to end: uploaded over the real RPC, parsed in the workspace's
-// Durable Object, summarised into the replayed message, and read back row by row through the
-// `env.<name>` binding from inside executeCode's dynamic isolate.
+// Durable Object, summarised into the replayed message, read as addressed text through the
+// readSheet tool, and read back row by row through the `env.<name>` binding from inside
+// executeCode's dynamic isolate.
 //
 // The point of running it here rather than in workshop-backend's unit suite is the loopback: the
 // unit tests call WorkbookSessionImpl directly, so nothing there proves that a full page -- the
@@ -87,6 +88,15 @@ const CHAT_REQUEST = z.object({
   })),
 });
 
+const TOOLS_REQUEST = z.object({
+  tools: z.array(z.object({ function: z.object({ name: z.string() }) })),
+});
+
+/** The names of the tools one request offered the model. */
+function toolNames(request: unknown): string[] {
+  return TOOLS_REQUEST.parse(request).tools.map(tool => tool.function.name);
+}
+
 /** Every text part of one request's messages, as one searchable string per role. */
 function textOfRole(request: unknown, role: string): string {
   return JSON.stringify(CHAT_REQUEST.parse(request).messages
@@ -103,6 +113,8 @@ function toolResult(request: unknown, toolCallId: string): string {
 
 let harness: Harness;
 const model = scriptedChatCompletions([
+  { toolCall: { id: "read-sheet", name: "readSheet",
+                arguments: { file: BINDING_NAME, sheet: SHEET_NAME, range: "1:3" } } },
   {
     toolCall: {
       id: "read-workbook",
@@ -154,22 +166,32 @@ it("reads a full page of an attached spreadsheet through the executeCode binding
   const turn = await session.runTurn("How many orders are in the sheet?",
       { attachments: [handle] });
   expect(turn.outcome).toEqual({ status: "completed" });
-  expect(model.requests).toHaveLength(3);
+  expect(model.requests).toHaveLength(4);
 
   // The model never receives the rows: the message carries the structural summary plus the one
   // sentence naming the binding that reaches everything the summary elided.
   const replayedUserText = textOfRole(model.requests[0], "user");
   expect(replayedUserText).toContain(
-      `Full data is available in executeCode as env.${BINDING_NAME}`);
+      `Full data: readSheet(file: \\"${BINDING_NAME}\\", sheet, range) returns any range`);
+  expect(replayedUserText).toContain(`in executeCode, env.${BINDING_NAME}.getRows(`);
+  // A chat holding a spreadsheet is offered the tool that reads it.
+  expect(toolNames(model.requests[0])).toContain("readSheet");
   expect(replayedUserText).toContain(`(${formatCount(ROW_COUNT)} rows × 10 cols)`);
   expect(replayedUserText).not.toContain(String(rows[LAST_ROW][1]));
 
-  const page = toolResult(model.requests[1], "read-workbook");
+  const sheetText = toolResult(model.requests[1], "read-sheet");
+  expect(sheetText.startsWith(
+      `Sheet "${SHEET_NAME}" rows 1–3 of ${formatCount(ROW_COUNT)}, columns A–J`)).toBe(true);
+  expect(sheetText).toContain("\n1 A=OrderId B=Sku");
+  expect(sheetText).toContain("\n2 A=100001 ");
+  expect(sheetText).toContain("\n3 A=100002 ");
+
+  const page = toolResult(model.requests[2], "read-workbook");
   expect(page).toContain(String(ROW_COUNT));
   expect(page).toContain(JSON.stringify(expectedCells(rows[0])));
   expect(page).toContain(JSON.stringify(expectedCells(rows[LAST_ROW])));
 
-  const description = toolResult(model.requests[2], "describe-workbook");
+  const description = toolResult(model.requests[3], "describe-workbook");
   expect(description).toContain(`Binding: ${BINDING_NAME}`);
   expect(description).toContain(
       `${JSON.stringify(SHEET_NAME)} (${formatCount(ROW_COUNT)} rows × 10 cols)`);
@@ -183,6 +205,16 @@ it("reads a full page of an attached spreadsheet through the executeCode binding
         expect.objectContaining({
           toolName: "executeCode",
           output: expect.stringContaining(String(ROW_COUNT)),
+        }),
+      ]),
+    }),
+    expect.objectContaining({
+      type: "message",
+      toolCalls: expect.arrayContaining([
+        expect.objectContaining({
+          toolName: "readSheet",
+          input: { file: BINDING_NAME, sheet: SHEET_NAME, range: "1:3" },
+          output: sheetText,
         }),
       ]),
     }),

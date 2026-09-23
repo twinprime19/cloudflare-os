@@ -475,11 +475,17 @@ function replayHooks(overrides: Record<string, unknown> = {}): AgentHooks {
  * right after the context is captured.
  */
 async function capturedReplayContext(hooks: AgentHooks): Promise<any[]> {
-  let captured: any[] = [];
+  return (await capturedReplayRequest(hooks)).messages;
+}
+
+/** Like capturedReplayContext, plus the tools the same request offered the model. */
+async function capturedReplayRequest(
+    hooks: AgentHooks): Promise<{messages: any[], tools: {name: string}[]}> {
+  let captured: {messages: any[], tools: {name: string}[]} = {messages: [], tools: []};
   let handle = {
     model: {api: "anthropic", provider: "anthropic", id: "claude-sonnet-4-5", name: "Claude"},
-    stream: (_model: unknown, context: {messages: any[]}) => {
-      captured = context.messages;
+    stream: (_model: unknown, context: {messages: any[], tools?: {name: string}[]}) => {
+      captured = {messages: context.messages, tools: context.tools ?? []};
       throw new Error("stop: context captured");
     },
   } as unknown as ModelHandle;
@@ -589,8 +595,10 @@ describe("chat history replay of a spreadsheet attachment", () => {
     let text = contextText(captured);
     expect(text).toContain(`[Attached text file (big.xlsx)]\n${WORKBOOK_SUMMARY}`);
     expect(text).toContain(
-        `\n\nFull data is available in executeCode as env.big_xlsx ` +
-        `(call describeBinding("big_xlsx") for its API).`);
+        `\n\nFull data: readSheet(file: "big_xlsx", sheet, range) returns any range with cell ` +
+        `addresses; in executeCode, env.big_xlsx.getRows(sheet, start, end) returns rows as ` +
+        `arrays for computing (describeBinding("big_xlsx") for the API). Answer from the ` +
+        `figures you can see; compute totals and series in code, never by hand.`);
 
     // The binding resolves as an attachment of this chat, and its description is served by the
     // workbook hook rather than the workpiece one.
@@ -637,8 +645,8 @@ describe("chat history replay of a spreadsheet attachment", () => {
     let first = contextText(await capturedReplayContext(hooks()));
     let second = contextText(await capturedReplayContext(hooks()));
 
-    expect(first).toContain("as env.big_xlsx (call describeBinding(\"big_xlsx\")");
-    expect(first).toContain("as env.big_xlsx_2 (call describeBinding(\"big_xlsx_2\")");
+    expect(first).toContain(`readSheet(file: "big_xlsx", sheet, range)`);
+    expect(first).toContain(`readSheet(file: "big_xlsx_2", sheet, range)`);
     // Same log, same names, same text: replay is what every later turn is rebuilt from.
     expect(second).toBe(first);
   });
@@ -664,7 +672,93 @@ describe("chat history replay of a spreadsheet attachment", () => {
 
     let text = contextText(captured);
     expect(text).toContain("Earlier: the user attached big.xlsx (env.big_xlsx).");
-    expect(text).toContain("as env.big_xlsx_2 (call describeBinding(\"big_xlsx_2\")");
-    expect(text).not.toContain("as env.big_xlsx (");
+    expect(text).toContain(`readSheet(file: "big_xlsx_2", sheet, range)`);
+    expect(text).not.toContain(`readSheet(file: "big_xlsx", sheet, range)`);
+  });
+
+  it("replays a recorded readSheet call from its output, without reading again", async () => {
+    let recorded = `Sheet "Data" rows 1–2 of 3, columns A–B (blank rows omitted)\n` +
+        `1 A=Region B=Total\n2 A=North B=42`;
+    let readWorkbookRange = vi.fn();
+    let {messages} = await capturedReplayRequest(replayHooks({
+      loadChatHistory: () => ({
+        checkpoint: undefined, measuredTokens: 0,
+        chatMessages: attachmentChatLog([attachmentRef()], [
+          {chatId: CHAT_ID, sequence: 2, timestamp: new Date(0), author: AGENT_AUTHOR,
+           type: "message", message: "Reading.", toolCalls: [{
+             toolCallId: "call-1",
+             toolName: "readSheet",
+             input: {file: "big_xlsx", sheet: "Data", range: "1:2"},
+             output: recorded,
+           }]},
+        ]),
+      }),
+      getChatAttachmentData: async () => bytes(WORKBOOK_SUMMARY),
+      readWorkbookRange,
+    }));
+
+    let toolResult = messages.find(message => message.role === "toolResult");
+    expect(toolResult.toolName).toBe("readSheet");
+    expect(toolResult.isError).toBe(false);
+    expect(toolResult.content).toEqual([{type: "text", text: recorded}]);
+    expect(readWorkbookRange).not.toHaveBeenCalled();
+  });
+
+  it("replays a readSheet call with no recorded output as an error", async () => {
+    let {messages} = await capturedReplayRequest(replayHooks({
+      loadChatHistory: () => ({
+        checkpoint: undefined, measuredTokens: 0,
+        chatMessages: attachmentChatLog([attachmentRef()], [
+          {chatId: CHAT_ID, sequence: 2, timestamp: new Date(0), author: AGENT_AUTHOR,
+           type: "message", message: "Reading.", toolCalls: [{
+             toolCallId: "call-1",
+             toolName: "readSheet",
+             input: {file: "big_xlsx", sheet: "Data"},
+           }]},
+        ]),
+      }),
+      getChatAttachmentData: async () => bytes(WORKBOOK_SUMMARY),
+    }));
+
+    let toolResult = messages.find(message => message.role === "toolResult");
+    expect(toolResult.isError).toBe(true);
+    expect(JSON.stringify(toolResult.content)).toContain("readSheet tool call in log is missing output");
+  });
+
+  it("offers readSheet only in a chat holding a spreadsheet, leaving other chats' tools as they were", async () => {
+    // A chat with no workbook -- here the mailbox import log -- sends the tool list it always
+    // has: same tools, same order, nothing added.
+    let plain = await capturedReplayRequest(replayHooks());
+    expect(plain.tools.map(tool => tool.name)).toEqual([
+      "readFile", "writeFile", "editFile", "webFetch", "importAttachments", "observeUserChanges",
+      "describeBinding", "setGadgetBinding", "createGadget", "createWorktree", "listBlueprints",
+      "executeCode", "listConnectableResources", "requestConnection",
+    ]);
+
+    let workbook = await capturedReplayRequest(replayHooks({
+      loadChatHistory: () => ({
+        checkpoint: undefined, measuredTokens: 0,
+        chatMessages: attachmentChatLog([attachmentRef()]),
+      }),
+      getChatAttachmentData: async () => bytes(WORKBOOK_SUMMARY),
+    }));
+    let readSheet = workbook.tools.find(tool => tool.name === "readSheet") as any;
+    expect(readSheet).toBeDefined();
+    // Flat: three strings, `range` optional, nothing nested and no enums.
+    expect(readSheet.parameters.required).toEqual(["file", "sheet"]);
+    expect(Object.values(readSheet.parameters.properties).map((schema: any) => schema.type))
+        .toEqual(["string", "string", "string"]);
+    // Every other tool is exactly the plain chat's.
+    expect(JSON.stringify(workbook.tools.filter(tool => tool.name !== "readSheet")))
+        .toBe(JSON.stringify(plain.tools));
+
+    // An attachment that is not a spreadsheet binds nothing, so offers nothing either.
+    let notes = await capturedReplayRequest(replayHooks({
+      loadChatHistory: () => ({
+        checkpoint: undefined, measuredTokens: 0,
+        chatMessages: attachmentChatLog([attachmentRef({name: "notes.md", convertedFrom: undefined})]),
+      }),
+    }));
+    expect(notes.tools.map(tool => tool.name)).not.toContain("readSheet");
   });
 });

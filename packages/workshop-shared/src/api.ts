@@ -3400,6 +3400,27 @@ export type AiToolCall = {
   output?: string;
 } | {
   /**
+   * Read one range of a spreadsheet attached to the chat as addressed text (every cell written
+   * `COLUMN=value`). Offered only in chats holding a spreadsheet attachment.
+   */
+  toolName: "readSheet";
+  input: {
+    /** Chat binding name of the spreadsheet attachment (e.g. `big_xlsx`). */
+    file: string;
+    /** Sheet name, exactly as the workbook holds it. */
+    sheet: string;
+    /** `A150:AV160` or `150:160` (1-based, inclusive); omitted means the first 50 rows. */
+    range?: string;
+  };
+
+  /**
+   * Output, if the read completed. (Otherwise, `error` should be present.) Replayed verbatim, never
+   * re-read: history replays the same text even after the attachment is deleted, as webFetch
+   * replays a page that has since changed.
+   */
+  output?: string;
+} | {
+  /**
    * Import files attached to a message in one of the chat's connections (e.g. a mailbox) into the
    * chat itself. The files travel the same path a user upload takes and arrive as a separate chat
    * message carrying them, so they are visible in the transcript and replay into the model's

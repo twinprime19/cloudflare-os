@@ -633,6 +633,11 @@ function getToolCallSummary(
       }
       return { verb: "Fetched", target };
     }
+    case "readSheet":
+      return {
+        verb: "Read sheet",
+        target: `${tc.input.sheet} ${tc.input.range ?? ""}`.trim(),
+      };
     case "importAttachments":
       return {
         verb: "Imported",
@@ -703,6 +708,8 @@ function describeToolCallCount(toolName: AiToolCall["toolName"], count: number):
       return count === 1 ? "Made 1 edit" : `Made ${count} edits`;
     case "webFetch":
       return `Fetched ${pluralize(count, "page")}`;
+    case "readSheet":
+      return `Read ${pluralize(count, "sheet range")}`;
     case "importAttachments":
       return count === 1 ? "Imported attachments" : `Imported attachments ${formatTimes(count)}`;
     case "executeCode":
@@ -750,6 +757,8 @@ function getToolIcon(
       return Terminal;
     case "webFetch":
       return Globe;
+    case "readSheet":
+      return FileIcon;
     case "importAttachments":
       return Paperclip;
     case "describeBinding":
@@ -797,6 +806,8 @@ function getProvisionalToolLabel(toolName: AiToolCall["toolName"] | null | undef
       return "Running code";
     case "webFetch":
       return "Fetching web page";
+    case "readSheet":
+      return "Reading sheet";
     case "importAttachments":
       return "Importing attachments";
     case "observeUserChanges":
@@ -826,6 +837,7 @@ function getProvisionalToolVerb(toolName: AiToolCall["toolName"]): string {
     case "createWorktree": return "Creating worktree";
     case "executeCode": return "Running code";
     case "webFetch": return "Fetching";
+    case "readSheet": return "Reading sheet";
     case "importAttachments": return "Importing attachments";
     case "observeUserChanges": return "Observing user changes";
     case "giveUp": return "Stopping";
@@ -845,6 +857,7 @@ function describeProvisionalToolCount(toolName: AiToolCall["toolName"], count: n
     case "writeFile": return `Writing ${pluralize(count, "file")}`;
     case "editFile": return `Making ${count} edits`;
     case "webFetch": return `Fetching ${pluralize(count, "page")}`;
+    case "readSheet": return `Reading ${pluralize(count, "sheet range")}`;
     case "importAttachments": return "Importing attachments";
     case "executeCode": return count === 1 ? "Running code" : `Running code ${formatTimes(count)}`;
     case "describeBinding": return `Inspecting ${pluralize(count, "binding")}`;

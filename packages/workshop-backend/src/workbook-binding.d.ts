@@ -1,8 +1,8 @@
 // This file declares the type of a workbook binding -- the programmatic view of a spreadsheet
 // attached to a chat. Spreadsheets are the one attachment type the model never receives in full:
-// the message carries a small structural summary (sheet names, dimensions, detected tables, a few
-// preview rows), while every row stays in storage and is read on demand through the API below. A
-// workbook therefore costs the same handful of tokens per turn whether it holds ten rows or a
+// the message carries at most 48 KiB of addressed rows (small sheets in full, large ones as an
+// outline), while every row stays in storage and is read on demand through readSheet or the API
+// below. A workbook therefore costs a bounded slice of the prompt whether it holds ten rows or a
 // hundred thousand.
 //
 // One binding is registered per spreadsheet attachment as the message carrying it replays (see
@@ -22,8 +22,12 @@ export type CellValue = string | number | boolean | null;
 /**
  * A workbook binding holds the full contents of a spreadsheet attached to this chat: every row of
  * every sheet, exactly as the file held them when it was attached. The attachment text in the
- * conversation is only a structural summary -- sheet names, sizes, where the tables sit, a few
- * preview rows -- so read anything you actually need to compute over through this API.
+ * conversation may show only part of a sheet, so read anything you actually need to compute over
+ * through this API.
+ *
+ * To look at rows rather than compute over them, use the `readSheet` tool instead: it returns a
+ * range as text with every cell's address (`readSheet(file: "<binding name>", sheet, "A1:J20")`),
+ * without writing any code.
  *
  * The data is read-only and never changes; editing the spreadsheet is not possible from here.
  */
