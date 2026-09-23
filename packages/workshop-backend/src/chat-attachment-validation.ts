@@ -304,7 +304,7 @@ function convertWorkbookUpload(attachment: ChatAttachmentUpload): ValidatedChatA
       attachment.content, convertedFrom, attachment.name ?? "spreadsheet");
 
   let encoded = new TextEncoder().encode(parsed.summary);
-  // The summary is budgeted far below this by construction (see MAX_WORKBOOK_SUMMARY_BYTES); the
+  // The summary is budgeted far below this by construction (see MAX_WORKBOOK_PROMPT_BYTES); the
   // storage-record ceiling is asserted anyway, so every stored attachment passes the same gate
   // whichever path produced it.
   if (encoded.byteLength > MAX_CHAT_ATTACHMENT_BYTES) {

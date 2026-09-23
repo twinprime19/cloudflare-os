@@ -6,9 +6,11 @@
 // matter (dates arrive as serial numbers, side-by-side tables are squashed into one).
 //
 // So this module splits the workbook in two. The rows go to storage as JSON chunks the agent
-// reads through a binding, and only a small deterministic Markdown *summary* -- sheet names,
-// dimensions, detected table ranges, a few preview rows -- goes into the prompt. The summary is
-// what the model sees every turn, so it is budgeted; the chunks are what it computes over.
+// reads through a binding, and only a budgeted deterministic *summary* goes into the prompt: every
+// sheet's name and dimensions, and its cells as addressed rows (see workbook-grid.ts) -- the whole
+// sheet when it is small, an outline of its row bands when it is not, and just the heading once the
+// workbook's budget is spent. The summary is what the model sees every turn, so it is budgeted;
+// the chunks are what it computes over.
 //
 // Parsing is pure and synchronous: no storage, no Durable Object, no network. SheetJS runs in this
 // isolate, which is why the read options below switch off every part of parsing whose output
@@ -17,6 +19,9 @@
 import { Unzip, UnzipInflate } from "fflate";
 import * as XLSX from "xlsx";
 import { validateBindingName } from "@gadgets/workshop-shared/api";
+import {
+  ADDRESSED_ROW_LEGEND, columnLabel, renderAddressedRow, renderAddressedRows,
+} from "./workbook-grid";
 
 export const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 export const XLS_MIME_TYPE = "application/vnd.ms-excel";
@@ -79,11 +84,22 @@ export const MAX_WORKBOOK_ROW_BYTES = 32 * 1024 * 1024;
 export const MAX_WORKBOOK_CHUNK_BYTES = 1024 * 1024;
 
 /**
- * Ceiling on the summary, which is replayed into every model request until compaction passes the
- * message that carries it. Everything the summary elides is still reachable through the binding,
- * so truncating here costs the model nothing it cannot fetch.
+ * Ceiling on the whole summary -- heading, legend and every sheet -- which is replayed into every
+ * model request until compaction passes the message that carries it. Everything the summary
+ * elides is still reachable through the binding, so eliding here costs the model nothing it cannot
+ * fetch.
  */
-export const MAX_WORKBOOK_SUMMARY_BYTES = 12 * 1024;
+export const MAX_WORKBOOK_PROMPT_BYTES = 48 * 1024;
+
+/**
+ * Ceiling on one sheet shown whole. Big enough for a financial model -- a few hundred rows of
+ * labels with their numeric series collapsed -- and small enough that a data table of thousands of
+ * rows never qualifies: that is a dataset to compute over, not a layout to read.
+ */
+export const MAX_INLINE_SHEET_BYTES = 32 * 1024;
+
+/** Ceiling on the outline of one sheet too large to show whole. */
+export const MAX_SHEET_OUTLINE_BYTES = 6 * 1024;
 
 const WORKBOOK_TOO_LARGE_MESSAGE =
   "This workbook is too large to read. Split it or remove unused sheets.";
@@ -135,20 +151,22 @@ export type SheetContent = {
 };
 
 /**
- * A run of adjacent non-empty cells on a sheet, bounded by blank rows and blank columns. A `table`
- * block has a header row and data rows under it; a `text` block is a single column of loose values
- * -- a title, a note -- with nothing to pair them against.
+ * A band: a run of consecutive non-blank rows, bounded by blank rows or the sheet's edges. Bands
+ * are not split on blank columns -- two tables side by side share a band, and each outline row
+ * shows both, header beside header, with their own column addresses.
  */
-export type SheetBlock = {
-  kind: "table" | "text";
-  /** A1 range within the sheet, e.g. `A3:D8`; a single cell renders as `A1`. */
-  range: string;
-  /** Rows the block spans, including any past the ones kept below. */
-  rowCount: number;
+export type SheetBand = {
+  /** 0-based index of the band's first row. */
+  rowStart: number;
+  /** 0-based index of the band's last row. */
+  rowEnd: number;
+  /** 0-based index of the leftmost column any of the band's rows populates. */
+  colStart: number;
+  /** 0-based index of the rightmost column any of the band's rows populates. */
+  colEnd: number;
   /**
-   * The block's leading rows, every row padded to the block's column span -- at most as many as
-   * the summary can quote, because the rest would be copied only to be discarded. `rowCount` is
-   * the block's real height.
+   * The band's first rows, whole -- at most as many as an outline quotes, because the rest would
+   * be copied only to be discarded. `rowEnd` gives the band's real height.
    */
   rows: CellValue[][];
 };
@@ -196,17 +214,15 @@ const EXCEL_ERROR_TEXT = new Map<number, string>([
   [0x2b, "#GETTING_DATA"],
 ]);
 
-// Summary budget knobs. Past these counts the summary stops describing contents and only names
-// what exists, because the binding can reach the rest and the prompt cannot afford it.
-const MAX_SHEETS_WITH_BLOCKS = 100;
-const MAX_BLOCKS_WITH_PREVIEW = 30;
-const MAX_BLOCK_LINE_CHARS = 2000;
-const PREVIEW_ROWS = 5;
-const FULL_PREVIEW_ROWS = 20;
-// The most rows any block can quote: a table shows its header plus a whole short block, and a
-// block longer than that shows PREVIEW_ROWS of it. Nothing past this is ever rendered, so nothing
-// past this is kept.
-const MAX_BLOCK_KEPT_ROWS = FULL_PREVIEW_ROWS + 1;
+// Past this many sheets the summary only names what exists: the headings alone are the budget.
+const MAX_SHEETS_DESCRIBED = 100;
+
+// The rows an outline quotes from the top of each band -- a header and the first data rows under
+// it, enough to show what the band's columns hold.
+const OUTLINE_ROWS_PER_BAND = 3;
+
+const OUTLINE_SUFFIX = " — outline (first rows shown; readSheet for the rest)";
+const NOT_SHOWN_SUFFIX = " — not shown; use readSheet";
 
 const SUMMARY_TRUNCATION_NOTICE = "… summary truncated; the full workbook is still readable.";
 
@@ -369,109 +385,17 @@ function isBlankRow(row: CellValue[]): boolean {
   return row.every((cell) => cell === null);
 }
 
-function encodeBlockRange(
-  rowStart: number,
-  colStart: number,
-  rowEnd: number,
-  colEnd: number,
-): string {
-  let start = { r: rowStart, c: colStart };
-  if (rowStart === rowEnd && colStart === colEnd) return XLSX.utils.encode_cell(start);
-  return XLSX.utils.encode_range(start, { r: rowEnd, c: colEnd });
-}
-
-function cellAt(rows: CellValue[][], row: number, col: number): CellValue {
-  return rows[row][col] ?? null;
-}
-
 /**
- * Build one block from a column run, trimming it to the rows that actually carry data in those
- * columns. Side-by-side tables share a row band but rarely the same height, so the run's own first
- * and last populated rows are what bound it -- not the band's.
+ * Find the bands on a sheet: runs of consecutive non-blank rows, cut wherever a fully blank row
+ * separates them.
  *
- * Only the rows the summary can quote are copied. A block's height is reported in full, but
- * copying a 200,000-row table to print five of its rows is work the summary never uses.
+ * Spreadsheets separate unrelated things with whitespace, so a blank row is the signal that a
+ * title, a table and a footnote are different things. Blank columns are deliberately not a cut:
+ * splitting a band into side-by-side rectangles loses the row alignment a labelled series depends
+ * on (the label in C, its values in O..AV), while addressed rows keep every cell's column anyway.
  */
-function buildBlock(
-  rows: CellValue[][],
-  rowStart: number,
-  rowEnd: number,
-  colStart: number,
-  colEnd: number,
-): SheetBlock | null {
-  let first = -1;
-  let last = -1;
-  for (let row = rowStart; row <= rowEnd; row++) {
-    let populated = false;
-    for (let col = colStart; col <= colEnd && !populated; col++) {
-      populated = cellAt(rows, row, col) !== null;
-    }
-    if (!populated) continue;
-    if (first < 0) first = row;
-    last = row;
-  }
-  if (first < 0) return null;
-
-  let blockRows: CellValue[][] = [];
-  let keptEnd = Math.min(last, first + MAX_BLOCK_KEPT_ROWS - 1);
-  for (let row = first; row <= keptEnd; row++) {
-    let blockRow: CellValue[] = [];
-    for (let col = colStart; col <= colEnd; col++) blockRow.push(cellAt(rows, row, col));
-    blockRows.push(blockRow);
-  }
-
-  return {
-    // A one-column run has no header to pair its values against, so it reads as loose text rather
-    // than a table. This also covers the lone-cell case -- a sheet title, a stray note -- because
-    // every column of a run holds data by construction, so a run wider than one column always
-    // holds at least two cells.
-    kind: colStart === colEnd ? "text" : "table",
-    range: encodeBlockRange(first, colStart, last, colEnd),
-    rowCount: last - first + 1,
-    rows: blockRows,
-  };
-}
-
-/** Split one band of consecutive non-blank rows into blocks on its fully blank columns. */
-function splitBandColumns(rows: CellValue[][], rowStart: number, rowEnd: number): SheetBlock[] {
-  let width = 0;
-  for (let row = rowStart; row <= rowEnd; row++) width = Math.max(width, rows[row].length);
-
-  let columnHasData: boolean[] = [];
-  for (let col = 0; col < width; col++) {
-    let populated = false;
-    for (let row = rowStart; row <= rowEnd && !populated; row++) {
-      populated = cellAt(rows, row, col) !== null;
-    }
-    columnHasData.push(populated);
-  }
-
-  let blocks: SheetBlock[] = [];
-  let col = 0;
-  while (col < width) {
-    if (!columnHasData[col]) {
-      col++;
-      continue;
-    }
-    let runEnd = col;
-    while (runEnd + 1 < width && columnHasData[runEnd + 1]) runEnd++;
-    let block = buildBlock(rows, rowStart, rowEnd, col, runEnd);
-    if (block) blocks.push(block);
-    col = runEnd + 1;
-  }
-  return blocks;
-}
-
-/**
- * Find the table and text blocks on a sheet.
- *
- * Spreadsheets separate unrelated things with whitespace, so whitespace is the signal: fully blank
- * rows cut the sheet into bands, and within a band fully blank columns cut it into blocks. That
- * keeps a title above a table, two tables side by side, and a footnote below them from being
- * merged into one rectangle the way a naive first-row-is-the-header reading does.
- */
-export function detectTables(rows: CellValue[][]): SheetBlock[] {
-  let blocks: SheetBlock[] = [];
+export function detectBands(rows: CellValue[][]): SheetBand[] {
+  let bands: SheetBand[] = [];
   let row = 0;
 
   while (row < rows.length) {
@@ -479,13 +403,31 @@ export function detectTables(rows: CellValue[][]): SheetBlock[] {
       row++;
       continue;
     }
-    let bandEnd = row;
-    while (bandEnd + 1 < rows.length && !isBlankRow(rows[bandEnd + 1])) bandEnd++;
-    blocks.push(...splitBandColumns(rows, row, bandEnd));
-    row = bandEnd + 1;
+    let rowEnd = row;
+    while (rowEnd + 1 < rows.length && !isBlankRow(rows[rowEnd + 1])) rowEnd++;
+
+    let colStart = Number.POSITIVE_INFINITY;
+    let colEnd = -1;
+    for (let index = row; index <= rowEnd; index++) {
+      let cells = rows[index];
+      let first = cells.findIndex((cell) => cell !== null);
+      let last = cells.length - 1;
+      while (last >= 0 && cells[last] === null) last--;
+      colStart = Math.min(colStart, first);
+      colEnd = Math.max(colEnd, last);
+    }
+
+    bands.push({
+      rowStart: row,
+      rowEnd,
+      colStart,
+      colEnd,
+      rows: rows.slice(row, Math.min(rowEnd + 1, row + OUTLINE_ROWS_PER_BAND)),
+    });
+    row = rowEnd + 1;
   }
 
-  return blocks;
+  return bands;
 }
 
 // Thousands separators without Intl, so the summary reads the same whatever locale data the
@@ -504,74 +446,95 @@ export function formatCount(value: number, unit: string): string {
   return `${formatNumber(value)} ${unit}${value === 1 ? "" : "s"}`;
 }
 
-// Unpadded CSV: quotes go on only where they change the reading, which keeps the common case as
-// short as the values themselves. A cell's own line breaks are flattened first -- the summary is
-// read line by line, and a value that could add a line to it could imitate the renderer's own.
-function formatCsvValue(value: CellValue): string {
-  if (value === null) return "";
-  let text = flattenToOneLine(String(value));
-  if (!/[",]/.test(text)) return text;
-  return `"${text.replace(/"/g, '""')}"`;
-}
-
-function formatCsvRow(row: CellValue[]): string {
-  return row.map(formatCsvValue).join(",");
-}
-
 // Summaries stay line-structured, so anything that could carry a line break is flattened first.
 function flattenToOneLine(text: string): string {
   return text.replace(/[\r\n]+/g, " ");
 }
 
+// One encoder for every byte count the summary takes: the budgets are UTF-8 bytes, which is what
+// the attachment stores and what the request-size gate measures.
+const utf8 = new TextEncoder();
+
+function byteLength(text: string): number {
+  return utf8.encode(text).byteLength;
+}
+
+// Row numbers are addresses and print bare, like the row numbers that start each addressed line;
+// only the count is a quantity with separators.
+function renderBandLine(band: SheetBand): string {
+  let rows = `rows ${band.rowStart + 1}–${band.rowEnd + 1}`;
+  let cols = `${columnLabel(band.colStart)}–${columnLabel(band.colEnd)}`;
+  return `${rows} (${cols}), ${formatCount(band.rowEnd - band.rowStart + 1, "row")}:`;
+}
+
 /**
- * Quote a block's rows from `start`: whole while the block is small enough to be read at a glance,
- * and otherwise a fixed preview plus a count of what was left out. Rows are rendered one at a time
- * and only while they are still being shown, so a five-row preview costs five rows of rendering
- * whatever the block's height. The elided rows are never lost -- they are in the chunks the
- * binding reads.
+ * Every band with its first `rowsPerBand` rows and a count of the rest, or `null` as soon as the
+ * text crosses `maxBytes` -- rendering stops there rather than finishing a text it will discard.
  */
-function previewParts(
-  block: SheetBlock,
-  start: number,
-  render: (row: CellValue[]) => string,
-): string[] {
-  let available = block.rowCount - start;
-  let shown = available <= FULL_PREVIEW_ROWS ? available : PREVIEW_ROWS;
-  let parts: string[] = [];
-  for (let index = start; index < start + shown; index++) parts.push(render(block.rows[index]));
-  if (shown < available) parts.push(`… ${formatCount(available - shown, "more row")}`);
-  return parts;
-}
+function renderBandsWithRows(
+  bands: SheetBand[],
+  rowsPerBand: number,
+  maxBytes: number,
+): string | null {
+  let lines: string[] = [];
+  let used = -1; // the first line has no newline joining it to a previous one
+  let push = (line: string): boolean => {
+    used += byteLength(line) + 1;
+    lines.push(line);
+    return used <= maxBytes;
+  };
 
-// Join a block's parts onto one line, stopping before a pathologically wide sheet turns a single
-// block into kilobytes. Parts are appended whole, so a line is never cut mid-value.
-function joinBlockLine(label: string, parts: string[]): string {
-  let line = label;
-  for (let [index, part] of parts.entries()) {
-    let separator = index === 0 ? ": " : " / ";
-    if (line.length + separator.length + part.length > MAX_BLOCK_LINE_CHARS) {
-      return `${line}${separator}…`;
+  for (let band of bands) {
+    if (!push(renderBandLine(band))) return null;
+    let shown = Math.min(rowsPerBand, band.rows.length);
+    for (let offset = 0; offset < shown; offset++) {
+      // A band's rows are non-blank by construction, so every one renders to a line.
+      let line = renderAddressedRow(band.rowStart + offset, band.rows[offset], { collapse: true });
+      if (line !== null && !push(line)) return null;
     }
-    line += `${separator}${part}`;
+    let height = band.rowEnd - band.rowStart + 1;
+    if (height > shown && !push(`… ${formatCount(height - shown, "more row")}`)) return null;
   }
-  return line;
+  return lines.join("\n");
 }
 
-function renderBlock(block: SheetBlock, withPreview: boolean): string {
-  if (block.kind === "text") {
-    let label = `Text ${block.range}`;
-    if (!withPreview) return label;
-    return joinBlockLine(label, previewParts(block, 0, (row) => formatCsvValue(row[0])));
+/**
+ * Band lines alone, as many as fit, then a count of the bands left out -- the last resort for a
+ * sheet cut into more bands than even their one-line descriptions can afford. `null` when not even
+ * the first band line fits.
+ */
+function renderBandLines(bands: SheetBand[], maxBytes: number): string | null {
+  let lines: string[] = [];
+  let used = -1;
+  for (let [index, band] of bands.entries()) {
+    let line = renderBandLine(band);
+    let lineBytes = byteLength(line) + 1;
+    let left = bands.length - index - 1;
+    // Room is kept for the tail that would follow this line, so the cut always has space to say
+    // how much it cut.
+    let tailBytes = left === 0 ? 0 : byteLength(`… ${formatCount(left, "more band")}`) + 1;
+    if (used + lineBytes + tailBytes > maxBytes) {
+      if (index === 0) return null;
+      lines.push(`… ${formatCount(bands.length - index, "more band")}`);
+      break;
+    }
+    lines.push(line);
+    used += lineBytes;
   }
+  return lines.join("\n");
+}
 
-  // A table's first row is its header; the rows under it are what the count and the preview are
-  // about.
-  let label = `Table ${block.range} (${formatCount(block.rowCount - 1, "data row")})`;
-  if (!withPreview) return label;
-  return joinBlockLine(label, [
-    formatCsvRow(block.rows[0]),
-    ...previewParts(block, 1, formatCsvRow),
-  ]);
+/**
+ * The outline of a sheet too large to show whole, degrading until it fits `maxBytes`: three rows
+ * per band, then one, then band lines alone. Each attempt is a fresh render, which is cheap --
+ * bands are few and each quotes at most three rows.
+ */
+function renderOutline(bands: SheetBand[], maxBytes: number): string | null {
+  return (
+    renderBandsWithRows(bands, OUTLINE_ROWS_PER_BAND, maxBytes) ??
+    renderBandsWithRows(bands, 1, maxBytes) ??
+    renderBandLines(bands, maxBytes)
+  );
 }
 
 function renderSheetHeading(sheet: SheetContent): string {
@@ -582,21 +545,52 @@ function renderSheetHeading(sheet: SheetContent): string {
   return `## Sheet "${name}" (${rows} × ${cols})`;
 }
 
+// The least a sheet can cost: its heading, marked as not shown unless there is nothing to show.
+function renderUndescribedSheet(sheet: SheetContent): string {
+  let heading = renderSheetHeading(sheet);
+  return sheet.rows.length === 0 ? heading : `${heading}${NOT_SHOWN_SUFFIX}`;
+}
+
 /**
- * Hold the summary under its byte budget by dropping whole trailing lines. The heading line and
- * the first sheets survive, which is the part the model needs to know what to ask the binding for.
+ * Render one sheet in the richest form `available` bytes allow, heading included: the whole sheet
+ * inline; an outline of its bands; or the heading alone. Rendering the inline form stops once it
+ * crosses its cap, so deciding against it never costs more than the cap's worth of rendering.
+ */
+function renderSheet(sheet: SheetContent, index: number, available: number): string[] {
+  let heading = renderSheetHeading(sheet);
+  if (sheet.rows.length === 0) return [heading];
+  let notShown = [renderUndescribedSheet(sheet)];
+  if (index >= MAX_SHEETS_DESCRIBED) return notShown;
+
+  // Each body budget is what remains once its heading and the two newlines around it are paid.
+  let inlineBytes = Math.min(MAX_INLINE_SHEET_BYTES, available - byteLength(heading) - 2);
+  let grid = renderAddressedRows(sheet.rows, 0, { collapse: true, maxBytes: inlineBytes });
+  if (!grid.truncated) return [heading, grid.text];
+
+  let outlineHeading = `${heading}${OUTLINE_SUFFIX}`;
+  let outlineBytes = Math.min(MAX_SHEET_OUTLINE_BYTES, available - byteLength(outlineHeading) - 2);
+  if (outlineBytes > 0) {
+    let outline = renderOutline(detectBands(sheet.rows), outlineBytes);
+    if (outline !== null) return [outlineHeading, outline];
+  }
+  return notShown;
+}
+
+/**
+ * Hold the summary under its byte budget by dropping whole trailing lines. Only reachable when a
+ * workbook's headings alone overrun the budget -- everything else is budgeted as it is rendered --
+ * and the heading line and the first sheets survive, which is what the model needs to know what to
+ * ask the binding for.
  */
 function clampToBudget(lines: string[]): string {
-  let encoder = new TextEncoder();
   let summary = lines.join("\n");
-  if (encoder.encode(summary).byteLength <= MAX_WORKBOOK_SUMMARY_BYTES) return summary;
+  if (byteLength(summary) <= MAX_WORKBOOK_PROMPT_BYTES) return summary;
 
-  let budget =
-    MAX_WORKBOOK_SUMMARY_BYTES - encoder.encode(SUMMARY_TRUNCATION_NOTICE).byteLength - 1;
+  let budget = MAX_WORKBOOK_PROMPT_BYTES - byteLength(SUMMARY_TRUNCATION_NOTICE) - 1;
   let kept: string[] = [];
   let used = 0;
   for (let line of lines) {
-    let lineBytes = encoder.encode(line).byteLength + 1; // the newline that joins it
+    let lineBytes = byteLength(line) + 1; // the newline that joins it
     if (used + lineBytes > budget) break;
     kept.push(line);
     used += lineBytes;
@@ -606,9 +600,13 @@ function clampToBudget(lines: string[]): string {
 }
 
 /**
- * Render the Markdown the model sees for a workbook: what the file holds and where, not what is
- * in it. Deterministic -- the same bytes always produce the same text -- because this string is
- * replayed verbatim into every turn and a drifting prompt would invalidate cached context.
+ * Render the text the model sees for a workbook. Deterministic -- the same bytes always produce
+ * the same text -- because this string is replayed verbatim into every turn and a drifting prompt
+ * would invalidate cached context.
+ *
+ * Sheets are rendered in workbook order, each in the richest form the remaining budget allows.
+ * Every later sheet's heading is reserved up front, so a large early sheet can never push a later
+ * sheet's name out of the text: the name is what the model needs to ask for the rest.
  *
  * Deliberately says nothing about how the data is reached; the binding sentence is appended at
  * replay, where the binding's name is known.
@@ -618,19 +616,18 @@ export function renderWorkbookSummary(name: string, sheets: SheetContent[]): str
   let lines = [
     `Workbook ${flattenToOneLine(name)} — ${formatCount(sheets.length, "sheet")}, ` +
       `${formatCount(cellCount, "cell")}.`,
+    ADDRESSED_ROW_LEGEND,
   ];
+  let used = byteLength(lines.join("\n"));
+
+  let headingBytes = sheets.map((sheet) => byteLength(renderUndescribedSheet(sheet)) + 1);
+  let reserved = headingBytes.reduce((total, bytes) => total + bytes, 0);
 
   for (let [index, sheet] of sheets.entries()) {
-    lines.push(renderSheetHeading(sheet));
-    if (sheet.rows.length === 0) continue;
-    // Past this many sheets the headings alone are the budget, so the rest are named and no more.
-    if (index >= MAX_SHEETS_WITH_BLOCKS) continue;
-
-    let blocks = detectTables(sheet.rows);
-    // A sheet chopped into this many blocks is a layout, not a dataset: listing where they are
-    // beats quoting a few cells from each.
-    let withPreview = blocks.length <= MAX_BLOCKS_WITH_PREVIEW;
-    for (let block of blocks) lines.push(renderBlock(block, withPreview));
+    reserved -= headingBytes[index];
+    let sheetLines = renderSheet(sheet, index, MAX_WORKBOOK_PROMPT_BYTES - used - reserved);
+    lines.push(...sheetLines);
+    used += byteLength(sheetLines.join("\n")) + 1;
   }
 
   return clampToBudget(lines);

@@ -55,26 +55,42 @@ where document conversion is refused. The upload may be up to 10 MiB. Two things
 - **every row of every sheet**, stored separately as JSON pages of at most 1 MiB each. The model
   never receives these; they are read on demand from `executeCode`.
 
-A workbook therefore costs the same handful of tokens per turn whether it holds ten rows or a
-hundred thousand.
+A workbook therefore costs at most 48 KiB of prompt text per turn whether it holds ten rows or a
+hundred thousand; small sheets appear in full, large ones as an outline.
 
 #### What the model sees each turn
 
-The summary describes where the data is, not what is in it:
+The summary is the sheets themselves, written so every value carries its own address:
 
 - one heading line — `Workbook big.xlsx — 1 sheet, 200,000 cells.`;
-- one line per sheet — `## Sheet "Data" (20,000 rows × 10 cols)`, or `## Sheet "Notes" (empty)`;
-- then that sheet's **blocks**. Fully blank rows cut a sheet into bands and fully blank columns cut
-  each band into blocks, so a title above a table, two tables side by side, and a footnote below
-  them stay separate rather than being merged into one rectangle. A block one column wide has no
-  header to pair its values against and is rendered as `Text A1: …`; anything wider is
-  `Table A3:D8 (5 data rows)` followed by its header row and its data rows as unpadded CSV.
+- one legend line explaining the encoding, once per workbook;
+- per sheet, a heading — `## Sheet "Data" (20,000 rows × 10 cols)`, or `## Sheet "Notes" (empty)`
+  — followed by its rows.
 
-Previews are bounded. A table's data rows are shown whole while there are 20 or fewer; past that the
-first 5 rows are shown followed by `… 19,994 more rows`. A single block's line stops at 2,000
-characters (always between values, never mid-value). A sheet cut into more than 30 blocks is listed
-as ranges only, with no CSV; past 100 sheets only the headings are rendered. The whole summary is
-held under **12 KiB** by dropping whole trailing lines and appending
+Each non-empty row is one line: the Excel row number, then `COLUMN=value` for every non-empty cell,
+e.g. `19 C="CC2 (Palm Heights)" E=74635 F=816`. Numbers are written unformatted (`String(n)`), dates
+as ISO strings, booleans as `true`/`false`; text is quoted when it holds a space, a `"` or an `=`
+(inner quotes doubled), and a cell's own line breaks are flattened to spaces. Blank rows are omitted
+— the row numbers already say where the gaps are. A run of more than 8 adjacent numeric cells
+collapses to `O..AV=34 nums (14215554 … 0)`: the run's columns, its length, and its first and last
+values. Text never collapses, so every label, header and note is shown.
+
+Each sheet is shown in the richest form the budget allows, in workbook order:
+
+- **whole** — every row, when the sheet renders to 32 KiB or less. A financial model of a few
+  hundred rows fits; a data table of thousands of rows does not;
+- **outline** — the heading gains ` — outline (first rows shown; readSheet for the rest)`, and the
+  sheet is described by its **bands**: runs of consecutive non-blank rows, cut on fully blank rows.
+  Each band gets a line such as `rows 1–5501 (A–J), 5,501 rows:`, its first 3 rows, and
+  `… 5,498 more rows`. Two tables side by side share a band, so each shown row carries both. An
+  outline is held under 6 KiB by showing 1 row per band instead of 3, then band lines alone, then as
+  many band lines as fit followed by `… 312 more bands`;
+- **heading only** — the heading gains ` — not shown; use readSheet`, once the workbook's budget
+  cannot hold the sheet's outline, and for every sheet past the hundredth.
+
+The whole summary is held under **48 KiB**. Every sheet's heading is reserved before any sheet is
+rendered, so a large first sheet never pushes a later sheet's name out of the text. Only a workbook
+whose headings alone overrun the budget loses whole trailing lines, ending with
 `… summary truncated; the full workbook is still readable.` Everything elided is still reachable
 through the binding below.
 
@@ -148,7 +164,7 @@ see it.
 | Spreadsheet content, measured by inflating the archive | 32 MiB |
 | Spreadsheet rows, counted across all its sheets | 250,000 |
 | Spreadsheet row data stored, counted across all its sheets | 32 MiB |
-| Spreadsheet summary replayed into context | 12 KiB |
+| Spreadsheet text replayed into context | 48 KiB (whole sheet inline up to 32 KiB, otherwise an outline of up to 6 KiB) |
 | Stored row page, and therefore the largest single row | 1 MiB |
 | Rows per `getRows()` call | 20,000 |
 | Message text + all converted attachment text | 2 MiB (about 570k tokens) |
