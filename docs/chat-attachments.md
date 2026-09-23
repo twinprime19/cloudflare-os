@@ -50,8 +50,8 @@ The workbook is parsed with SheetJS **inside the workspace's Durable Object**. T
 call and nothing leaves the isolate, so the path also works in a workspace under sharing lockdown,
 where document conversion is refused. The upload may be up to 10 MiB. Two things are kept:
 
-- a **structural summary**, stored as the attachment's `text/markdown` content — this is the only
-  part that replays into a model turn;
+- the **sheets rendered as addressed-row text** (below), stored as the attachment's `text/markdown`
+  content — this is the only part that replays into a model turn;
 - **every row of every sheet**, stored separately as JSON pages of at most 1 MiB each. The model
   never receives these; they are read on demand from `executeCode`.
 
@@ -102,8 +102,9 @@ to one `_`, and the extension is kept — so `big.xlsx` becomes `env.big_xlsx`, 
 in the same chat becomes `env.big_xlsx_2`. The derivation depends only on the file name and the names
 already taken, in message order, so it is the same on every replay of the chat.
 
-The message carrying the attachment ends with one sentence naming the binding, and
-`describeBinding("big_xlsx")` returns the sheet list with dimensions plus the API:
+The message carrying the attachment ends with a short paragraph naming the binding and the two ways
+to reach the full data — `readSheet` and `getRows` — and `describeBinding("big_xlsx")` returns the
+sheet list with dimensions plus the API:
 
 - `listSheets()` → `{name, rowCount, colCount}[]`, in the workbook's own sheet order. `rowCount` and
   `colCount` are the used extent, with trailing empty rows and columns excluded.
@@ -125,6 +126,20 @@ pass the stub on to what it calls; what the holder can then read is that one att
 chat, and nothing else. There is no per-turn scoping, as there is for worktrees: an attachment's rows
 are durable and never edited, so a stub kept past the run that minted it can only read the same rows
 again.
+
+Alongside the binding, a chat that holds a spreadsheet gets a dedicated **`readSheet`** tool — a chat
+with no spreadsheet attached sees exactly the tool list it always had. It reads one range of one
+sheet in the same addressed-row encoding as the attachment text, and never collapses a numeric run
+(so it is also how the agent looks at a run the summary collapsed). Arguments are `file` (the binding
+name, e.g. `big_xlsx`), `sheet` (the sheet name exactly as listed), and an optional `range`:
+`A150:AV160` (cells) or `150:160` (whole rows), 1-based and inclusive; omitted, it defaults to rows
+1–50. A call returns at most **200 rows and 24 KiB**: a header line — `Sheet "Data" rows 1–50 of
+20,000, columns A–J (blank rows omitted)` — followed by one addressed line per non-blank row, blank
+rows omitted exactly as in the attachment summary. When the page would cross 24 KiB the text stops at
+a whole row and ends with a notice naming the range to continue with, keeping the same columns the
+call asked for; when even the first row alone is over the cap, the notice instead asks for fewer
+columns of it. Every `readSheet` call is recorded, and replaying the chat reuses the recorded text
+rather than reading again — the model already reasoned over exactly that page.
 
 #### Fidelity
 
@@ -167,6 +182,8 @@ see it.
 | Spreadsheet text replayed into context | 48 KiB (whole sheet inline up to 32 KiB, otherwise an outline of up to 6 KiB) |
 | Stored row page, and therefore the largest single row | 1 MiB |
 | Rows per `getRows()` call | 20,000 |
+| Rows / bytes per `readSheet` call | 200 / 24 KiB |
+| `executeCode` console output | 32 KiB (cut on a line boundary with a notice) |
 | Message text + all converted attachment text | 2 MiB (about 570k tokens) |
 
 The three spreadsheet ceilings are each measured as it is spent, because none of them can be read off
@@ -187,3 +204,19 @@ The last row is a context budget checked at send time; over it the send is refus
 too big. Shorten the message or attach fewer documents." A spreadsheet contributes only its summary
 to that budget, never its rows. Document format support follows [Cloudflare's Markdown conversion
 list](https://developers.cloudflare.com/workers-ai/features/markdown-conversion/#supported-formats).
+
+## Turn guards
+
+Two guards end a turn early rather than let a tool loop run forever against the workspace's Durable
+Object — relevant here because `readSheet`/`getRows` paging is exactly the kind of loop they cover:
+
+- Three consecutive steps whose tool calls fail identically (same tool, same arguments) stop the turn
+  with: "Stopped: the same `<tool>` call failed 3 times in a row with the same error. Tell me how to
+  proceed, or ask me to try another approach."
+- 30 steps in one turn without finishing stop it with: "Stopped after 30 steps in one turn without
+  finishing. Reply to let me continue."
+
+A runtime exception inside `executeCode` is a **successful** tool result — the console log gains an
+`Uncaught exception` line, but the call itself does not error — so only a load failure (e.g. a
+`SyntaxError` in the submitted code) counts toward the repeated-failure guard; a loop that keeps
+throwing at runtime instead runs into the step cap.

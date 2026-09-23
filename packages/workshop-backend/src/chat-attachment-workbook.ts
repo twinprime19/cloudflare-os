@@ -432,7 +432,7 @@ export function detectBands(rows: CellValue[][]): SheetBand[] {
 
 // Thousands separators without Intl, so the summary reads the same whatever locale data the
 // runtime ships.
-// Shared with the readSheet header so "20,000 rows" there and "of 20,000" here read as one sheet.
+/** Thousands separators, shared with the readSheet header so "20,000 rows" there and "of 20,000" here read as one sheet. */
 export function formatNumber(value: number): string {
   return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
