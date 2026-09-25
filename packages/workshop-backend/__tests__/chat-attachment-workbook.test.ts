@@ -8,18 +8,20 @@ import {
   MAX_WORKBOOK_PROMPT_BYTES,
   MAX_WORKBOOK_ROW_BYTES,
   MAX_WORKBOOK_UNCOMPRESSED_BYTES,
-  ODS_MIME_TYPE,
-  SPREADSHEET_MIME_TYPES,
-  XLS_MIME_TYPE,
-  XLSB_MIME_TYPE,
-  XLSM_MIME_TYPE,
-  XLSX_MIME_TYPE,
   chunkSheetRows,
   detectBands,
   parseWorkbookAttachment,
   renderWorkbookSummary,
 } from "../src/chat-attachment-workbook.js";
 import type { CellValue, ParsedWorkbook, SheetContent } from "../src/chat-attachment-workbook.js";
+import {
+  ODS_MIME_TYPE,
+  SPREADSHEET_MIME_TYPES,
+  XLS_MIME_TYPE,
+  XLSB_MIME_TYPE,
+  XLSM_MIME_TYPE,
+  XLSX_MIME_TYPE,
+} from "../src/workbook-names.js";
 import {
   ADDRESSED_ROW_LEGEND,
   columnLabel,

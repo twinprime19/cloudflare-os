@@ -3,7 +3,7 @@ import { applyCodeChange, codeChangeSerializedSize, replaceSpanChange, type Code
   type CodeChange, type FileChange } from '@gadgets/workshop-shared/code-change';
 import { PDF_MIME_TYPE, modelApiSupportsPdfAttachments } from './chat-attachment-pdf';
 import { MAX_CHAT_ATTACHMENT_BYTES, MAX_CHAT_ATTACHMENTS_PER_MESSAGE, sanitizeChatAttachmentMimeType, shouldConvertUpload } from './chat-attachment-validation';
-import { SPREADSHEET_MIME_TYPES, workbookBindingName } from './chat-attachment-workbook';
+import { deriveWorkbookBindings } from './workbook-names';
 import { AgentCatalog, ObservationDescription } from '@gadgets/workshop-shared/gatekeeper';
 import { createWorkshopLogger } from "./observability";
 import { Type } from "@earendil-works/pi-ai";
@@ -2039,21 +2039,12 @@ async function runAgentPass(
               // the agent reads in executeCode (see workbook-binding.d.ts). Names are derived here,
               // synchronously and in message order, before any attachment body is fetched -- the
               // fetches below run concurrently, and a name that depended on how they interleaved
-              // would differ between the live turn and its replays, leaving the conversation's
-              // earlier `env.NAME` references pointing at the wrong workbook.
-              //
-              // An attachment from before workbooks were bound has no `convertedFrom` and binds
-              // nothing, so such messages replay byte for byte as they always have.
+              // would differ between the live turn and its replays.
               let workbookNames = new Map<string, string>();
-              for (let attachment of msg.attachments) {
-                if (attachment.convertedFrom === undefined ||
-                    !SPREADSHEET_MIME_TYPES.has(attachment.convertedFrom)) {
-                  continue;
-                }
-                let name = workbookBindingName(
-                    attachment.name, new Set([...chatBindings.keys(), ...claimedNames]));
-                chatBindings.set(name, {type: "attachment", id: attachment.id});
-                workbookNames.set(attachment.id, name);
+              for (let {name, attachmentId} of deriveWorkbookBindings(
+                  msg.attachments, new Set([...chatBindings.keys(), ...claimedNames]))) {
+                chatBindings.set(name, {type: "attachment", id: attachmentId});
+                workbookNames.set(attachmentId, name);
               }
               let attachmentParts = await Promise.all(msg.attachments.map(
                   async (attachment): Promise<(TextContent | ImageContent)[]> => {

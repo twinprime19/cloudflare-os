@@ -13,6 +13,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { importMailAttachments, runAgent } from "../src/agent.js";
+import { buildCompactionState } from "../src/agent-compaction.js";
 import type { AgentHooks, ChatBindingEntry } from "../src/agent.js";
 import type { ModelHandle } from "../src/ai-models.js";
 import type {
@@ -651,29 +652,51 @@ describe("chat history replay of a spreadsheet attachment", () => {
     expect(second).toBe(first);
   });
 
-  it("keeps the names a compaction checkpoint already bound", async () => {
-    // Checkpoints store the binding map, including attachment entries, and replay starts from it.
-    // A workbook named before the boundary therefore still holds its name afterwards, and the new
-    // one has to take the next.
-    let captured = await capturedReplayContext(replayHooks({
+  it("still reaches a workbook uploaded before the compaction boundary", async () => {
+    // Replay starts from the checkpoint's binding map, not the upload message, once compaction
+    // passes it; the checkpoint is built by the real fold over the real log, so a fold that dropped
+    // the workbook -- or bound its name to the wrong upload -- shows up as the wrong rows here.
+    let log: AiChatMessage[] = [
+      {chatId: CHAT_ID, sequence: 1, timestamp: new Date(0), author: ALICE,
+       type: "message", message: "Here is last quarter.",
+       attachments: [attachmentRef({id: "file-0"})]},
+      {chatId: CHAT_ID, sequence: 2, timestamp: new Date(0), author: AGENT_AUTHOR,
+       type: "message", message: "Got it."},
+      {chatId: CHAT_ID, sequence: 3, timestamp: new Date(0), author: ALICE,
+       type: "message", message: "And this quarter.",
+       attachments: [attachmentRef({id: "file-9"})]},
+    ];
+    let compactedTo = 3;
+    let checkpoint = {
+      chatId: CHAT_ID, compactedTo, summary: "Earlier: the user attached big.xlsx (env.big_xlsx).",
+      ...buildCompactionState(log, compactedTo, [], undefined),
+    };
+    let rowsById: Record<string, string> = {"file-0": "1 A=Q2 B=17", "file-9": "1 A=Q3 B=42"};
+    let readWorkbookRange = vi.fn(async (_chatId: number, _envName: string, id: string) =>
+        rowsById[id]);
+
+    let {messages, tools} = await capturedReplayRequest(replayHooks({
       loadChatHistory: () => ({
-        checkpoint: {
-          chatId: CHAT_ID,
-          compactedTo: 1,
-          summary: "Earlier: the user attached big.xlsx (env.big_xlsx).",
-          chatBindings: [["big_xlsx", {type: "attachment", id: "file-0"}]],
-          nextChangeId: 1,
-        },
-        measuredTokens: 0,
-        chatMessages: attachmentChatLog([attachmentRef({id: "file-9"})]),
+        checkpoint, measuredTokens: 0,
+        chatMessages: log.filter(message => message.sequence >= compactedTo),
       }),
       getChatAttachmentData: async () => bytes(WORKBOOK_SUMMARY),
+      readWorkbookRange,
     }));
 
-    let text = contextText(captured);
+    let text = contextText(messages);
     expect(text).toContain("Earlier: the user attached big.xlsx (env.big_xlsx).");
     expect(text).toContain(`readSheet(file: "big_xlsx_2", sheet, range)`);
     expect(text).not.toContain(`readSheet(file: "big_xlsx", sheet, range)`);
+
+    // Both names resolve, each to its own upload's rows.
+    let readSheet = tools.find(tool => tool.name === "readSheet") as any;
+    let earlier = await readSheet.execute("call-1", {file: "big_xlsx", sheet: "Data"});
+    let later = await readSheet.execute("call-2", {file: "big_xlsx_2", sheet: "Data"});
+    expect(earlier.content).toEqual([{type: "text", text: "1 A=Q2 B=17"}]);
+    expect(later.content).toEqual([{type: "text", text: "1 A=Q3 B=42"}]);
+    expect(readWorkbookRange)
+        .toHaveBeenCalledWith(CHAT_ID, "big_xlsx", "file-0", "Data", undefined);
   });
 
   it("replays a recorded readSheet call from its output, without reading again", async () => {

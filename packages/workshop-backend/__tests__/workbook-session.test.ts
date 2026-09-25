@@ -5,9 +5,8 @@
 // the boundary between two stored chunks (the one place a paging bug would show as silently
 // missing or repeated rows); ranges are validated with errors that tell the agent how to page; the
 // session opens only for the chat that owns the attachment, and never for a gadget; the binding's
-// description carries the same API text the .d.ts declares; the binding name derived from a
-// file name is deterministic; and readSheet's ranges, caps and rendering -- the text the model
-// reads cells from -- come out exactly as specified.
+// description carries the same API text the .d.ts declares; and readSheet's ranges, caps and
+// rendering -- the text the model reads cells from -- come out exactly as specified.
 //
 // Runs the real OverseerImpl inside workerd over real Durable Object storage, the harness
 // chat-attachment-import.test.ts uses, with the attachment put in place through the real import
@@ -23,7 +22,6 @@ import {
   MAX_READ_SHEET_BYTES, MAX_READ_SHEET_ROWS, MAX_WORKBOOK_ROWS_PER_CALL, parseSheetRange,
   readSheetRows,
 } from "../src/workbook-session";
-import { workbookBindingName } from "../src/chat-attachment-workbook";
 // Vite's ?raw import; resolved relative to this file, so the test below can compare the shipped
 // text module against its source of truth.
 // @ts-expect-error -- ?raw imports have no type declaration
@@ -316,32 +314,6 @@ describe("describeAttachmentBinding", () => {
     // files whose real location is inside the package), so identity is structural; this guards the
     // link itself and the text-module pipeline that ships it.
     expect(WORKBOOK_BINDING_TYPES).toBe(WORKBOOK_DTS_SOURCE);
-  });
-});
-
-describe("workbookBindingName", () => {
-  // Replay rebuilds the chat's binding map from the log on every turn, so this derivation is
-  // pinned: a name that moved between turns would leave the conversation's `env.NAME` references
-  // pointing at the wrong workbook, or at nothing.
-  it("derives a stable identifier from a file name", () => {
-    let none: ReadonlySet<string> = new Set();
-    expect(workbookBindingName("big.xlsx", none)).toBe("big_xlsx");
-    expect(workbookBindingName("Báo cáo Q3.xlsx", none)).toBe("B_o_c_o_Q3_xlsx");
-    expect(workbookBindingName("2026.xls", none)).toBe("file_2026_xls");
-    expect(workbookBindingName("class.xlsx", none)).toBe("class_xlsx");
-    // Bare reserved words and Object.prototype members cannot be binding names on their own.
-    expect(workbookBindingName("class", none)).toBe("file_class");
-    expect(workbookBindingName("constructor", none)).toBe("file_constructor");
-    // Nothing usable in the name at all, including an attachment that arrived without one.
-    expect(workbookBindingName(undefined, none)).toBe("file");
-    expect(workbookBindingName("- — -", none)).toBe("file");
-  });
-
-  it("dedupes against the names already in scope, in order", () => {
-    expect(workbookBindingName("big.xlsx", new Set(["big_xlsx"]))).toBe("big_xlsx_2");
-    expect(workbookBindingName("big.xlsx", new Set(["big_xlsx", "big_xlsx_2"])))
-        .toBe("big_xlsx_3");
-    expect(workbookBindingName(undefined, new Set(["file"]))).toBe("file_2");
   });
 });
 

@@ -1,8 +1,10 @@
 import { isTextLikeAttachmentMimeType } from "@gadgets/workshop-shared/api";
 import type { AiModelConfig, AiModelProvider, ChatAttachmentUpload } from "@gadgets/workshop-shared/api";
 import { PDF_MIME_TYPE } from "./chat-attachment-pdf";
-// The spreadsheet MIME types live with the workbook parser, which is the module whose behavior
-// they select; importing them keeps one definition rather than two lists to hold in sync.
+import { parseWorkbookAttachment } from "./chat-attachment-workbook";
+import type { ParsedWorkbook } from "./chat-attachment-workbook";
+// The spreadsheet MIME types are defined once, beside the workbook binding names, rather than as a
+// second list here to hold in sync.
 import {
   ODS_MIME_TYPE,
   SPREADSHEET_MIME_TYPES,
@@ -10,9 +12,7 @@ import {
   XLSM_MIME_TYPE,
   XLS_MIME_TYPE,
   XLSX_MIME_TYPE,
-  parseWorkbookAttachment,
-} from "./chat-attachment-workbook";
-import type { ParsedWorkbook } from "./chat-attachment-workbook";
+} from "./workbook-names";
 import { convertDocumentToMarkdown } from "./doc-to-markdown";
 import type { DocToMarkdownEnv } from "./doc-to-markdown";
 

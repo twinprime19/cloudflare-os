@@ -65,9 +65,8 @@ import {
   MAX_CHAT_ATTACHMENTS_PER_MESSAGE,
 } from "./chat-attachment-validation";
 import type { ValidatedChatAttachmentUpload } from "./chat-attachment-validation";
-import {
-  formatCount, SPREADSHEET_MIME_TYPES, workbookBindingName, type WorkbookMeta,
-} from "./chat-attachment-workbook";
+import { formatCount, type WorkbookMeta } from "./chat-attachment-workbook";
+import { deriveWorkbookBindings } from "./workbook-names";
 import type { DocToMarkdownEnv } from "./doc-to-markdown";
 import { renderGadgetInBrowser } from "./browser-export";
 import {
@@ -8225,12 +8224,7 @@ class OverseerImpl implements AgentHooks {
         // stamped on the message (see agent.ts), so the derivation is repeated here, in the same
         // order. Without it a gadget or connection named later could be handed a name a workbook
         // already holds and would shadow it in the agent's env.
-        for (let attachment of msg.attachments ?? []) {
-          if (attachment.convertedFrom !== undefined &&
-              SPREADSHEET_MIME_TYPES.has(attachment.convertedFrom)) {
-            taken.add(workbookBindingName(attachment.name, taken));
-          }
-        }
+        for (let {name} of deriveWorkbookBindings(msg.attachments, taken)) taken.add(name);
         for (let call of msg.toolCalls ?? []) {
           if ((call.toolName === "createGadget" || call.toolName === "createWorktree") &&
               call.input.bindingName !== undefined) {
@@ -8440,12 +8434,7 @@ class OverseerImpl implements AgentHooks {
         }
         // As in chatScopeNames: workbook binding names are derived, not stamped, so they have to
         // be claimed here too or a resource named at this chokepoint could take one.
-        for (let attachment of msg.attachments ?? []) {
-          if (attachment.convertedFrom !== undefined &&
-              SPREADSHEET_MIME_TYPES.has(attachment.convertedFrom)) {
-            taken.add(workbookBindingName(attachment.name, taken));
-          }
-        }
+        for (let {name} of deriveWorkbookBindings(msg.attachments, taken)) taken.add(name);
         for (let call of msg.toolCalls ?? []) {
           if (call.toolName === "createGadget") {
             taken.add(call.input.bindingName);
