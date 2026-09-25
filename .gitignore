@@ -12,6 +12,7 @@ packages/workshop-backend/src/generated/bundled-blueprints.ts
 packages/workshop-backend/src/generated/browser-export-runtime.txt
 packages/workshop-backend/src/generated/html-sanitizer-runtime.txt
 packages/workshop-backend/src/generated/browser-export-page.js
+packages/workshop-backend/src/generated/workbook-parser-runtime.txt
 
 # TypeScript build info
 *.tsbuildinfo

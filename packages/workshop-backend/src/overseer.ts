@@ -67,6 +67,7 @@ import {
 import type { ValidatedChatAttachmentUpload } from "./chat-attachment-validation";
 import { formatCount, type WorkbookMeta } from "./chat-attachment-workbook";
 import { deriveWorkbookBindings } from "./workbook-names";
+import { parseWorkbookIsolated } from "./workbook-parser-isolate";
 import type { DocToMarkdownEnv } from "./doc-to-markdown";
 import { renderGadgetInBrowser } from "./browser-export";
 import {
@@ -6108,37 +6109,53 @@ class OverseerImpl implements AgentHooks {
 
   // Stage an upload's bytes, and a workbook's rows with them.
   //
-  // One transaction, because the summary and the chunks are halves of one attachment: a summary
-  // stored without its rows would describe a spreadsheet the binding cannot open, and chunks
-  // stored without their record would be unreachable and unswept.
-  stageChatAttachment(validated: ValidatedChatAttachmentUpload, id: string): void {
+  // The summary and the chunks are halves of one attachment: a summary stored without its rows
+  // would describe a spreadsheet the binding cannot open, and chunks stored without their record
+  // would be unreachable and unswept. The rows stream in from the parser worker a chunk at a time,
+  // so they cannot share one transaction with the record -- none may be held across an await.
+  // Instead the record is written first, so every chunk that follows has a staged owner the sweep
+  // can find, and each chunk is written as it arrives. The caller hands out the id only once this
+  // resolves, so a half-stored workbook is never attachable; if the stream fails or is stopped,
+  // the record and every chunk already written go with it, and if the object is evicted mid-stream
+  // the staged-age sweep reaps them together.
+  async stageChatAttachment(validated: ValidatedChatAttachmentUpload, id: string): Promise<void> {
     let attachment = validated.attachment;
-    this.ctx.storage.transactionSync(() => {
-      this.storage.chatAttachmentContent.put({
-        fileId: id,
-        data: new Uint8Array(attachment.content),
-        state: {
-          type: "staged",
-          uploadedAt: Date.now(),
-          mimeType: attachment.mimeType,
-          name: attachment.name,
-          convertedFrom: validated.convertedFrom,
-        },
-        workbook: validated.workbook?.meta,
-      });
-      for (let [sheetIndex, sheet] of (validated.workbook?.sheets ?? []).entries()) {
-        for (let [chunkIndex, chunk] of sheet.chunks.entries()) {
-          this.storage.chatWorkbookRows.put({
-            key: chatWorkbookRowKey(id, sheetIndex, chunkIndex),
-            fileId: id,
-            sheetIndex,
-            chunkIndex,
-            rowStart: chunk.rowStart,
-            rows: chunk.bytes,
-          });
-        }
-      }
+    this.storage.chatAttachmentContent.put({
+      fileId: id,
+      data: new Uint8Array(attachment.content),
+      state: {
+        type: "staged",
+        uploadedAt: Date.now(),
+        mimeType: attachment.mimeType,
+        name: attachment.name,
+        convertedFrom: validated.convertedFrom,
+      },
+      workbook: validated.workbook?.meta,
     });
+    if (!validated.workbook) return;
+
+    try {
+      for await (let chunk of validated.workbook.rows) {
+        this.storage.chatWorkbookRows.put({
+          key: chatWorkbookRowKey(id, chunk.sheetIndex, chunk.chunkIndex),
+          fileId: id,
+          sheetIndex: chunk.sheetIndex,
+          chunkIndex: chunk.chunkIndex,
+          rowStart: chunk.rowStart,
+          rows: chunk.bytes,
+        });
+      }
+    } catch (err) {
+      this.deleteChatAttachmentContent(id);
+      throw err;
+    }
+  }
+
+  // Parse a spreadsheet upload in a dynamic worker loaded for it alone, so a workbook that
+  // materializes more than an isolate holds takes that worker down rather than this object (see
+  // workbook-parser-isolate.ts).
+  parseWorkbookUpload(bytes: Uint8Array, mimeType: string, name: string) {
+    return parseWorkbookIsolated(this.env.LOADER, bytes, mimeType, name);
   }
 
   // WorkbookSessionHost implementation: one stored row page of a workbook attachment, for the
@@ -6250,10 +6267,14 @@ class OverseerImpl implements AgentHooks {
         let validated = await validateChatAttachmentUpload(
           {mimeType: upload.mimeType, content: upload.content, name: upload.name},
           provider,
-          () => this.getDocumentConversionEnv(),
+          {
+            parseWorkbook: (bytes, mimeType, name) =>
+                this.parseWorkbookUpload(bytes, mimeType, name),
+            getConversionEnv: () => this.getDocumentConversionEnv(),
+          },
         );
         let id = crypto.randomUUID();
-        this.stageChatAttachment(validated, id);
+        await this.stageChatAttachment(validated, id);
         handles.push({id});
       }
 
@@ -12230,12 +12251,18 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
     let validated = await validateChatAttachmentUpload(
       attachment,
       provider,
-      () => this.impl.getDocumentConversionEnv(),
+      {
+        parseWorkbook: (bytes, mimeType, name) =>
+            this.impl.parseWorkbookUpload(bytes, mimeType, name),
+        getConversionEnv: () => this.impl.getDocumentConversionEnv(),
+      },
     );
     this.impl.sweepStagedChatAttachments();
 
     let id = crypto.randomUUID();
-    this.impl.stageChatAttachment(validated, id);
+    // Resolves only once the last row chunk is stored: the client cannot name an attachment it
+    // has not been handed, so it can never attach one still streaming in.
+    await this.impl.stageChatAttachment(validated, id);
     return {id};
   }
 

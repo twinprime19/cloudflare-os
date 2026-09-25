@@ -10,9 +10,9 @@ import {
   MAX_WORKBOOK_UNCOMPRESSED_BYTES,
   chunkSheetRows,
   detectBands,
-  parseWorkbookAttachment,
   renderWorkbookSummary,
 } from "../src/chat-attachment-workbook.js";
+import { parseWorkbookAttachment } from "../src/workbook-parse.js";
 import type { CellValue, ParsedWorkbook, SheetContent } from "../src/chat-attachment-workbook.js";
 import {
   ODS_MIME_TYPE,
@@ -647,6 +647,23 @@ describe("addressed rows", () => {
     for (let label of ["", "A1", "ABCD", "XFE", "Ă"]) {
       expect(() => parseColumnLabel(label)).toThrow(RangeError);
     }
+  });
+
+  it("labels every column of the grid the way SheetJS does", () => {
+    // The labels are computed locally so rendering never loads the parser; SheetJS is the
+    // reference they must agree with, across every carry from one letter count to the next.
+    let carries =
+        [[0, "A"], [25, "Z"], [26, "AA"], [701, "ZZ"], [702, "AAA"], [16_383, "XFD"]] as const;
+    for (let [index, label] of carries) {
+      expect(columnLabel(index)).toBe(label);
+      expect(parseColumnLabel(label)).toBe(index);
+    }
+    for (let index = 0; index <= 16_383; index++) {
+      let label = XLSX.utils.encode_col(index);
+      expect(columnLabel(index)).toBe(label);
+      expect(parseColumnLabel(label)).toBe(index);
+    }
+    expect(() => columnLabel(-1)).toThrow(RangeError);
   });
 });
 

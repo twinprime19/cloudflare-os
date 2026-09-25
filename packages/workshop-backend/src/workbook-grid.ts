@@ -13,7 +13,6 @@
 // Pure and deterministic: the same rows always render to the same bytes, because this text is
 // replayed into every turn and a drifting prompt would invalidate cached context.
 
-import * as XLSX from "xlsx";
 import type { CellValue } from "./chat-attachment-workbook";
 
 /** A run of more than this many adjacent numeric cells collapses to one range entry. */
@@ -47,20 +46,29 @@ export type RenderedRows = {
   truncated: boolean;
 };
 
+// Column labels are bijective base 26 -- A..Z, then AA -- written here rather than borrowed from
+// SheetJS, so rendering a workbook's rows never loads the parser.
+
 /** The A1 letters of a 0-based column index: 0 → `A`, 47 → `AV`. */
 export function columnLabel(index: number): string {
-  return XLSX.utils.encode_col(index);
+  if (!Number.isInteger(index) || index < 0) throw new RangeError(`Not a column index: ${index}`);
+  let label = "";
+  for (let rest = index + 1; rest > 0; rest = Math.floor((rest - 1) / 26)) {
+    label = String.fromCharCode(0x41 + ((rest - 1) % 26)) + label;
+  }
+  return label;
 }
 
 /**
  * The 0-based column index an A1 column label names: `AV` → 47. Case-insensitive; throws on
- * anything that is not a column of a spreadsheet, because SheetJS's own decoder turns any string
- * into some number.
+ * anything that is not a column of a spreadsheet.
  */
 export function parseColumnLabel(label: string): number {
   let normalized = label.trim().toUpperCase();
   if (!/^[A-Z]{1,3}$/.test(normalized)) throw new RangeError(`Not a column label: "${label}"`);
-  let index = XLSX.utils.decode_col(normalized);
+  let index = 0;
+  for (let letter of normalized) index = index * 26 + (letter.charCodeAt(0) - 0x40);
+  index -= 1;
   if (index > MAX_COLUMN_INDEX) throw new RangeError(`Not a column label: "${label}"`);
   return index;
 }

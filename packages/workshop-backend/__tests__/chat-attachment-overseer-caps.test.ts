@@ -20,6 +20,7 @@ import type {
   AiChatAuthorInfo, ChatAttachmentHandle, ChatAttachmentRef,
 } from "@gadgets/workshop-shared/api";
 import { validateChatAttachmentUpload } from "../src/chat-attachment-validation.js";
+import { parseWorkbookInProcess } from "../src/workbook-parse.js";
 import type { OverseerDurableObject } from "../src/overseer.js";
 
 declare module "cloudflare:workers" {
@@ -261,7 +262,10 @@ describe("document conversion environment", () => {
     await expect(validateChatAttachmentUpload(
         { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "quarterly.docx" },
         "google",
-        () => impl.getDocumentConversionEnv(),
+        {
+          parseWorkbook: parseWorkbookInProcess,
+          getConversionEnv: () => impl.getDocumentConversionEnv(),
+        },
     )).rejects.toThrow("prohibited from converting uploaded documents");
   }));
 });

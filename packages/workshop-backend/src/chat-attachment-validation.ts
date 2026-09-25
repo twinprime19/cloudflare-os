@@ -1,8 +1,7 @@
 import { isTextLikeAttachmentMimeType } from "@gadgets/workshop-shared/api";
 import type { AiModelConfig, AiModelProvider, ChatAttachmentUpload } from "@gadgets/workshop-shared/api";
 import { PDF_MIME_TYPE } from "./chat-attachment-pdf";
-import { parseWorkbookAttachment } from "./chat-attachment-workbook";
-import type { ParsedWorkbook } from "./chat-attachment-workbook";
+import type { StreamedWorkbook, WorkbookParser } from "./chat-attachment-workbook";
 // The spreadsheet MIME types are defined once, beside the workbook binding names, rather than as a
 // second list here to hold in sync.
 import {
@@ -256,8 +255,9 @@ const ZIP_CONTAINER_MARKERS = new Map<string, Uint8Array>([
 // sanity check on mislabeled uploads, NOT a security boundary: it does not inspect the archive's
 // structure and does not stop a hostile archive. Resource abuse is bounded elsewhere -- by the raw
 // size cap; by toMarkdown() parsing documents on Workers AI infrastructure rather than in this
-// isolate; and, for the spreadsheet types, which do parse here, by the workbook module's own
-// ceilings on inflated content, rows and row bytes, each measured as it is spent.
+// isolate; and, for the spreadsheet types, by the workbook parser's ceilings on inflated content,
+// rows and row bytes, and past those by the dynamic worker it runs in, whose limits stop a parse
+// without touching the workspace.
 function assertZipContainerMarker(attachment: ChatAttachmentUpload): void {
   let marker = ZIP_CONTAINER_MARKERS.get(attachment.mimeType);
   if (!marker) return;
@@ -275,23 +275,39 @@ export type ValidatedChatAttachmentUpload = {
    *
    * The attachment itself carries the summary the model reads; the rows here are stored beside it
    * and reached through a binding, so the caller has to persist both together or the summary would
-   * describe data nothing can open.
+   * describe data nothing can open. The rows arrive a chunk at a time from the parser; the caller
+   * reads them to the end, or stops the iterator, so the parser is released.
    */
-  workbook?: Pick<ParsedWorkbook, "meta" | "sheets">;
+  workbook?: Pick<StreamedWorkbook, "meta" | "rows">;
+};
+
+/** What validation needs from its caller beyond the upload itself. */
+export type ChatAttachmentValidationOptions = {
+  /**
+   * Parses spreadsheet uploads. Required, so each caller decides where a parse runs: the
+   * workspace hands it to a dynamic worker (workbook-parser-isolate.ts) rather than running
+   * SheetJS in the Durable Object.
+   */
+  parseWorkbook: WorkbookParser;
+  /** Environment for Markdown conversion; without it, a document to convert is refused. */
+  getConversionEnv?: () => DocToMarkdownEnv;
 };
 
 /**
  * Parse a spreadsheet upload: the attachment becomes the Markdown summary, and the rows travel
  * back separately for the caller to store.
  *
- * Unlike Markdown conversion this needs no Workers AI binding -- parsing happens in this isolate
- * and no byte leaves it -- so it stays available in a workspace under sharing lockdown, which is
- * exactly the workspace whose spreadsheets must not be shipped to a converter. The checks that
- * precede it are the ones conversion runs, in the same order: a document that is never stored is
- * bounded by the raw cap rather than the storage cap, and the magic-number and container checks
- * reject a mislabeled upload before any parser sees it.
+ * Unlike Markdown conversion this needs no Workers AI binding -- the parser has no network and no
+ * byte leaves the workspace's own infrastructure -- so it stays available in a workspace under
+ * sharing lockdown, which is exactly the workspace whose spreadsheets must not be shipped to a
+ * converter. The checks that precede it are the ones conversion runs, in the same order: a
+ * document that is never stored is bounded by the raw cap rather than the storage cap, and the
+ * magic-number and container checks reject a mislabeled upload before any parser sees it.
  */
-function convertWorkbookUpload(attachment: ChatAttachmentUpload): ValidatedChatAttachmentUpload {
+async function convertWorkbookUpload(
+  attachment: ChatAttachmentUpload,
+  parseWorkbook: WorkbookParser,
+): Promise<ValidatedChatAttachmentUpload> {
   let convertedFrom = attachment.mimeType;
 
   if (attachment.content.byteLength > MAX_CONVERTIBLE_DOCUMENT_BYTES) {
@@ -300,7 +316,7 @@ function convertWorkbookUpload(attachment: ChatAttachmentUpload): ValidatedChatA
   assertContentMatchesMimeType(attachment);
   assertZipContainerMarker(attachment);
 
-  let parsed = parseWorkbookAttachment(
+  let parsed = await parseWorkbook(
       attachment.content, convertedFrom, attachment.name ?? "spreadsheet");
 
   let encoded = new TextEncoder().encode(parsed.summary);
@@ -308,12 +324,14 @@ function convertWorkbookUpload(attachment: ChatAttachmentUpload): ValidatedChatA
   // storage-record ceiling is asserted anyway, so every stored attachment passes the same gate
   // whichever path produced it.
   if (encoded.byteLength > MAX_CHAT_ATTACHMENT_BYTES) {
+    // Nothing will read the rows, so the parser is released now rather than when it is collected.
+    await parsed.rows[Symbol.asyncIterator]().return?.();
     throw new Error("This document produced too much text to attach.");
   }
 
   attachment.content = encoded;
   attachment.mimeType = CONVERTED_ATTACHMENT_MIME_TYPE;
-  return {attachment, convertedFrom, workbook: {meta: parsed.meta, sheets: parsed.sheets}};
+  return {attachment, convertedFrom, workbook: {meta: parsed.meta, rows: parsed.rows}};
 }
 
 async function convertUploadToMarkdown(
@@ -368,13 +386,14 @@ async function convertUploadToMarkdown(
  * checks, whose per-file size limit is bounded by Durable Object storage and does not apply to a
  * document that is never stored.
  *
- * Spreadsheets take that gate too but a different path: they are parsed into a summary plus the
- * row pages returned in `workbook`, which the caller must store alongside the attachment.
+ * Spreadsheets take that gate too but a different path: `options.parseWorkbook` turns them into a
+ * summary plus the row pages returned in `workbook`, which the caller must store alongside the
+ * attachment.
  */
 export async function validateChatAttachmentUpload(
   attachment: ChatAttachmentUpload,
-  provider?: AiModelConfig["provider"],
-  getConversionEnv?: () => DocToMarkdownEnv,
+  provider: AiModelConfig["provider"] | undefined,
+  options: ChatAttachmentValidationOptions,
 ): Promise<ValidatedChatAttachmentUpload> {
   attachment.name = sanitizeChatAttachmentName(attachment.name);
   attachment.mimeType = sanitizeChatAttachmentMimeType(attachment.mimeType);
@@ -386,8 +405,10 @@ export async function validateChatAttachmentUpload(
   if (shouldConvertUpload(attachment.mimeType, provider)) {
     // Spreadsheets are read here rather than flattened into Markdown: a workbook's rows are
     // stored and reached through a binding, and only its summary goes into the prompt.
-    if (SPREADSHEET_MIME_TYPES.has(attachment.mimeType)) return convertWorkbookUpload(attachment);
-    return await convertUploadToMarkdown(attachment, getConversionEnv);
+    if (SPREADSHEET_MIME_TYPES.has(attachment.mimeType)) {
+      return await convertWorkbookUpload(attachment, options.parseWorkbook);
+    }
+    return await convertUploadToMarkdown(attachment, options.getConversionEnv);
   }
 
   assertChatAttachmentSupportedByProvider(provider, attachment.mimeType, attachment.content.byteLength);

@@ -4,6 +4,15 @@ import {
   isAllowedChatAttachmentImageMimeType,
   validateChatAttachmentUpload,
 } from "../src/chat-attachment-validation.js";
+import type { ChatAttachmentValidationOptions } from "../src/chat-attachment-validation.js";
+import type { DocToMarkdownEnv } from "../src/doc-to-markdown.js";
+import { parseWorkbookInProcess } from "../src/workbook-parse.js";
+
+// Validation with the workbook parser run in this isolate. These tests pin the rules around the
+// parse; where it runs is covered by workbook-parser-isolate.test.ts.
+function inProcess(getConversionEnv?: () => DocToMarkdownEnv): ChatAttachmentValidationOptions {
+  return { parseWorkbook: parseWorkbookInProcess, getConversionEnv };
+}
 
 describe("assertChatAttachmentSupportedByProvider", () => {
   it("allows text and supported images without a selected model", () => {
@@ -52,7 +61,7 @@ describe("validateChatAttachmentUpload", () => {
       mimeType: "text/plain; charset=utf-8",
       content: new Uint8Array([1]),
       name: "notes.txt",
-    });
+    }, undefined, inProcess());
 
     expect(attachment.mimeType).toBe("text/plain");
   });
@@ -66,7 +75,7 @@ describe("validateChatAttachmentUpload", () => {
 
     // Normalization happens before the support check, so the rejection is for the normalized
     // type (octet-stream, which no provider accepts), left visible on the mutated upload.
-    await expect(validateChatAttachmentUpload(attachment, "google"))
+    await expect(validateChatAttachmentUpload(attachment, "google", inProcess()))
       .rejects.toThrow("Unsupported file type");
     expect(attachment.mimeType).toBe("application/octet-stream");
   });
@@ -76,7 +85,7 @@ describe("validateChatAttachmentUpload", () => {
       mimeType: "image/jpeg",
       content: new Uint8Array([0xff, 0xd8, 0xff]),
       name: "photo.jpg",
-    })).resolves.toBeDefined();
+    }, undefined, inProcess())).resolves.toBeDefined();
   });
 
   it("accepts matching PNG and WebP content", async () => {
@@ -84,13 +93,13 @@ describe("validateChatAttachmentUpload", () => {
       mimeType: "image/png",
       content: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
       name: "photo.png",
-    })).resolves.toBeDefined();
+    }, undefined, inProcess())).resolves.toBeDefined();
 
     await expect(validateChatAttachmentUpload({
       mimeType: "image/webp",
       content: new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]),
       name: "photo.webp",
-    })).resolves.toBeDefined();
+    }, undefined, inProcess())).resolves.toBeDefined();
   });
 
   it("rejects image bytes that do not match their MIME", async () => {
@@ -98,7 +107,8 @@ describe("validateChatAttachmentUpload", () => {
       mimeType: "image/jpeg",
       content: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
       name: "photo.jpg",
-    })).rejects.toThrow("Chat attachment content does not match its MIME type.");
+    }, undefined, inProcess()))
+      .rejects.toThrow("Chat attachment content does not match its MIME type.");
   });
 
   it("checks the PDF signature for PDF-capable providers", async () => {
@@ -107,13 +117,14 @@ describe("validateChatAttachmentUpload", () => {
       mimeType: "application/pdf",
       content: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]),
       name: "report.pdf",
-    }, "anthropic")).resolves.toBeDefined();
+    }, "anthropic", inProcess())).resolves.toBeDefined();
 
     await expect(validateChatAttachmentUpload({
       mimeType: "application/pdf",
       content: new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]),
       name: "report.pdf",
-    }, "anthropic")).rejects.toThrow("Chat attachment content does not match its MIME type.");
+    }, "anthropic", inProcess()))
+      .rejects.toThrow("Chat attachment content does not match its MIME type.");
   });
 
   it("rejects WebP headers with a mismatch at every checked byte", async () => {
@@ -127,7 +138,8 @@ describe("validateChatAttachmentUpload", () => {
         mimeType: "image/webp",
         content: invalidWebp,
         name: "photo.webp",
-      })).rejects.toThrow("Chat attachment content does not match its MIME type.");
+      }, undefined, inProcess()))
+        .rejects.toThrow("Chat attachment content does not match its MIME type.");
     }
   });
 

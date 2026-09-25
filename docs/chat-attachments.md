@@ -46,9 +46,17 @@ recognised:
 | `.xlsb` | `application/vnd.ms-excel.sheet.binary.macroenabled.12` |
 | `.ods` | `application/vnd.oasis.opendocument.spreadsheet` |
 
-The workbook is parsed with SheetJS **inside the workspace's Durable Object**. There is no Workers AI
-call and nothing leaves the isolate, so the path also works in a workspace under sharing lockdown,
-where document conversion is refused. The upload may be up to 10 MiB. Two things are kept:
+The workbook is parsed with SheetJS **in a sandboxed dynamic worker** that the workspace's Durable
+Object loads for that one upload: a fresh isolate with no bindings, no network and a CPU limit. The
+rows stream back from it one stored page at a time and are written to storage as they arrive; the
+attachment becomes usable only once the last page is stored, and a parse or stream that fails leaves
+nothing behind. The parse runs apart from the workspace because some files — an ODS that declares a
+row repeated thousands of times, cells written without their addresses — are a few kilobytes on
+disk but millions of cells once parsed, which no size check before the parse can catch. Such a file
+exhausts the parser's own isolate and is refused as too large; the workspace and anyone else using
+it are unaffected. There is no Workers AI call and the parser has no network, so the path also works
+in a workspace under sharing lockdown, where document conversion is refused. The upload may be up
+to 10 MiB. Two things are kept:
 
 - the **sheets rendered as addressed-row text** (below), stored as the attachment's `text/markdown`
   content — this is the only part that replays into a model turn;
@@ -165,9 +173,10 @@ see it.
 - **Files whose bytes do not match their declared type** — refused before conversion or parsing with
   "Chat attachment content does not match its MIME type." Windows browsers label `.csv` as
   `application/vnd.ms-excel`, which trips this check; upload the file as `.txt` instead.
-- **Spreadsheets too large to hold in the isolate** — refused with "This workbook is too large to
-  read. Split it or remove unused sheets." A spreadsheet that cannot be parsed at all is refused with
-  "This spreadsheet could not be read."
+- **Spreadsheets too large to parse** — over one of the limits below, or more than the parser's
+  isolate can hold — refused with "This workbook is too large to read. Split it or remove unused
+  sheets." A spreadsheet that cannot be parsed at all is refused with "This spreadsheet could not be
+  read."
 
 ## Limits
 

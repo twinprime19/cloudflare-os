@@ -6,6 +6,8 @@ import {
 } from "../src/chat-attachment-validation.js";
 import { isToMarkdownSupportedMimeType } from "../src/doc-to-markdown.js";
 import type { DocToMarkdownEnv } from "../src/doc-to-markdown.js";
+import type { ChatAttachmentValidationOptions } from "../src/chat-attachment-validation.js";
+import { parseWorkbookInProcess } from "../src/workbook-parse.js";
 
 const PDF_MIME_TYPE = "application/pdf";
 const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -17,6 +19,12 @@ const ODT_MIME_TYPE = "application/vnd.oasis.opendocument.text";
 const ODS_MIME_TYPE = "application/vnd.oasis.opendocument.spreadsheet";
 const PPTX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const DOC_MIME_TYPE = "application/msword";
+
+// Validation with the workbook parser run in this isolate. These tests pin the rules around the
+// parse; where it runs is covered by workbook-parser-isolate.test.ts.
+function inProcess(getConversionEnv?: () => DocToMarkdownEnv): ChatAttachmentValidationOptions {
+  return { parseWorkbook: parseWorkbookInProcess, getConversionEnv };
+}
 
 // The ZIP local-file header every ZIP-based document format starts with, and nothing else: bytes
 // that look like some archive but carry no marker identifying the format they claim to be.
@@ -116,7 +124,7 @@ describe("document upload conversion", () => {
         const result = await validateChatAttachmentUpload(
           { mimeType, content: new Uint8Array(content), name },
           provider,
-          getEnv,
+          inProcess(getEnv),
         );
 
         expect(toMarkdown).toHaveBeenCalledTimes(1);
@@ -135,7 +143,7 @@ describe("document upload conversion", () => {
       const result = await validateChatAttachmentUpload(
         { mimeType: "application/pdf", content: pdfBytes(), name: "report.pdf" },
         provider,
-        getEnv,
+        inProcess(getEnv),
       );
 
       expect(toMarkdown).toHaveBeenCalledTimes(1);
@@ -150,7 +158,7 @@ describe("document upload conversion", () => {
       const result = await validateChatAttachmentUpload(
         { mimeType: "application/pdf", content: pdfBytes(), name: "report.pdf" },
         provider,
-        getEnv,
+        inProcess(getEnv),
       );
 
       expect(toMarkdown).not.toHaveBeenCalled();
@@ -167,7 +175,7 @@ describe("document upload conversion", () => {
     const result = await validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(5 * 1024 * 1024), name: "big.docx" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     );
 
     expect(toMarkdown).toHaveBeenCalledTimes(1);
@@ -180,7 +188,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(11 * 1024 * 1024), name: "huge.docx" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("Documents must be 10 MB or smaller.");
     expect(toMarkdown).not.toHaveBeenCalled();
   });
@@ -193,7 +201,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: zipWithoutManifest, name: "payload.docx" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("Chat attachment content does not match its MIME type.");
     expect(toMarkdown).not.toHaveBeenCalled();
   });
@@ -204,7 +212,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: "application/pdf", content: new Uint8Array(64), name: "report.pdf" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("Chat attachment content does not match its MIME type.");
     expect(toMarkdown).not.toHaveBeenCalled();
   });
@@ -215,7 +223,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: PPTX_MIME_TYPE, content: ooxmlBytes(), name: "deck.pptx" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("Export the slides to PDF");
     expect(toMarkdown).not.toHaveBeenCalled();
   });
@@ -225,7 +233,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "sensitive.docx" },
       "cloudflare",
-      () => { throw new Error("This workspace has observed sensitive data."); },
+      inProcess(() => { throw new Error("This workspace has observed sensitive data."); }),
     )).rejects.toThrow("This workspace has observed sensitive data.");
   });
 
@@ -242,7 +250,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "broken.docx" },
       "cloudflare",
-      () => env,
+      inProcess(() => env),
     )).rejects.toThrow("Markdown conversion failed");
   });
 
@@ -252,7 +260,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: ODT_MIME_TYPE, content: odfBytes(), name: "empty.odt" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("No readable text");
   });
 
@@ -263,7 +271,7 @@ describe("document upload conversion", () => {
     const result = await validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "long.docx" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     );
 
     expect(result.attachment.content.byteLength).toBe(markdown.length);
@@ -278,7 +286,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "enormous.docx" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("This document produced too much text to attach.");
   });
 
@@ -290,7 +298,7 @@ describe("document upload conversion", () => {
     await validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "charts.docx" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     );
 
     const options = toMarkdown.mock.calls[0][1];
@@ -306,7 +314,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: DOC_MIME_TYPE, content: oleBytes(), name: "legacy.doc" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("Unsupported file type");
     expect(toMarkdown).not.toHaveBeenCalled();
   });
@@ -317,7 +325,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: XLS_MIME_TYPE, content: new Uint8Array(64), name: "book.xls" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("Chat attachment content does not match its MIME type.");
     expect(toMarkdown).not.toHaveBeenCalled();
   });
@@ -328,7 +336,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: ODT_MIME_TYPE, content: zipBytes(), name: "notes.odt" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("Chat attachment content does not match its MIME type.");
     expect(toMarkdown).not.toHaveBeenCalled();
   });
@@ -339,7 +347,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: XLSM_MIME_TYPE, content: zipBytes(), name: "macros.xlsm" },
       "cloudflare",
-      getEnv,
+      inProcess(getEnv),
     )).rejects.toThrow("Chat attachment content does not match its MIME type.");
     expect(toMarkdown).not.toHaveBeenCalled();
   });
@@ -361,6 +369,7 @@ describe("document upload conversion", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "notes.docx" },
       "cloudflare",
+      inProcess(),
     )).rejects.toThrow("Documents cannot be read in this context.");
   });
 });
@@ -373,7 +382,7 @@ describe("spreadsheet upload parsing", () => {
       const result = await validateChatAttachmentUpload(
         { mimeType, content: workbookBytes(bookType), name },
         "cloudflare",
-        getEnv,
+        inProcess(getEnv),
       );
 
       // Flattening a workbook into Markdown loses what makes it a workbook, and costs a Workers
@@ -395,25 +404,26 @@ describe("spreadsheet upload parsing", () => {
     const result = await validateChatAttachmentUpload(
       { mimeType: XLSX_MIME_TYPE, content: workbookBytes("xlsx"), name: "quarterly.xlsx" },
       "cloudflare",
-      makeConversionEnv().getEnv,
+      inProcess(makeConversionEnv().getEnv),
     );
 
     // The attachment holds the summary; the data the model computes over comes back separately,
-    // for the caller to store as chunks.
-    const chunks = result.workbook!.sheets[0].chunks;
-    expect(result.workbook!.sheets.map(sheet => sheet.name)).toEqual(["Sales"]);
+    // a chunk at a time, for the caller to store.
+    const chunks = await Array.fromAsync(result.workbook!.rows);
+    expect(result.workbook!.meta.sheets.map(sheet => sheet.name)).toEqual(["Sales"]);
     expect(chunks).toHaveLength(1);
-    expect(chunks[0].rowStart).toBe(0);
+    expect(chunks[0]).toMatchObject({ sheetIndex: 0, chunkIndex: 0, rowStart: 0 });
     expect(JSON.parse(new TextDecoder().decode(chunks[0].bytes)))
       .toEqual([["Region", "Units"], ["North", 5], ["South", 7]]);
   });
 
   it("reads a spreadsheet with no conversion environment at all", async () => {
-    // Nothing on this path leaves the isolate, so it does not need the Workers AI binding a
-    // document conversion needs -- and stays available where conversion is refused.
+    // Nothing on this path reaches Workers AI, so it does not need the binding a document
+    // conversion needs -- and stays available where conversion is refused.
     const result = await validateChatAttachmentUpload(
       { mimeType: XLSX_MIME_TYPE, content: workbookBytes("xlsx"), name: "quarterly.xlsx" },
       "cloudflare",
+      inProcess(),
     );
 
     expect(result.attachment.mimeType).toBe("text/markdown");
@@ -426,6 +436,7 @@ describe("spreadsheet upload parsing", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: XLSX_MIME_TYPE, content: ooxmlBytes(11 * 1024 * 1024), name: "huge.xlsx" },
       "cloudflare",
+      inProcess(),
     )).rejects.toThrow("Documents must be 10 MB or smaller.");
   });
 
@@ -433,6 +444,7 @@ describe("spreadsheet upload parsing", () => {
     await expect(validateChatAttachmentUpload(
       { mimeType: XLSX_MIME_TYPE, content: ooxmlBytes(), name: "fake.xlsx" },
       "cloudflare",
+      inProcess(),
     )).rejects.toThrow("This spreadsheet could not be read.");
   });
 });
