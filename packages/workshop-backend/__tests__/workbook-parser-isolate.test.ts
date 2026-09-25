@@ -147,7 +147,8 @@ describe("parseWorkbookIsolated", () => {
       if (bookType !== "biff8") {
         expect(isolated.chunks.filter(chunk => chunk.sheetIndex === 2).length).toBeGreaterThan(1);
       }
-    });
+    // Parses a multi-chunk ledger twice; about 1 s locally, up to 7 s on a shared CI runner.
+    }, 30_000);
   }
 
   it("passes the parser's own refusals through verbatim, without logging them", async () => {
