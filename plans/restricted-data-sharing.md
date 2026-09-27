@@ -31,7 +31,7 @@ commits.
   TypeScript's excess-property check on the object literals passed to
   `authorizeObservation` will not tolerate a staged one.
 - **The durable storage key keeps its old name.** Typed-storage keys *are* property names,
-  so renaming the overseer's singleton would silently unlatch every workspace that has
+  so renaming the overseer's singleton would silently clear the flag on every workspace that has
   already observed restricted data. The property is renamed anyway, and declares the old
   key explicitly: `containsRestrictedData: singleton(false, {storageKey:
   "prohibitAllSharing"})`. `storageKey` is a typed-storage schema option added for this,
@@ -56,7 +56,7 @@ commits.
   resolves the effective role and runs `ensureObserver`. Both `open()` and
   `receiveExternalMessage()` pass through it; the latter non-interactively, since there
   is no way to configure connected accounts from an inbound message.
-- **Removing the producing connection is not guarded.** The latch stays set, but nothing
+- **Removing the producing connection is not guarded.** `containsRestrictedData` stays set, but nothing
   stops the removal even though the record is what collaborators are verified against.
   There is no UI to remove a connection today; when one is built, it will require the
   owner to certify that no sensitive data from the connection has been retained in the
@@ -67,7 +67,7 @@ commits.
 ## Current-state anchors (for orientation)
 
 - `authorizeObservation` (overseer.ts) is where a gatekeeper's observation is admitted
-  or refused, and where the durable restricted-mode flag latches.
+  or refused, and where it sets the durable `containsRestrictedData` flag.
 - `ensureObserver` (overseer.ts) brings a non-owner into compliance for their role:
   selects in-scope gatekeepers, prompts for unconfigured account choices via
   `configureCb`, calls `addObserver` on each gatekeeper facet, and persists an
@@ -159,7 +159,7 @@ path, and the scope-widening restart — landed separately in #380.
    `gatekeeper-mcp` and the gatekeeper-authoring skill doc. Atomic by necessity.
 2. **Part 1 — API.** The restated contract on `containsRestrictedData`. Server still
    implements the old behavior.
-3. **Part 2 — core server implementation.** The latch, the removal of `hasAnyShares`
+3. **Part 2 — core server implementation.** Setting `containsRestrictedData`, the removal of `hasAnyShares`
    and the sharing checks, and the TODO ledger.
 4. **Part 3 — backend tests.**
 5. **Part 4 — integration tests.** Over real Durable Objects, through the test
@@ -173,6 +173,38 @@ path, and the scope-widening restart — landed separately in #380.
 
 The deferred items are collected in the Known-limitations section below. The Share
 modal unblock lives in `restricted-data-followups`.
+
+## Complete action descriptions
+
+A workspace that has read restricted data will let actions through only when a human
+approves each one, and the approver can only vouch for text they can read. The
+`ActionDescription.descriptionIsComplete` flag is the gatekeeper's assertion that the
+description reproduces, verbatim, every piece of workspace-originated content the action
+will write or send: bodies, field values, identifiers, serialized arguments. Bytes the
+gatekeeper re-sends unchanged from the same provider (a forwarded attachment) may instead
+be named by size and digest. Absent means incomplete: a summary, a truncated field, or
+opaque bytes.
+
+Gatekeepers build descriptions with `ActionDescriptionBuilder` from
+`@gadgets/gatekeeper-kit/action-description`. Content travels as typed
+`ActionDescription.fields` that approval surfaces show as literal text, never as Markdown,
+leaving `description` the gatekeeper's own prose. The builder tracks one 96 KiB UTF-8
+budget across the prose and all fields: the overseer stores each action record as a
+single Durable Object value, which is limited to 128 KiB after serialization, and the
+remaining room covers the record's other fields and the storage wrapper. An oversize
+field is truncated, later fields are omitted, and `finish()` then leaves the flag unset. An incomplete description is still submitted, and every approval surface
+tells the approver that part of what the action will send isn't shown.
+
+Two kinds of action are never complete: a git push (`pushedCommits`), whose commits
+cannot be reviewed as text until there is a UI for it, and an upload of agent-supplied
+file bytes (Confluence `uploadAttachment`), which is named by size and digest.
+
+This branch adds the field, the builder, and complete descriptions for every shipped
+gatekeeper, and is behavior-neutral on `main`, which refuses every action while
+restricted. The submit-time gate lands with the manual-approval change in
+`restricted-data-manual-approval` (#487), and refuses only git pushes once
+`containsRestrictedData` is set. An incomplete action pends for manual approval like any
+other and carries the notice.
 
 ## Known limitations
 

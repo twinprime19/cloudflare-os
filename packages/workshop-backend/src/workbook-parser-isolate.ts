@@ -25,8 +25,9 @@ import type {
   StreamedWorkbook, WorkbookMeta, WorkbookRowChunk,
 } from "./chat-attachment-workbook";
 import { createWorkshopLogger } from "./observability";
-// Built from worker-runtimes/workbook-parser-runtime.ts by build-browser-runtime.mjs. SheetJS is
-// bundled into that text and nowhere else, so the workspace's own bundle never carries it.
+// Built from worker-runtimes/workbook-parser-runtime.ts by scripts/build-browser-runtime.ts.
+// SheetJS is bundled into that text and nowhere else, so the workspace's own bundle never carries
+// it.
 import WORKBOOK_PARSER_RUNTIME from "./generated/workbook-parser-runtime.txt";
 
 const logger = createWorkshopLogger("workshop.workbook-parser");

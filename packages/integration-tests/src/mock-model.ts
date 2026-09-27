@@ -60,10 +60,12 @@ type ToolCall = {
   arguments: Record<string, unknown>;
 };
 
+// One model response: text, or one or more tool calls the agent runs in that step.
 // `finishReason` overrides the text step's "stop", e.g. "length" for a step cut off at the
 // output cap.
 type StreamedCompletionStep =
-  { text: string; finishReason?: "stop" | "length" } | { toolCall: ToolCall };
+  { text: string; finishReason?: "stop" | "length" } | { toolCall: ToolCall } |
+  { toolCalls: ToolCall[] };
 export type ChatCompletionStep = StreamedCompletionStep |
   { error: { status: number; message: string } } |
   { pending: true };
@@ -86,19 +88,17 @@ function stream(step: StreamedCompletionStep, index: number): Response {
     created: 0,
     model: "mock",
   };
+  const toolCalls = "toolCalls" in step ? step.toolCalls : "toolCall" in step ? [step.toolCall] : [];
   const delta = "text" in step
     ? { role: "assistant", content: step.text }
     : {
         role: "assistant",
-        tool_calls: [{
-          index: 0,
-          id: step.toolCall.id,
+        tool_calls: toolCalls.map((call, index) => ({
+          index,
+          id: call.id,
           type: "function",
-          function: {
-            name: step.toolCall.name,
-            arguments: JSON.stringify(step.toolCall.arguments),
-          },
-        }],
+          function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+        })),
       };
   const finishReason = "text" in step ? step.finishReason ?? "stop" : "tool_calls";
   const body = event({

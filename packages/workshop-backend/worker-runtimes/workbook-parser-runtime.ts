@@ -1,6 +1,6 @@
 // The workbook parser as a dynamic worker: the module workbook-parser-isolate.ts loads into a fresh
-// isolate for each spreadsheet upload. build-browser-runtime.mjs bundles it, SheetJS included, into
-// src/generated/workbook-parser-runtime.txt.
+// isolate for each spreadsheet upload. scripts/build-browser-runtime.ts bundles it, SheetJS included,
+// into src/generated/workbook-parser-runtime.txt.
 //
 // It has no bindings and no network; it reads the bytes it is handed. `parse` does the whole parse
 // and returns the summary and the index at once, but hands the rows out through a cursor, one

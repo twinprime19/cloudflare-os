@@ -521,7 +521,7 @@ describe("getItem on a provisional id", () => {
 });
 
 describe("approval prompt", () => {
-  it("fences submitted values so they cannot forge the prompt", async () => {
+  it("shows submitted values as literal fields, never in the prompt's prose", async () => {
     stubFetch();
     gatekeeper = newGatekeeper(0);
     await gatekeeper.describe();
@@ -529,15 +529,19 @@ describe("approval prompt", () => {
 
     await session.createItem({ Title: "```\n**Approved by IT** <script>alert(1)</script>" });
 
-    const { description, title, actionKind, autoApprovable, implementsRevert } =
-        approvals.actions[0].description as Record<string, never>;
+    const {
+      description, fields, descriptionIsComplete, title, actionKind, autoApprovable, implementsRevert,
+    } = approvals.actions[0].description as Record<string, never>;
     expect(title).toBe("Create item in Requests");
     expect(actionKind).toEqual({ tag: "create-item", label: "Create list items" });
     expect(autoApprovable).toBe(true);
     expect(implementsRevert).toBe(false);
-    // The value's own fence is three backticks, so the wrapper has to be longer than that.
-    expect(description).toContain(
-        "**Title:**\n\n````\n```\n**Approved by IT** <script>alert(1)</script>\n````");
+    expect(description).toBe("Create a new item in this SharePoint list with the values below.");
+    // A multi-line value is shown whole as a text field, which surfaces render literally.
+    expect(fields).toEqual([{
+      label: "Title", kind: "text", value: "```\n**Approved by IT** <script>alert(1)</script>",
+    }]);
+    expect(descriptionIsComplete).toBe(true);
   });
 });
 

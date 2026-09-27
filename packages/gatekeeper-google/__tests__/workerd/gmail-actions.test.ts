@@ -1,7 +1,9 @@
 import {env} from "cloudflare:workers";
 import {runInDurableObject} from "cloudflare:test";
 import {afterEach, describe, expect, it, vi} from "vitest";
-import type {ActionKind, ResourceDescription} from "@gadgets/workshop-shared/gatekeeper";
+import type {
+  ActionDescription, ActionField, ActionKind, ResourceDescription,
+} from "@gadgets/workshop-shared/gatekeeper";
 import {
   base64UrlDecodedByteLength, buildEncodedEmail, decodeBase64UrlToBytes, extractRfc822Attachments,
   GmailApi, GmailOutboundSpec, parseMimeMessage,
@@ -16,6 +18,11 @@ import type {
   GmailDraftInput, GmailDraftPatch, GmailMessageInfo, GmailReplyOptions, GmailThreadInfo,
 } from "../../src/types";
 import {containsBytes} from "../gmail-test-utils";
+
+// The field an approver reads under `label`, from a submitted description.
+function fieldOf(description: unknown, label: string): ActionField | undefined {
+  return (description as ActionDescription).fields?.find(field => field.label === label);
+}
 
 type TestHooks = {
   initialize(
@@ -1070,23 +1077,84 @@ describe("Gmail forward action snapshots", () => {
     const body = `${"x".repeat(64 * 1024 - 16)}complete-marker`;
     await session.send(["to@example.com"], "Subject", body);
 
-    const description = (await queue.read!()).submissions[0]?.description as {description: string};
-    expect(description).toBeDefined();
-    expect(description.description).toContain(body);
-    expect(description.description).not.toContain("truncated");
+    const description = (await queue.read!()).submissions[0]?.description as ActionDescription;
+    expect(description.descriptionIsComplete).toBe(true);
+    expect(fieldOf(description, "Plain text")).toEqual({label: "Plain text", kind: "text", value: body});
   });
 
-  it("fails closed when rendering would exceed the approval description limit", async () => {
-    const {gatekeeper} = actionHarness(url => {
+  it("submits an oversize forward without the completeness flag", async () => {
+    // An outbound body is capped well under the description budget, but an inline forward quotes
+    // the whole source message, which is not.
+    const sourceRaw = buildEncodedEmail({
+      from: "source@example.com",
+      to: ["me@example.com"],
+      cc: [],
+      bcc: [],
+      subject: "Source subject",
+      text: "x".repeat(100 * 1024),
+      messageId: "<oversize-source@gadgets.invalid>",
+      attachments: [],
+    });
+    const {gatekeeper} = actionHarness((url, init) => {
+      if (url.pathname === "/gmail/v1/users/me/messages" && !init.method) {
+        return url.searchParams.has("q")
+          ? json({messages: []})
+          : json({messages: [{id: "source-message", threadId: "source-thread"}]});
+      }
+      if (url.pathname === "/gmail/v1/users/me/messages/source-message" && !init.method) {
+        if (url.searchParams.get("format") === "raw") {
+          return json({id: "source-message", threadId: "source-thread", internalDate: "1", raw: sourceRaw});
+        }
+        return json({
+          id: "source-message", threadId: "source-thread", internalDate: "1",
+          sizeEstimate: base64UrlDecodedByteLength(sourceRaw), labelIds: [],
+          payload: {headers: [
+            {name: "From", value: "source@example.com"},
+            {name: "To", value: "me@example.com"},
+            {name: "Subject", value: "Source subject"},
+            {name: "Message-ID", value: "<oversize-source@gadgets.invalid>"},
+          ]},
+        });
+      }
+      if (url.pathname === "/gmail/v1/users/me/labels" && !init.method) {
+        return json({labels: []});
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const queue = approvalQueue();
+    const session = await gatekeeper.startSession(queue);
+    const messages = await (await session.listMessages()).next();
+
+    await messages![0].message.forward(["to@example.com"], "Intro");
+    // The approver sees the truncated rendering; the missing flag tells them it is partial.
+    const {submissions} = await queue.read!();
+    expect(submissions).toHaveLength(1);
+    const description = submissions[0].description as
+      {description: string; descriptionIsComplete?: true};
+    expect(description.descriptionIsComplete).toBeUndefined();
+    const truncated = (description as ActionDescription).fields?.find(field => field.truncated);
+    expect(truncated?.truncated?.shownBytes).toBeLessThan(truncated!.truncated!.totalBytes);
+  });
+
+  it("shows a draft body with an undisplayable character exactly, as JSON", async () => {
+    const {gatekeeper, values} = actionHarness(url => {
       throw new Error(`Unexpected request: ${url}`);
     });
     const queue = approvalQueue();
     const session = await gatekeeper.startSession(queue);
 
-    await expect(session.send(
-      ["to@example.com"], "Subject", "x\n".repeat(32 * 1024),
-    )).rejects.toThrow(/exceeds.*approval description limit/i);
-    expect((await queue.read!()).submissions).toHaveLength(0);
+    // A bell character renders as nothing as text, so the body is shown escaped.
+    await session.createDraft({to: ["to@example.com"], subject: "Subject", text: "a\u0007b"});
+    const {submissions} = await queue.read!();
+    expect(submissions).toHaveLength(1);
+    const description = submissions[0].description as ActionDescription;
+    expect(description.descriptionIsComplete).toBe(true);
+    expect(fieldOf(description, "Plain text")).toEqual(
+      {label: "Plain text", kind: "json", value: '"a\\u0007b"'});
+    // The staged action and its draft are kept for the approver to decide on.
+    const keys = await values.keys();
+    expect(keys.some(key => key.startsWith("pending:action:"))).toBe(true);
+    expect(keys.some(key => key.startsWith("gmail:draft:"))).toBe(true);
   });
 
   it("sends a new forward inline with ordinary source attachments", async () => {
@@ -1192,11 +1260,144 @@ describe("Gmail forward action snapshots", () => {
 
     await draft.send();
 
-    const description = (await queue.read!()).submissions[1]?.description as {description: string};
-    expect(description.description).toContain("Intro");
-    expect(description.description).toContain("Source body");
-    expect(description.description).toContain("Source <strong>HTML</strong>");
-    expect(description.description).toContain("source.txt (text/plain)");
+    const description = (await queue.read!()).submissions[1]?.description as ActionDescription;
+    const text = fieldOf(description, "Plain text") as {value: string};
+    expect(text.value).toContain("Intro");
+    expect(text.value).toContain("Source body");
+    expect((fieldOf(description, "HTML") as {value: string}).value)
+      .toContain("Source <strong>HTML</strong>");
+    expect(description.fields).toContainEqual(expect.objectContaining(
+      {kind: "file", name: "source.txt", mediaType: "text/plain", origin: "provider"}));
+  });
+
+  it("shows every identifier a reply and a reply draft are written with", async () => {
+    const {gatekeeper} = actionHarness((url, init) => {
+      if (url.pathname === "/gmail/v1/users/me/messages/abc123" && !init.method) {
+        const metadata = messageMetadata("abc123", "def456", "<parent@example.com>");
+        return json({...metadata, payload: {headers: [
+          ...metadata.payload.headers,
+          {name: "References", value: "<root@example.com> <middle@example.com>"},
+        ]}});
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const queue = approvalQueue();
+    const session = await gatekeeper.startSession(queue);
+    const message = await session.getMessage("abc123");
+
+    // Overridden recipients receive the source message's identifiers all the same.
+    const replyId = await message.reply("Reply body", {to: ["other@example.com"]});
+    await message.createReplyDraft("Draft reply body");
+
+    const [reply, draft] = (await queue.read!()).submissions.map(submission =>
+      submission.description as ActionDescription);
+    const references = {
+      label: "References", kind: "list",
+      items: ["<root@example.com>", "<middle@example.com>", "<parent@example.com>"],
+    };
+    const inline = (label: string, value: string) => ({label, kind: "inline", value});
+    expect(reply?.descriptionIsComplete).toBe(true);
+    expect(reply?.fields).toEqual(expect.arrayContaining([
+      inline("Message-ID", replyId),
+      inline("In-Reply-To", "<parent@example.com>"),
+      references,
+      inline("Thread ID", "def456"),
+    ]));
+    expect(draft?.descriptionIsComplete).toBe(true);
+    expect((fieldOf(draft, "Message-ID") as {value: string}).value)
+      .toMatch(/^<[^<>\s]+@gadgets\.invalid>$/);
+    expect((fieldOf(draft, "Date") as {value: string}).value).toMatch(/ GMT$/);
+    expect(draft?.fields).toEqual(expect.arrayContaining([
+      inline("In-Reply-To", "<parent@example.com>"),
+      references,
+      inline("Thread ID", "def456"),
+    ]));
+  });
+
+  it("shows each forwarded attachment's disposition and Content-ID", async () => {
+    const sourceId = "abc123";
+    const sourceRaw = buildEncodedEmail({
+      from: "source@example.com",
+      to: ["me@example.com"],
+      cc: [],
+      bcc: [],
+      subject: "Source subject",
+      text: "Source body",
+      html: "<p><img src=\"cid:logo@example.com\"></p>",
+      messageId: "<source-parts@gadgets.invalid>",
+      attachments: [{
+        filename: "logo.png",
+        contentType: "image/png",
+        data: btoa("png bytes"),
+        disposition: "inline",
+        contentId: "logo@example.com",
+        description: "logo",
+      }, {
+        filename: "notes.txt",
+        contentType: "text/plain",
+        data: btoa("notes"),
+        disposition: "attachment",
+        description: "notes",
+      }],
+    });
+    const queue = approvalQueue();
+    const {gatekeeper} = actionHarness((url, init) => {
+      if (url.pathname === `/gmail/v1/users/me/messages/${sourceId}` && !init.method) {
+        if (url.searchParams.get("format") === "raw") {
+          return json({id: sourceId, threadId: "abc124", internalDate: "1", raw: sourceRaw});
+        }
+        return json({
+          ...messageMetadata(sourceId, "abc124", "<source-parts@gadgets.invalid>"),
+          sizeEstimate: base64UrlDecodedByteLength(sourceRaw),
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const session = await gatekeeper.startSession(queue);
+    await (await session.getMessage(sourceId)).forward(["recipient@example.com"], "Intro");
+
+    const description = (await queue.read!()).submissions[0]?.description as ActionDescription;
+    expect(description.descriptionIsComplete).toBe(true);
+    const sha256 = expect.stringMatching(/^[0-9a-f]{64}$/);
+    const labels = description.fields?.map(field => field.label) ?? [];
+    const attachment = (name: string) => labels[description.fields!.findIndex(field =>
+      field.kind === "file" && field.name === name)]!;
+    const logo = attachment("logo.png");
+    const notes = attachment("notes.txt");
+    expect(fieldOf(description, logo)).toEqual({
+      label: logo, kind: "file", name: "logo.png", mediaType: "image/png", size: 9, sha256,
+      origin: "provider",
+    });
+    expect(fieldOf(description, `${logo} disposition`))
+      .toEqual({label: `${logo} disposition`, kind: "inline", value: "inline"});
+    expect(fieldOf(description, `${logo} Content-ID`))
+      .toEqual({label: `${logo} Content-ID`, kind: "inline", value: "<logo@example.com>"});
+    expect(fieldOf(description, notes)).toEqual({
+      label: notes, kind: "file", name: "notes.txt", mediaType: "text/plain", size: 5, sha256,
+      origin: "provider",
+    });
+    expect(fieldOf(description, `${notes} disposition`))
+      .toEqual({label: `${notes} disposition`, kind: "inline", value: "attachment"});
+    expect(fieldOf(description, `${notes} Content-ID`)).toBeUndefined();
+  });
+
+  it("shows a body's line breaks as the CRLF it is sent with, and stays complete", async () => {
+    const {gatekeeper} = actionHarness(url => {
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const queue = approvalQueue();
+    const session = await gatekeeper.startSession(queue);
+
+    await session.send(["to@example.com"], "Subject", "line one\nline two", {
+      html: "<p>one</p>\n<p>two</p>",
+    });
+
+    const description = (await queue.read!()).submissions[0]?.description as ActionDescription;
+    expect(description.descriptionIsComplete).toBe(true);
+    expect(fieldOf(description, "Plain text"))
+      .toEqual({label: "Plain text", kind: "text", value: "line one\r\nline two"});
+    expect(fieldOf(description, "HTML")).toEqual(
+      {label: "HTML", kind: "text", value: "<p>one</p>\r\n<p>two</p>", syntax: "html"});
   });
 
   it("creates an inline forward draft from the captured source snapshot", async () => {
@@ -3399,11 +3600,11 @@ describe("Gmail label action reconciliation", () => {
     ];
     const descriptions = new Map(submissions.map(submission => [
       submission.actionId,
-      submission.description as {title: string; description: string},
+      submission.description as ActionDescription,
     ]));
     expect(descriptions.get(1)?.title).toBe("Rename Gmail label: Before");
     expect(descriptions.get(2)?.title).toBe(`Rename Gmail label: ${first?.name}`);
-    expect(descriptions.get(2)?.description).toContain(first?.name);
+    expect(JSON.stringify(descriptions.get(2)?.fields)).toContain(first?.name);
 
     await gatekeeper.applyAction(1);
     await gatekeeper.applyAction(2);

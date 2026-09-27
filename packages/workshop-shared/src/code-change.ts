@@ -102,8 +102,9 @@ export type CodeChange = { [gadgetId: number]: [path: string, change: FileChange
 // Content model
 
 /**
- * One gadget's file contents: `path -> text`, the same flattened shape
- * Overseer.getCodeAtCommit() returns.
+ * One workpiece's file contents: `path -> text`, with nested directories flattened to `/`-joined
+ * paths. For a worktree this holds only the paths a chat has touched -- a base tree is never
+ * materialized whole (see Overseer.readFilesAtCommit()).
  */
 export type GadgetFiles = Map<string, string>;
 

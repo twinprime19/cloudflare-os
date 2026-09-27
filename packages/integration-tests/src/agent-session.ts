@@ -8,13 +8,15 @@ import type {
 import type { CodeChange } from "@gadgets/workshop-shared/code-change";
 import { ADMIN_USERNAME } from "./harness.js";
 import {
-  type ConnectedAccount, connect, listConnectedAccounts, nextUsernames, signUp, stubFor, waitFor,
-  RpcTarget,
+  type ConnectedAccount, connect, listConnectedAccounts, logIn, nextUsernames, signUp, stubFor,
+  waitFor, RpcTarget,
 } from "./rpc-client.js";
 
 const DEFAULT_TURN_TIMEOUT_MS = 40_000;
 const CANCELLATION_TIMEOUT_MS = 15_000;
 const PENDING_RPC_GRACE_MS = 5_000;
+const RECONNECT_TIMEOUT_MS = 30_000;
+const RECONNECT_INITIAL_BACKOFF_MS = 250;
 
 type UserModel = {
   profile: AiChatAuthorInfo;
@@ -68,6 +70,8 @@ export type ProvisionalGadget = { client: RpcStub<GadgetClient>; chatId: number 
  */
 export interface WorkshopAgentSession extends AsyncDisposable {
   readonly username: string;
+  /** How many times the connection to the Workshop has dropped since the session opened. */
+  readonly connectionDrops: number;
   runTurn(prompt: string, options?: AgentTurnOptions): Promise<AgentTurnResult>;
   /**
    * Upload one attachment, as the composer does before the user hits send. The returned handle
@@ -80,6 +84,8 @@ export interface WorkshopAgentSession extends AsyncDisposable {
   connectedAccount(vendorId: string): ConnectedAccount;
   openGadget(id: WorkpieceId): Promise<ProvisionalGadget>;
   acceptChanges(): Promise<void>;
+  /** Rewind the chat's proposed changes from the given "changes" message on (see Overseer). */
+  revertChanges(revertFrom: number): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -95,9 +101,15 @@ class TurnObserver {
   #chatId: number | undefined;
   #pendingEvents: PendingTurnEvent[] = [];
   readonly #expectedPrompt: string | undefined;
+  readonly #dispatchedAfter: number;
   #promptSeen: boolean;
   #deferredMetadata: { chat: AiChatMetadata; latestSequence: number } | undefined;
   #sawActive = false;
+  // Evidence the turn ran while no session was observing it (see WorkshopAgentSessionImpl's
+  // reconnect): the chat subscription's catch-up replays the agent's messages, and it may deliver
+  // the chat's idle metadata before or after them.
+  #agentReplied = false;
+  #idle: boolean | undefined;
   #error: {
     outcome: Extract<AgentTurnOutcome, { status: "error" }>;
     sequence: number;
@@ -115,10 +127,13 @@ class TurnObserver {
 
   constructor(
       chatId: number | undefined, timeoutMs: number, signal?: AbortSignal,
-      expectedPrompt?: string, holdUntilAdmitted = false) {
+      expectedPrompt?: string, holdUntilAdmitted = false, dispatchedAfter = -1) {
     this.#chatId = chatId;
     this.#signal = signal;
     this.#expectedPrompt = expectedPrompt;
+    // A replayed earlier turn may carry the same prompt text; only a message newer than everything
+    // known before this dispatch can be this turn's prompt.
+    this.#dispatchedAfter = dispatchedAfter;
     this.#promptSeen = expectedPrompt === undefined && !holdUntilAdmitted;
     const result = Promise.withResolvers<AgentTurnOutcome>();
     this.result = result.promise;
@@ -195,18 +210,25 @@ class TurnObserver {
     }
     if (entry.chatId !== this.#chatId) return;
     if (!this.#promptSeen && entry.type === "message" && entry.author.type === "user" &&
-        entry.message === this.#expectedPrompt) {
+        entry.message === this.#expectedPrompt && entry.sequence > this.#dispatchedAfter) {
       this.admit(entry.sequence);
     }
-    if (entry.type !== "error" || this.#outcome !== undefined ||
-        (this.#sawActive && entry.sequence <= this.#startSequence)) return;
-    const outcome: Extract<AgentTurnOutcome, { status: "error" }> = entry.code === undefined
-      ? { status: "error", message: entry.message }
-      : { status: "error", message: entry.message, code: entry.code };
-    this.#error = { outcome, sequence: entry.sequence };
+    if (this.#promptSeen && entry.type === "message" && entry.author.type === "agent" &&
+        entry.sequence > this.#startSequence) {
+      this.#agentReplied = true;
+    }
+    if (entry.type === "error" && this.#outcome === undefined &&
+        !(this.#sawActive && entry.sequence <= this.#startSequence)) {
+      const outcome: Extract<AgentTurnOutcome, { status: "error" }> = entry.code === undefined
+        ? { status: "error", message: entry.message }
+        : { status: "error", message: entry.message, code: entry.code };
+      this.#error = { outcome, sequence: entry.sequence };
+    }
+    if (this.#idle === true && !this.#sawActive) this.#finishIdle();
   }
 
   #observeMetadata(chat: AiChatMetadata, latestSequence: number): void {
+    this.#idle = chat.activeAgent === undefined;
     if (chat.activeAgent !== undefined) {
       if (!this.#sawActive) {
         if (this.#startSequence < 0) this.#startSequence = latestSequence;
@@ -215,14 +237,38 @@ class TurnObserver {
         }
       }
       this.#sawActive = true;
-    } else if (this.#sawActive || this.#error !== undefined) {
+    } else if (this.#sawActive) {
       this.#endSequence = latestSequence;
       this.#finish(this.#error?.outcome ?? { status: "completed" });
+    } else {
+      this.#finishIdle();
+    }
+  }
+
+  // The chat is idle and this observer never saw it active: finished only if the replay shows the
+  // agent answered (or failed) the prompt. No end sequence: the snapshot reads the full history.
+  #finishIdle(): void {
+    if (!this.#promptSeen) return;
+    const failed = this.#error !== undefined && this.#error.sequence > this.#startSequence
+      ? this.#error.outcome
+      : undefined;
+    if (failed !== undefined || this.#agentReplied) {
+      this.#finish(failed ?? { status: "completed" });
     }
   }
 
   race<T>(operation: Promise<T>): Promise<T> {
     return Promise.race([operation, this.timeoutFailure]);
+  }
+
+  /**
+   * The RPC session died under the turn. An unfinished turn fails with the reason; a finished one
+   * keeps its outcome, but the race still rejects so a snapshot on the dead session stops waiting.
+   */
+  broken(error: unknown): void {
+    const message = `RPC session broken: ${error instanceof Error ? error.message : String(error)}`;
+    this.#finish({ status: "error", message });
+    this.#rejectTimeout(new Error(message));
   }
 
   dispose(): void {
@@ -324,10 +370,13 @@ class WorkpieceSubscriber extends RpcTarget implements WorkpiecesSubscriber {
 
 class WorkshopAgentSessionImpl implements WorkshopAgentSession {
   readonly username: string;
+  readonly #baseUrl: URL;
+  readonly #workspaceId: string;
+  readonly #openedAt = new Date(Date.now() - 1_000);
   readonly #modelId: string;
-  readonly #publicApi: RpcStub<PublicApi>;
-  readonly #authenticatedApi: RpcStub<AuthenticatedApi>;
-  readonly #workspace: RpcStub<Overseer>;
+  #publicApi: RpcStub<PublicApi>;
+  #authenticatedApi: RpcStub<AuthenticatedApi>;
+  #workspace: RpcStub<Overseer>;
   readonly #accounts: ReadonlyMap<string, ConnectedAccount>;
   readonly #chatSubscriber = new ChatSubscriber();
   readonly #turnTimeoutMs: number;
@@ -339,6 +388,10 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
   #activeTurn: TurnObserver | undefined;
   #reserved = false;
   #closePromise: Promise<void> | undefined;
+  #reconnection: Promise<void> | undefined;
+  #broken = false;
+  #reconnectedDuringTurn = false;
+  #connectionDrops = 0;
   #terminal = false;
   #closed = false;
   #lastHistory: AiChatMessage[] = [];
@@ -347,6 +400,8 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
 
   constructor(options: {
     username: string;
+    baseUrl: URL;
+    workspaceId: string;
     modelId: string;
     publicApi: RpcStub<PublicApi>;
     authenticatedApi: RpcStub<AuthenticatedApi>;
@@ -356,6 +411,8 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
     costAccountingTimeoutMs: number;
   }) {
     this.username = options.username;
+    this.#baseUrl = options.baseUrl;
+    this.#workspaceId = options.workspaceId;
     this.#modelId = options.modelId;
     this.#publicApi = options.publicApi;
     this.#authenticatedApi = options.authenticatedApi;
@@ -363,11 +420,89 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
     this.#accounts = options.accounts;
     this.#turnTimeoutMs = options.turnTimeoutMs;
     this.#costAccountingTimeoutMs = options.costAccountingTimeoutMs;
+    this.#watchSession();
+  }
+
+  get connectionDrops(): number {
+    return this.#connectionDrops;
   }
 
   async initialize(): Promise<void> {
+    await this.#subscribeToChat();
+  }
+
+  async #subscribeToChat(startAfter?: Date): Promise<void> {
     this.#chatSubscriberStub = stubFor(this.#chatSubscriber);
-    this.#chatSubscription = await this.#workspace.subscribeToChat(this.#chatSubscriberStub);
+    this.#chatSubscription =
+        await this.#workspace.subscribeToChat(this.#chatSubscriberStub, startAfter);
+  }
+
+  // The Workshop aborts a session on purpose when it loses its workspace DO (server.ts,
+  // #openGadgetInternal) and the browser reconnects (main.tsx); the DO itself resumes the
+  // interrupted turn. This client does the same, so a turn is judged on what the product did
+  // rather than on the socket. Without it the first eval run sat on a dead socket for the whole
+  // 28-minute budget with zero model turns.
+  #watchSession(): void {
+    const publicApi = this.#publicApi;
+    publicApi.onRpcBroken(error => {
+      if (this.#publicApi !== publicApi || this.#closed || this.#reconnection !== undefined) return;
+      this.#connectionDrops++;
+      this.#reconnection = this.#reconnect(error).finally(() => {
+        this.#reconnection = undefined;
+      });
+      this.#reconnection.catch(() => {});
+    });
+  }
+
+  async #reconnect(cause: unknown): Promise<void> {
+    this.#disposeStubs();
+    const deadline = Date.now() + RECONNECT_TIMEOUT_MS;
+    let backoff = RECONNECT_INITIAL_BACKOFF_MS;
+    for (;;) {
+      // Cap'n Web queues calls on a connecting socket, so a peer that accepts the connection but
+      // never answers would hold an attempt open forever; each attempt races the deadline instead.
+      const publicApi = connect(this.#baseUrl);
+      try {
+        await this.#beforeCancellationDeadline(async () => {
+          const authenticated = await logIn(publicApi, this.username);
+          const workspace = await authenticated.openGadget(this.#workspaceId);
+          this.#authenticatedApi = authenticated;
+          this.#workspace = workspace;
+          this.#publicApi = publicApi;
+          // The catch-up replays everything since this session opened, which covers whatever
+          // happened while no session was listening; the observer tolerates repeats.
+          await this.#subscribeToChat(this.#openedAt);
+        }, deadline, `Reconnect attempt exceeded the ${RECONNECT_TIMEOUT_MS}ms reconnect deadline`);
+        this.#reconnectedDuringTurn = this.#activeTurn !== undefined;
+        this.#watchSession();
+        return;
+      } catch (error) {
+        // Disposing the root stub releases whatever the attempt obtained through it.
+        publicApi[Symbol.dispose]();
+        if (Date.now() + backoff >= deadline) {
+          this.#broken = true;
+          this.#terminal = true;
+          this.#activeTurn?.broken(cause);
+          throw new Error(
+              `RPC session broken and not re-established within ${RECONNECT_TIMEOUT_MS}ms`,
+              { cause: error });
+        }
+        await new Promise(resolve => setTimeout(resolve, backoff));
+        backoff = Math.min(backoff * 2, 2_000);
+      }
+    }
+  }
+
+  /**
+   * Whether an RPC failure was the session breaking. The rejection can be observed before or after
+   * onRpcBroken fires, so yield once before looking; then wait out the reconnection, which either
+   * restores the session or marks it terminal.
+   */
+  async #recovering(): Promise<boolean> {
+    await new Promise(resolve => setTimeout(resolve, 0));
+    if (this.#reconnection === undefined) return this.#broken;
+    await this.#reconnection.then(() => {}, () => {});
+    return true;
   }
 
   runTurn(prompt: string, options: AgentTurnOptions = {}): Promise<AgentTurnResult> {
@@ -375,15 +510,25 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
     if (this.#activeTurn !== undefined || this.#reserved) {
       throw new Error("An agent activation is already running");
     }
-    const chatId = this.#chatId;
     if (options.signal?.aborted) {
       return Promise.resolve(this.#resultWithLastState({
         status: "cancelled",
         message: "Agent activation was cancelled",
       }));
     }
+    this.#reserved = true;
+    return this.#runTurn(prompt, options).finally(() => {
+      this.#reserved = false;
+    });
+  }
+
+  async #runTurn(prompt: string, options: AgentTurnOptions): Promise<AgentTurnResult> {
+    await this.#ready();
+    const chatId = this.#chatId;
+    const dispatchedAfter = chatId === undefined ? -1 : this.#chatSubscriber.latestSequence(chatId);
     const observer = new TurnObserver(
-        chatId, options.timeoutMs ?? this.#turnTimeoutMs, options.signal, prompt);
+        chatId, options.timeoutMs ?? this.#turnTimeoutMs, options.signal, prompt, false,
+        dispatchedAfter);
     const attachments = options.attachments === undefined ? undefined : [...options.attachments];
     const operation = chatId === undefined
       ? () => this.#startChat(prompt, observer, attachments)
@@ -401,8 +546,6 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
   async approveActionsAndWait(
       ids: readonly [number, ...number[]], options: AgentTurnOptions = {}): Promise<AgentTurnResult> {
     this.#assertOpen();
-    const chatId = this.#chatId;
-    if (chatId === undefined) throw new Error("The session has no chat to resume");
     if (this.#activeTurn !== undefined || this.#reserved) {
       throw new Error("An agent activation is already running");
     }
@@ -413,7 +556,19 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
         message: "Agent activation was cancelled",
       });
     }
+    // Reserved before the first await, like runTurn, so the first caller in a tick wins.
     this.#reserved = true;
+    try {
+      await this.#ready();
+    } catch (error) {
+      this.#reserved = false;
+      throw error;
+    }
+    const chatId = this.#chatId;
+    if (chatId === undefined) {
+      this.#reserved = false;
+      throw new Error("The session has no chat to resume");
+    }
     const observer = new TurnObserver(
         chatId, options.timeoutMs ?? this.#turnTimeoutMs, options.signal, undefined, true);
     let observationStarted = false;
@@ -453,8 +608,8 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
     }
   }
 
-  listActions(options?: ActionListOptions): Promise<ActionHistoryPage> {
-    this.#assertOpen();
+  async listActions(options?: ActionListOptions): Promise<ActionHistoryPage> {
+    await this.#ready();
     return this.#workspace.listActions(options);
   }
 
@@ -466,18 +621,25 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
   }
 
   async openGadget(id: WorkpieceId): Promise<ProvisionalGadget> {
-    this.#assertNotClosed();
+    await this.#ready();
     const chatId = this.#chatId;
     if (chatId === undefined) throw new Error("The session has no chat branch");
     return { client: await this.#workspace.getGadget(id), chatId };
   }
 
   async acceptChanges(): Promise<void> {
-    this.#assertOpen();
+    await this.#ready();
     const chatId = this.#chatId;
     if (chatId === undefined) throw new Error("The session has no chat changes to accept");
     const result = await this.#workspace.mergeChanges(chatId);
     if (result.outcome !== "merged") throw new Error("The agent changes are stale");
+  }
+
+  async revertChanges(revertFrom: number): Promise<void> {
+    this.#assertOpen();
+    const chatId = this.#chatId;
+    if (chatId === undefined) throw new Error("The session has no chat changes to revert");
+    await this.#workspace.revertChanges(chatId, revertFrom);
   }
 
   close(): Promise<void> {
@@ -504,7 +666,17 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
     }, () => {}).finally(() => {
       if (this.#pendingRpcs.delete(creating)) creating[Symbol.dispose]();
     }).catch(() => {});
-    this.#chatId = await creating;
+    try {
+      this.#chatId = await creating;
+    } catch (error) {
+      // The acknowledgement died with the socket. A fresh workspace holds at most this one chat,
+      // so if the server created it before the break it is the only chat there.
+      if (!await this.#recovering() || this.#terminal) throw error;
+      const chats = await this.#workspace.listChats();
+      const [only] = chats;
+      if (only === undefined || chats.length !== 1) throw error;
+      this.#chatId = only.id;
+    }
     observer.attach(this.#chatId);
   }
 
@@ -565,9 +737,12 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
         await observer.race(acknowledgementOrOutcome);
       } catch (error) {
         const status = observer.outcome?.status;
-        if (status !== "timedOut" && status !== "cancelled") throw error;
+        // A break rejects the acknowledgement; the replacement session's replay finishes the
+        // observation, so keep waiting for the outcome (still bounded by the turn's timer).
+        if (status !== "timedOut" && status !== "cancelled" && !await this.#recovering()) throw error;
       }
       const outcome = observer.outcome ?? await observer.result;
+      if (this.#reconnection !== undefined) await this.#reconnection;
       let cancellationDeadline: number | undefined;
       if (outcome.status === "timedOut" || outcome.status === "cancelled") {
         this.#terminal = true;
@@ -590,18 +765,22 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
           await this.#stopAndWaitForIdle(this.#chatId, cancellationDeadline);
         }
       }
-      const snapshot = this.#snapshot(
+      const takeSnapshot = () => this.#snapshot(
           outcome, observer.startSequence, observer.endSequence, cancellationDeadline);
-      if (outcome.status === "timedOut" || outcome.status === "cancelled") return await snapshot;
+      if (outcome.status === "timedOut" || outcome.status === "cancelled") return await takeSnapshot();
       try {
-        return await observer.race(snapshot);
+        return await observer.race(takeSnapshot());
       } catch (error) {
-        if (!observer.aborted) throw error;
-        this.#terminal = true;
-        return this.#resultWithLastState({
-          status: "cancelled",
-          message: "Agent activation was cancelled",
-        });
+        if (observer.aborted) {
+          this.#terminal = true;
+          return this.#resultWithLastState({
+            status: "cancelled",
+            message: "Agent activation was cancelled",
+          });
+        }
+        // The session broke while the snapshot was loading: read it again over the replacement.
+        if (!await this.#recovering() || this.#broken) throw error;
+        return await takeSnapshot();
       }
     } finally {
       observer.dispose();
@@ -643,9 +822,16 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
     const modelSteps = history.filter(
         message => message.type === "message" && message.author.type === "agent").length;
     if (outcome.status === "completed" && this.#costAccountingTimeoutMs > 0 && modelSteps > 0) {
+      // A catch-up after a reconnect delivers the chat's metadata once for every step it
+      // replayed, so one update per step is no longer the right count. A Gateway cost lookup may
+      // still be in flight, though, so wait (bounded) for one further update rather than none.
+      const minimumUpdates = this.#reconnectedDuringTurn
+        ? this.#chatSubscriber.costUpdateCount(chatId) + 1
+        : modelSteps;
       metadata = await this.#chatSubscriber.waitForCostUpdates(
-          chatId, modelSteps, this.#costAccountingTimeoutMs) ?? metadata;
+          chatId, minimumUpdates, this.#costAccountingTimeoutMs) ?? metadata;
     }
+    this.#reconnectedDuringTurn = false;
     const usage: AgentTurnResult["usage"] = {};
     if (metadata.totalTokens !== undefined) usage.lastStepTokens = metadata.totalTokens;
     if (metadata.totalCost !== undefined) {
@@ -690,6 +876,9 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
   async #close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    if (this.#reconnection !== undefined) await this.#reconnection.then(() => {}, () => {});
+    // A session that could not be re-established already released its stubs.
+    if (this.#broken) return;
     const deadline = Date.now() + CANCELLATION_TIMEOUT_MS;
     let stopError: Error | undefined;
     let deleteError: Error | undefined;
@@ -709,20 +898,22 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
         stopError = error instanceof Error ? error : new Error(String(error));
       }
       try {
+        // Deleting the workspace schedules an abort of its DO (scheduleAccessRestart), and that
+        // abort drops this session. Dispose only after the drop: an abort that finds no client left
+        // can crash local workerd, and with it every other session on the same Workshop.
+        const dropped = Promise.withResolvers<void>();
+        this.#publicApi.onRpcBroken(() => dropped.resolve());
         await this.#beforeCancellationDeadline(
             () => this.#workspace.deleteSelf(), Date.now() + CANCELLATION_TIMEOUT_MS,
             "Workspace deletion timed out");
+        await this.#beforeCancellationDeadline(
+            () => dropped.promise, Date.now() + CANCELLATION_TIMEOUT_MS,
+            "The Workshop kept the session open after deleting its workspace");
       } catch (error) {
         deleteError = error instanceof Error ? error : new Error(String(error));
       }
     } finally {
-      this.#chatSubscription?.[Symbol.dispose]();
-      this.#chatSubscriberStub?.[Symbol.dispose]();
-      for (const rpc of this.#pendingRpcs) rpc[Symbol.dispose]();
-      this.#pendingRpcs.clear();
-      this.#workspace[Symbol.dispose]();
-      this.#authenticatedApi[Symbol.dispose]();
-      this.#publicApi[Symbol.dispose]();
+      this.#disposeStubs();
     }
     if (stopError !== undefined && deleteError !== undefined) {
       throw new AggregateError([stopError, deleteError], "Agent shutdown and workspace deletion failed");
@@ -731,9 +922,26 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
     if (deleteError !== undefined) throw deleteError;
   }
 
+  #disposeStubs(): void {
+    this.#chatSubscription?.[Symbol.dispose]();
+    this.#chatSubscriberStub?.[Symbol.dispose]();
+    for (const rpc of this.#pendingRpcs) rpc[Symbol.dispose]();
+    this.#pendingRpcs.clear();
+    this.#workspace[Symbol.dispose]();
+    this.#authenticatedApi[Symbol.dispose]();
+    this.#publicApi[Symbol.dispose]();
+  }
+
   #assertOpen(): void {
     this.#assertNotClosed();
     if (this.#terminal) throw new Error("WorkshopAgentSession cannot continue after interruption");
+  }
+
+  /** Public operations wait out a reconnection in progress rather than using the dead stubs. */
+  async #ready(): Promise<void> {
+    this.#assertNotClosed();
+    if (this.#reconnection !== undefined) await this.#reconnection.then(() => {}, () => {});
+    this.#assertOpen();
   }
 
   #assertNotClosed(): void {
@@ -747,11 +955,16 @@ class WorkshopAgentSessionImpl implements WorkshopAgentSession {
  * Models belong to the deployment, not to a user: `AuthenticatedApi.addModel` writes the caller's
  * own store and is restricted to administrators, so the model goes into the shared catalog through
  * the admin the harness names in `ADMINS`. The session's own account stays an ordinary user.
+ *
+ * The admin account belongs to the deployment too: the first session on a harness creates it, and
+ * every later session on the same harness logs into it. `addSharedModel` replaces a model with the
+ * same id, so offering it again is harmless.
  */
 async function offerSharedModel(baseUrl: URL, model: UserModel): Promise<void> {
   const adminSession = connect(baseUrl);
   try {
-    using admin = await signUp(adminSession, ADMIN_USERNAME);
+    using admin = await signUp(adminSession, ADMIN_USERNAME)
+      .catch(() => logIn(adminSession, ADMIN_USERNAME));
     const adminApi = await admin.getAdminApi();
     if (!adminApi) {
       throw new Error(
@@ -797,8 +1010,11 @@ export async function openAgentSession(
     }
 
     workspace = await authenticated.newGadget();
+    const { id: workspaceId } = await workspace.getMetadata();
     session = new WorkshopAgentSessionImpl({
       username,
+      baseUrl,
+      workspaceId,
       modelId: options.modelId,
       publicApi,
       authenticatedApi,
