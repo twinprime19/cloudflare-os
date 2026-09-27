@@ -9,7 +9,7 @@ import {
   GadgetClient,
   GadgetMetadata,
   WorkpieceId,
-  WorkpieceSummary,
+  GadgetSummary,
 } from '@gadgets/workshop-shared/api'
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
@@ -37,7 +37,8 @@ type Props = {
   // The selected gadget's client, or null if the workspace has no gadgets.
   gadget: RpcStub<GadgetClient> | null
   selectedGadgetId: WorkpieceId | null
-  gadgets: WorkpieceSummary[]
+  // Use-role subscriptions receive gadgets only (worktrees, like pending gadgets, are withheld).
+  gadgets: GadgetSummary[]
   onSelectGadget: (id: WorkpieceId) => void
   metadata: GadgetMetadata
   authenticatedApi: RpcStub<AuthenticatedApi>

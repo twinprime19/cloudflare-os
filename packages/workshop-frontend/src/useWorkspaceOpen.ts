@@ -147,7 +147,7 @@ export function useWorkspaceOpen({
         if (isConnectionPaused()) return
         console.error('Failed to load gadget:', caught)
 
-        // TODO: Give share-link and observer failures stable codes so this remaining legacy
+        // TODO: Give invalid-share-key and observer failures stable codes so this remaining legacy
         // message classification can be removed.
         const message = caught instanceof Error ? caught.message : ''
         if (message.includes('Invalid or expired share key')) {

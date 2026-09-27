@@ -15,6 +15,7 @@ import {
   type SupportedResource,
   type VendorDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { buildDescription, codeSpan } from "@gadgets/gatekeeper-kit/action-description";
 import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
 import { commitStagedCredentials, stageCredentials } from "@gadgets/gatekeeper-kit/credential-stage";
 import {
@@ -939,10 +940,11 @@ class SupabaseSessionContext {
     try {
       await this.approvalQueue.submitAction(actionId, {
         title: "Run SQL on Supabase",
-        description:
-            `Execute a mutating SQL statement against Supabase project \`${ref}\`.\n\n` +
-            "```sql\n" + sql + "\n```" +
-            (params && params.length > 0 ? `\n\nParameters: \`${JSON.stringify(params)}\`` : ""),
+        // A field shows the statement literally, so nothing in it can escape into the prose.
+        ...buildDescription(`Execute a mutating SQL statement against Supabase project ${codeSpan(ref)}.`)
+          .verbatim("SQL", sql, "sql")
+          .json("Parameters", params ?? [])
+          .finish(),
         // Arbitrary SQL cannot be automatically reverted.
         implementsRevert: false,
         // This gatekeeper doesn't simulate writes, so the agent shouldn't continue (and read back

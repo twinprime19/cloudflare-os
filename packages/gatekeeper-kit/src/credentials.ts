@@ -157,8 +157,8 @@ const refreshes = perStorage(() => new SingleFlight());
  * Must return the **complete** canonical record, not the provider's response. Providers routinely
  * omit values that did not change — an unchanged rotating refresh token, granted scopes, provider
  * metadata — and the coordinator replaces the stored record wholesale, so anything absent is lost
- * and the *next* refresh fails after the first successful rotation. Merge from `current`:
- * `{ ...current, ...response, refreshToken: response.refreshToken ?? current.refreshToken }`.
+ * and the *next* refresh fails after the first successful rotation. Merge from `current`; for an
+ * OAuth 2.0 grant, `oauthRefresh` with `mergeOAuthTokens` in `./oauth-client` does this.
  *
  * Throw `CredentialsExpiredError` only when the provider proves the grant is dead.
  * @param current The stored grant being refreshed.
@@ -288,6 +288,10 @@ export class CredentialCoordinator<Creds> {
    *
    * Fencing is opt-in because an account with no such window (a pasted token, a form submission
    * with no round trip) has nothing to fence, and would then have to invent a generation to pass.
+   * This method does not dispose credentials it replaces. A caller replacing a provider grant must
+   * capture the current value before this synchronous call and dispose it afterward only when the
+   * provider guarantees that doing so cannot invalidate the successor.
+   *
    * @param credentials New credentials.
    * @param options `ifGeneration` refuses the write unless the connection is still the one the
    * attempt started under.
