@@ -9,6 +9,7 @@ import { createWorkshopLogger } from "./observability";
 import { Type, toToolDeclaration } from "@earendil-works/pi-ai";
 import type {
   AssistantMessage, ImageContent, Message, TSchema, TextContent, ThinkingContent, ToolCall,
+  ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import {
   runAgentLoopContinue, type AgentContext, type AgentEvent, type AgentTool,
@@ -4115,6 +4116,48 @@ async function runAgentPass(
   // model request is allowed to start.
   let capturedActionsForStep: ReturnType<AgentHooks["consumeCapturedActions"]>;
 
+  // Latched by finishTurn when a loop guard ends the turn after this step; the turn_end barrier
+  // commits its notice with the step.
+  let pendingStop: {reason: "repeated-failed-call" | "step-cap", notice: string} | undefined;
+
+  // A completed step's tool calls as the chat log records them, with each call's outcome. Both
+  // finishTurn (the loop guards) and the turn_end barrier (the persisted log) read the step
+  // through this, so the guards judge exactly what the log will show.
+  let stepToolCallsOf = (
+      message: AssistantMessage, toolResults: readonly ToolResultMessage[]): AiToolCall[] => {
+    let resultsById = new Map(toolResults.map(r => [r.toolCallId, r]));
+    return message.content.filter(block => block.type === "toolCall").map(block => {
+      let result = <AiToolCall>{
+        toolCallId: block.id,
+        toolName: block.name as AiToolCall["toolName"],
+        input: block.arguments,
+      };
+      let toolResultMsg = resultsById.get(block.id);
+      if (!toolResultMsg) {
+        // A cancellation broke the tool batch before this call could run (the only way a
+        // completed turn's tool call lacks a result). Record the same error pi reports for a call
+        // an abort pre-empted, so replay shows the model an honest failure rather than a
+        // fabricated success (or a missing tool result, which providers reject).
+        result.error = "Operation aborted";
+      } else if (toolResultMsg.isError) {
+        // The result text is pi's rendering of the failure (thrown tool errors, schema validation
+        // failures, unknown tools). Our own tools' catch blocks record the same text via
+        // toolCallNotes (merged below), along with extra bookkeeping like observedCodeVersion.
+        result.error = toolResultMsg.content
+            .map(part => part.type === "text" ? part.text : "").join("") ||
+            "Tool call failed.";
+      } else if (toolResultMsg.details) {
+        // Success notes (observedCodeVersion, recorded output) ride the result's details.
+        Object.assign(result, toolResultMsg.details);
+      }
+      let notes = toolCallNotes.get(block.id);
+      if (notes) {
+        Object.assign(result, notes);
+      }
+      return result;
+    });
+  };
+
   // The awaited event sink driving both the client stream fan-out and the persistence barrier.
   let emit = async (event: AgentEvent): Promise<void> => {
     switch (event.type) {
@@ -4198,7 +4241,6 @@ async function runAgentPass(
         // recorded as errors below, and finishTurn ends the loop right after this barrier.
 
         let msgs: AiChatMessageBodyWithModelData[] = [];
-        let stepToolCalls: AiToolCall[] = [];
 
         {
           let msg: AiChatMessageBodyWithModelData = {
@@ -4213,41 +4255,9 @@ async function runAgentPass(
           if (reasoning) {
             msg.reasoning = reasoning;
           }
-          let toolCallBlocks = message.content.filter(block => block.type === "toolCall");
-          if (toolCallBlocks.length > 0) {
-            let resultsById = new Map(event.toolResults.map(r => [r.toolCallId, r]));
-            msg.toolCalls = toolCallBlocks.map(block => {
-              let result = <AiToolCall>{
-                toolCallId: block.id,
-                toolName: block.name as AiToolCall["toolName"],
-                input: block.arguments,
-              };
-              let toolResultMsg = resultsById.get(block.id);
-              if (!toolResultMsg) {
-                // A cancellation broke the tool batch before this call could run (the only way
-                // a completed turn's tool call lacks a result). Record the same error pi reports
-                // for a call an abort pre-empted, so replay shows the model an honest failure
-                // rather than a fabricated success (or a missing tool result, which providers
-                // reject).
-                result.error = "Operation aborted";
-              } else if (toolResultMsg.isError) {
-                // The result text is pi's rendering of the failure (thrown tool errors, schema
-                // validation failures, unknown tools). Our own tools' catch blocks record the
-                // same text via toolCallNotes (merged below), along with extra bookkeeping like
-                // observedCodeVersion.
-                result.error = toolResultMsg.content
-                    .map(part => part.type === "text" ? part.text : "").join("") ||
-                    "Tool call failed.";
-              } else if (toolResultMsg.details) {
-                // Success notes (observedCodeVersion, recorded output) ride the result's details.
-                Object.assign(result, toolResultMsg.details);
-              }
-              let notes = toolCallNotes.get(block.id);
-              if (notes) {
-                Object.assign(result, notes);
-              }
-              return result;
-            });
+          let toolCalls = stepToolCallsOf(message, event.toolResults);
+          if (toolCalls.length > 0) {
+            msg.toolCalls = toolCalls;
           }
 
           if (message.stopReason === "length" && msg.message === "" && !msg.toolCalls) {
@@ -4261,7 +4271,6 @@ async function runAgentPass(
           // record.
           msg.modelData = makeStoredAssistantMessage(message);
           msgs.push(msg);
-          stepToolCalls = msg.toolCalls ?? [];
         }
 
         let capturedActions = capturedActionsForStep;
@@ -4281,47 +4290,14 @@ async function runAgentPass(
           msgs.push(cr);
         }
 
-        // Loop guards. A step whose calls all failed is compared with the previous one by its
-        // call key: every call's tool name plus its exact arguments, sorted so the order of
-        // calls within a step doesn't matter, and NUL-separated so no name/arguments split can
-        // collide. Any success, or a different failing call, resets the run.
-        if (stepToolCalls.length > 0 && stepToolCalls.every(call => call.error !== undefined)) {
-          let callKey = stepToolCalls
-              .map(call => `${call.toolName}\u0000${JSON.stringify(call.input)}`)
-              .toSorted().join("\n");
-          if (callKey === turnCount.lastFailedCallKey) {
-            ++turnCount.identicalFailedCalls;
-          } else {
-            turnCount.lastFailedCallKey = callKey;
-            turnCount.identicalFailedCalls = 1;
-          }
-        } else {
-          turnCount.lastFailedCallKey = undefined;
-          turnCount.identicalFailedCalls = 0;
-        }
-        // When a guard ends the turn (shouldStopAfterTurn, right after this barrier), say so in
+        // When a loop guard ended the turn (finishTurn decided it before this barrier), say so in
         // the transcript: otherwise the user sees the agent simply go quiet mid-task. The notice
         // is an ordinary agent text message with no modelData and no tool calls, committed in
         // this step's barrier, so the UI renders it as a normal reply and replay hands it to the
         // next turn's model as plain assistant text after the step's tool results -- a shape
-        // every provider accepts -- telling it why it stopped. The step cap only applies when
-        // the model wanted another step; a step without tool calls ends the turn by itself.
-        let stop: {reason: "repeated-failed-call" | "step-cap", notice: string} | undefined;
-        if (turnCount.identicalFailedCalls >= IDENTICAL_FAILED_CALL_LIMIT) {
-          let toolNames = [...new Set(stepToolCalls.map(call => call.toolName))].join(", ");
-          stop = {
-            reason: "repeated-failed-call",
-            notice: `Stopped: the same ${toolNames} call failed ${IDENTICAL_FAILED_CALL_LIMIT} ` +
-                `times in a row with the same error. Tell me how to proceed, or ask me to try ` +
-                `another approach.`,
-          };
-        } else if (stepToolCalls.length > 0 && turnCount.steps + 1 >= MAX_TURN_STEPS) {
-          stop = {
-            reason: "step-cap",
-            notice: `Stopped after ${MAX_TURN_STEPS} steps in one turn without finishing. ` +
-                `Reply to let me continue.`,
-          };
-        }
+        // every provider accepts -- telling it why it stopped.
+        let stop = pendingStop;
+        pendingStop = undefined;
         if (stop) {
           msgs.push({type: "message", message: stop.notice});
           logger.info("agent turn stopped by a loop guard", {
@@ -4394,18 +4370,57 @@ async function runAgentPass(
       if (message.stopReason === "error" || message.stopReason === "aborted") return;
       capturedActionsForStep = hooks.consumeCapturedActions(chatId);
       if (capturedActionsForStep?.awaitDecision) awaitingActionDecision = true;
+      // Cancelled during tool execution: turn_end will persist the completed turn before this
+      // decision ends the loop; don't start another (doomed) model request. (Calls the abort kept
+      // from running never reach the loop guards below.)
+      if (abortSignal.aborted) return {action: "end"};
+      // Loop guards, decided here from this step's own calls so the turn ends before another
+      // model request; the turn_end barrier commits the notice with the step. A step whose calls
+      // all failed is compared with the previous one by its call key: every call's tool name
+      // plus its exact arguments, sorted so the order of calls within a step doesn't matter, and
+      // NUL-separated so no name/arguments split can collide. Any success, or a different
+      // failing call, resets the run.
+      let stepToolCalls = stepToolCallsOf(message, toolResults);
+      if (stepToolCalls.length > 0 && stepToolCalls.every(call => call.error !== undefined)) {
+        let callKey = stepToolCalls
+            .map(call => `${call.toolName}\u0000${JSON.stringify(call.input)}`)
+            .toSorted().join("\n");
+        if (callKey === turnCount.lastFailedCallKey) {
+          ++turnCount.identicalFailedCalls;
+        } else {
+          turnCount.lastFailedCallKey = callKey;
+          turnCount.identicalFailedCalls = 1;
+        }
+      } else {
+        turnCount.lastFailedCallKey = undefined;
+        turnCount.identicalFailedCalls = 0;
+      }
+      if (turnCount.identicalFailedCalls >= IDENTICAL_FAILED_CALL_LIMIT) {
+        // The same failing tool call keeps coming back.
+        let toolNames = [...new Set(stepToolCalls.map(call => call.toolName))].join(", ");
+        pendingStop = {
+          reason: "repeated-failed-call",
+          notice: `Stopped: the same ${toolNames} call failed ${IDENTICAL_FAILED_CALL_LIMIT} ` +
+              `times in a row with the same error. Tell me how to proceed, or ask me to try ` +
+              `another approach.`,
+        };
+      } else if (stepToolCalls.length > 0 && turnCount.steps + 1 >= MAX_TURN_STEPS) {
+        // Hard cap on steps, counting this one (turn_end counts it once it is durable). The
+        // budget belongs to the caller, so the reloads below continue it instead of restarting
+        // it. It only applies when the model wanted another step; a step without tool calls ends
+        // the turn by itself.
+        pendingStop = {
+          reason: "step-cap",
+          notice: `Stopped after ${MAX_TURN_STEPS} steps in one turn without finishing. ` +
+              `Reply to let me continue.`,
+        };
+      }
       // The stop reasons that end the turn come first: a compaction reload must not resume work
       // that one of them ended.
       if (
-          // Cancelled during tool execution: turn_end will persist the completed turn before
-          // this decision ends the loop; don't start another (doomed) model request.
-          abortSignal.aborted ||
-          // Hard cap on turns. The budget belongs to the caller, so the reloads below continue
-          // it instead of restarting it.
-          turnCount.steps >= MAX_TURN_STEPS ||
-          // The same failing tool call keeps coming back; the turn_end barrier has already
-          // committed the notice telling the user why the agent stopped.
-          turnCount.identicalFailedCalls >= IDENTICAL_FAILED_CALL_LIMIT ||
+          // A loop guard above; turn_end commits its notice telling the user why the agent
+          // stopped.
+          pendingStop !== undefined ||
           // End the turn once the agent has successfully requested a connection: it must wait
           // for the user to respond, not keep reasoning in the meantime. (Accept resumes it on a
           // fresh turn; deny just leaves the turn ended.) A rejected requestConnection (e.g.
