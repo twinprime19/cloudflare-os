@@ -29,6 +29,7 @@ import { validateRpc } from "capnweb-validate";
 import {
   ActionKind, ApprovalQueue, Cursor, Gatekeeper, GatekeeperUserVerifier, ResourceDescription,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { buildDescription, type RenderedDescription } from "@gadgets/gatekeeper-kit/action-description";
 import { formatApprovalField, sanitizeApprovalTitle } from "./approval-text";
 import { AccessTokenCache, AccessTokenRequest, RetryAfterPolicy } from "./auth-retry";
 import { GraphApiError, truncate } from "./graph-api";
@@ -93,8 +94,6 @@ type SharePointListAction = {
   type: "createItem";
   /** Validated against the list's schema before submission, so apply time rarely sees a 4xx. */
   fields: Record<string, unknown>;
-  /** The fenced key/value summary shown to the approver, kept so a retry describes the same thing. */
-  summary: string;
 };
 
 /** The list's name and link, as `describe()` last read them. */
@@ -198,19 +197,18 @@ function displayValue(value: unknown): string {
 }
 
 /**
- * The key/value block an approver reads before allowing an item to be created.
- *
- * Labels are internal column names, not display names: an internal name is `[A-Za-z0-9_]+` by
- * construction, so it cannot forge Markdown, while a display name is renameable by anyone who can
- * edit the list. Values are fenced, which is what keeps a submitted `<script>` or a run of backticks
- * from restyling the prompt around it.
+ * What an approver reads before allowing an item to be created: one field per column value the
+ * create sends. Labels are internal column names, not display names: an internal name is
+ * `[A-Za-z0-9_]+` by construction, while a display name is renameable by anyone who can edit the
+ * list. Values go in builder fields, which approval surfaces show literally, so a submitted
+ * `<script>` or a run of backticks cannot restyle the prompt around it.
  */
-function describeFields(fields: Record<string, unknown>): string {
+function describeCreateItem(fields: Record<string, unknown>): RenderedDescription {
+  let builder = buildDescription("Create a new item in this SharePoint list with the values below.");
   let entries = Object.entries(fields);
-  if (entries.length === 0) return "_This item sets no column values._";
-  return entries
-      .map(([name, value]) => formatApprovalField(name, displayValue(value)))
-      .join("\n\n");
+  if (entries.length === 0) builder.prose("_This item sets no column values._");
+  for (let [name, value] of entries) builder.inline(name, displayValue(value));
+  return builder.finish();
 }
 
 // ── Field validation ────────────────────────────────────────────────
@@ -582,10 +580,7 @@ class SharePointListSessionImpl extends RpcTarget implements SharePointListSessi
           "Too many pending SharePoint list actions. Resolve existing actions before adding more.");
     }
 
-    let summary = describeFields(validated);
-    let actionId = this.#ctx.pendingActions.submit({
-      type: "createItem", fields: validated, summary,
-    });
+    let actionId = this.#ctx.pendingActions.submit({ type: "createItem", fields: validated });
 
     // Registered before the action is submitted: with the auto-approval rule on, the apply can land
     // before submitAction() has even returned.
@@ -593,8 +588,7 @@ class SharePointListSessionImpl extends RpcTarget implements SharePointListSessi
     try {
       await this.#ctx.approvalQueue.submitAction(actionId, {
         title: sanitizeApprovalTitle(`Create item in ${this.#ctx.listName()}`),
-        description:
-            "Create a new item in this SharePoint list with the values below.\n\n" + summary,
+        ...describeCreateItem(validated),
         actionKind: CREATE_ITEM_ACTION,
         // The author's verdict that adding a row to a list the user chose is safe to apply without
         // per-action review. The user still has to enable the rule for this list.

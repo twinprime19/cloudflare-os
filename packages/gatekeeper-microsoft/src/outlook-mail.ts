@@ -25,6 +25,9 @@ import {
   ActionKind, AgentCatalog, ApprovalQueue, Cursor, Gatekeeper,
   GatekeeperUserVerifier, ResourceDescription, boundAgentCatalog,
 } from "@gadgets/workshop-shared/gatekeeper";
+import {
+  type ActionDescriptionBuilder, buildDescription, type RenderedDescription,
+} from "@gadgets/gatekeeper-kit/action-description";
 import { formatApprovalField, sanitizeApprovalTitle } from "./approval-text";
 import { AccessTokenCache, AccessTokenRequest } from "./auth-retry";
 import { GraphMailApi, MAX_REPLY_BODY_BYTES, validateSearchQuery } from "./graph-api";
@@ -81,6 +84,20 @@ function describeMessage(info: OutlookMessageInfo): string {
 }
 
 /**
+ * Starts an action description with the message the action targets: its observed subject, sender
+ * and received time, and the immutable id the executor sends to Graph. Each caller then adds every
+ * value its action variant carries, so the builder sees all of it before judging completeness.
+ */
+function describeMessageAction(
+    intro: string, info: OutlookMessageInfo, messageId: string): ActionDescriptionBuilder {
+  return buildDescription(intro)
+      .inline("Subject", info.subject)
+      .inline("From", info.from?.address ?? "(unknown sender)")
+      .inline("Received", info.receivedAt.toISOString())
+      .inline("Message id", messageId);
+}
+
+/**
  * One line per attachment for an approval prompt. Sender-chosen filenames and MIME types go through
  * `formatApprovalField` at the call site, which is what keeps them from forging Markdown.
  */
@@ -94,7 +111,9 @@ function describeAttachments(attachments: OutlookAttachmentInfo[]): string {
 async function submitOutlookAction(
     ctx: OutlookMailSessionContext,
     action: OutlookMailAction,
-    desc: { title: string; description: string; actionKind: ActionKind }): Promise<void> {
+    // The approver-facing text is always built with `buildDescription`, so every value the action
+    // carries is shown in full and the completeness claim is the builder's, never hand-set.
+    desc: { title: string; actionKind: ActionKind } & RenderedDescription): Promise<void> {
   if (ctx.pendingActions.list().length >= MAX_PENDING_ACTIONS) {
     throw new Error(
         "Too many pending Outlook actions. Resolve existing actions before adding more.");
@@ -367,9 +386,10 @@ class OutlookMessageStub extends RpcTarget implements OutlookMessage {
         {
           title: sanitizeApprovalTitle(
               `${read ? "Mark read" : "Mark unread"}: ${info.subject}`),
-          description:
-              `Mark this Outlook message as ${read ? "read" : "unread"}.\n\n` +
-              describeMessage(info),
+          ...describeMessageAction(
+              "Change the read state of this Outlook message.", info, this.#messageId)
+              .inline("Mark as", read ? "read" : "unread")
+              .finish(),
           actionKind: MARK_READ_ACTION,
         });
   }
@@ -393,10 +413,11 @@ class OutlookMessageStub extends RpcTarget implements OutlookMessage {
         { type: "move", messageId: this.#messageId, destinationFolderId: folder.id },
         {
           title: sanitizeApprovalTitle(`Move to ${folder.name}: ${info.subject}`),
-          description:
-              "Move this Outlook message to another folder.\n\n" +
-              `${describeMessage(info)}\n\n` +
-              formatApprovalField("Destination folder", folder.name),
+          ...describeMessageAction(
+              "Move this Outlook message to another folder.", info, this.#messageId)
+              .inline("Destination folder", folder.name)
+              .inline("Destination folder id", folder.id)
+              .finish(),
           actionKind: MOVE_MESSAGE_ACTION,
         });
   }
@@ -424,8 +445,9 @@ class OutlookMessageStub extends RpcTarget implements OutlookMessage {
     let info = await this.#readInfoForAction("draft a reply to");
     let recipients = replyAll
         ? [info.from?.address, ...info.to.map(entry => entry.address),
-           ...info.cc.map(entry => entry.address)].filter(Boolean).join(", ")
-        : info.from?.address ?? "(unknown sender)";
+           ...info.cc.map(entry => entry.address)]
+            .filter((address): address is string => Boolean(address))
+        : [info.from?.address ?? "(unknown sender)"];
 
     await submitOutlookAction(
         this.#ctx,
@@ -433,12 +455,13 @@ class OutlookMessageStub extends RpcTarget implements OutlookMessage {
         {
           title: sanitizeApprovalTitle(
               `${replyAll ? "Reply-all draft" : "Reply draft"}: ${info.subject}`),
-          description:
+          ...describeMessageAction(
               "Create a reply draft in the Outlook mailbox. The draft is not sent; it is left in " +
-              "Drafts for the user to review.\n\n" +
-              `${describeMessage(info)}\n\n` +
-              `${formatApprovalField("Draft recipients", recipients)}\n\n` +
-              formatApprovalField("Draft body", body),
+              "Drafts for the user to review.", info, this.#messageId)
+              .inline("Reply to", replyAll ? "everyone" : "sender")
+              .list("Draft recipients", recipients)
+              .verbatim("Draft body", body)
+              .finish(),
           actionKind: REPLY_DRAFT_ACTION,
         });
   }
