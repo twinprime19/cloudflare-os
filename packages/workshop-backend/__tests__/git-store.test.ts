@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deserialize, serialize } from "capnweb";
 import { createTypedStorage } from "@gadgets/typed-storage";
 import {
-  GITDIR, GitStore, commitIdentityForAuthor, gitObjectsCollection, makeGitObjectsFs,
+  GITDIR, GitStore, blobOid, commitIdentityForAuthor, gitObjectsCollection, makeGitObjectsFs,
   threeWayMerge,
 } from "../src/git-store";
 import { makeMockStorage } from "./mock-storage";
@@ -81,9 +81,9 @@ describe("GitStore", () => {
     expect(await store.readCommitFiles(SECOND_COMMIT_OID)).toEqual(SECOND_FILES);
   });
 
-  it("survives Cap'n Web in Overseer.getCodeAtCommit's entry-list shape", async () => {
-    // A tree may legitimately name a file after an Object.prototype member, so getCodeAtCommit
-    // ships [path, content] pairs rather than a path-keyed object: Cap'n Web can't serialize a
+  it("survives Cap'n Web in Overseer.readFilesAtCommit's entry-list shape", async () => {
+    // A tree may legitimately name a file after an Object.prototype member, so the commit reads
+    // ship [path, content] pairs rather than a path-keyed object: Cap'n Web can't serialize a
     // null-prototype object at all, and deletes prototype-shadowing keys (and "toJSON") from
     // every ordinary object it deserializes -- either way such files would vanish on the wire.
     let store = new GitStore(makeObjects());
@@ -98,54 +98,20 @@ describe("GitStore", () => {
     expect(new Map(deserialize(serialize(wire)) as typeof wire)).toEqual(files);
   });
 
-  it("reads per-file blob oids without content, deduplicated across commits", async () => {
-    let store = new GitStore(makeObjects());
+  it("blobOid is the content address a written file gets, computed without writing", async () => {
+    let objects = makeObjects();
+    let store = new GitStore(objects);
     await writeFixtureHistory(store);
+    let count = [...objects.list()].length;
 
-    let first = await store.commitFileOids(INITIAL_COMMIT_OID);
-    let second = await store.commitFileOids(SECOND_COMMIT_OID);
-    expect([...first.keys()].toSorted()).toEqual(["README.md", "client.js", "lib/util.js"]);
-    // Content addressing: unchanged files keep their blob oid across commits; changed ones don't.
-    expect(second.get("README.md")).toBe(first.get("README.md"));
-    expect(second.get("lib/util.js")).toBe(first.get("lib/util.js"));
-    expect(second.get("client.js")).not.toBe(first.get("client.js"));
-  });
-
-  it("diffs commits by path with changedPaths", async () => {
-    let store = new GitStore(makeObjects());
-    await writeFixtureHistory(store);
-    let third = await store.writeFilesAsCommit(new Map([
-      ["README.md", "# Test Gadget\n"],          // unchanged from SECOND
-      ["lib/util.js", "export const answer = 43;\n"],  // changed within a subtree
-      ["extra.txt", "new\n"],                    // added; client.js removed
-    ]), {
-      parents: [SECOND_COMMIT_OID],
-      author: ALICE,
-      message: "third commit",
-      timestamp: new Date(1700000200_000),
-    });
-
-    expect(await store.changedPaths(SECOND_COMMIT_OID, SECOND_COMMIT_OID)).toEqual(new Set());
-    expect(await store.changedPaths(INITIAL_COMMIT_OID, SECOND_COMMIT_OID))
-        .toEqual(new Set(["client.js"]));
-    expect(await store.changedPaths(SECOND_COMMIT_OID, third))
-        .toEqual(new Set(["client.js", "lib/util.js", "extra.txt"]));
-    // An undefined side is an empty tree, so a one-sided diff lists the whole tree.
-    expect(await store.changedPaths(undefined, INITIAL_COMMIT_OID))
-        .toEqual(new Set(INITIAL_FILES.keys()));
-    expect(await store.changedPaths(INITIAL_COMMIT_OID, undefined))
-        .toEqual(new Set(INITIAL_FILES.keys()));
-  });
-
-  it("reports blob-vs-tree replacements at both paths", async () => {
-    let store = new GitStore(makeObjects());
-    let blobShape = await store.writeFilesAsCommit(new Map([["x", "file\n"]]), {
-      parents: [], author: ALICE, message: "blob", timestamp: new Date(1700000000_000),
-    });
-    let treeShape = await store.writeFilesAsCommit(new Map([["x/y", "nested\n"]]), {
-      parents: [blobShape], author: ALICE, message: "tree", timestamp: new Date(1700000100_000),
-    });
-    expect(await store.changedPaths(blobShape, treeShape)).toEqual(new Set(["x", "x/y"]));
+    let oid = await blobOid('console.log("hello");\n');
+    expect([...objects.list()].length).toBe(count);  // nothing written
+    let tree = parseGitCommitRefs(decodeLooseObject(objects.get(INITIAL_COMMIT_OID)!.data).payload)
+        .tree;
+    let root = parseGitTree(decodeLooseObject(objects.get(tree)!.data).payload);
+    expect(root.find(e => e.name === "client.js")!.oid).toBe(oid);
+    // Distinct content, distinct oid (a trailing newline is content).
+    expect(await blobOid('console.log("hello");')).not.toBe(oid);
   });
 
   it("walks commit ancestry with readCommitLog", async () => {
@@ -241,6 +207,24 @@ describe("writeChangedFilesAsCommit", () => {
     return { treeOid, entries: parseGitTree(read(treeOid).payload) };
   }
 
+  // The paths whose entry (oid or mode) differs between two commits' trees, via the raw codec.
+  function changedPaths(objects: ReturnType<typeof makeObjects>, a: string, b: string) {
+    let flatten = (commitOid: string) => {
+      let out = new Map<string, string>();
+      let walk = (treeOid: string, prefix: string) => {
+        for (let entry of parseGitTree(decodeLooseObject(objects.get(treeOid)!.data).payload)) {
+          if (entry.mode === "40000") walk(entry.oid, `${prefix}${entry.name}/`);
+          else out.set(prefix + entry.name, `${entry.mode}:${entry.oid}`);
+        }
+      };
+      walk(parseGitCommitRefs(decodeLooseObject(objects.get(commitOid)!.data).payload).tree, "");
+      return out;
+    };
+    let [left, right] = [flatten(a), flatten(b)];
+    return new Set([...new Set([...left.keys(), ...right.keys()])]
+        .filter(path => left.get(path) !== right.get(path)));
+  }
+
   it("applies edits while reusing unchanged subtree oids verbatim", async () => {
     let { objects, store } = makeFixtureStore();
     let commit = await store.writeChangedFilesAsCommit(new Map([
@@ -248,7 +232,7 @@ describe("writeChangedFilesAsCommit", () => {
       ["src/util.js", "export const answer = 43;\n"],
     ]), OPTIONS);
 
-    expect(await store.changedPaths(COMMIT_1, commit))
+    expect(changedPaths(objects, COMMIT_1, commit))
         .toStrictEqual(new Set(["README.md", "src/util.js"]));
     // The untouched docs subtree is the *same object*, not an equal rebuild.
     let base = entriesOf(objects, COMMIT_1);
@@ -267,7 +251,7 @@ describe("writeChangedFilesAsCommit", () => {
         { ...OPTIONS, parents: [COMMIT_3] });  // tree from COMMIT_1, parent COMMIT_3
     expect(parseGitCommitRefs(decodeLooseObject(objects.get(commit)!.data).payload).parents)
         .toStrictEqual([COMMIT_3]);
-    expect(await store.changedPaths(COMMIT_1, commit))
+    expect(changedPaths(objects, COMMIT_1, commit))
         .toStrictEqual(new Set(["README.md"]));
   });
 
@@ -325,7 +309,7 @@ describe("writeChangedFilesAsCommit", () => {
     // Deleting an absent file is a no-op, not an error.
     let again = await store.writeChangedFilesAsCommit(
         new Map([["never-existed.txt", null]]), OPTIONS);
-    expect(await store.changedPaths(COMMIT_1, again)).toStrictEqual(new Set());
+    expect(changedPaths(objects, COMMIT_1, again)).toStrictEqual(new Set());
   });
 
   it("round-trips non-ASCII UTF-8 names byte-identically through parse + rebuild", async () => {
@@ -505,5 +489,11 @@ describe("commitIdentityForAuthor", () => {
   it("gives bare-username profile IDs a placeholder host", () => {
     expect(commitIdentityForAuthor({ type: "user", id: "bob", name: "Bob Builder" }))
         .toEqual({ name: "Bob Builder", email: "bob@localhost" });
+  });
+
+  it("prefers the author's commit email over the profile ID", () => {
+    expect(commitIdentityForAuthor(
+        { type: "user", id: "bob", name: "Bob Builder", commitEmail: "bob@builder.example" }))
+        .toEqual({ name: "Bob Builder", email: "bob@builder.example" });
   });
 });

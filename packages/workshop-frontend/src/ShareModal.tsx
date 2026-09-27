@@ -34,9 +34,19 @@ type DirectorySearch = {
   results: UserDirectoryRecord[]
 }
 const NO_DIRECTORY_SEARCH: DirectorySearch = { status: 'ready', query: '', results: [] }
-type DirectorySelection = {
-  user: UserDirectoryRecord
-  exclusionsKey: string
+// A person queued in the composer but not yet invited. `error` is set when their invite failed so
+// the chip stays for correction while everyone else's goes through.
+type StagedRecipient = { id: string; name: string; error?: string }
+const NO_IDS: ReadonlySet<string> = new Set()
+const NAME_LIST = new Intl.ListFormat('en', { type: 'conjunction' })
+
+function withRecipient(list: StagedRecipient[], recipient: StagedRecipient): StagedRecipient[] {
+  return list.some(entry => entry.id === recipient.id) ? list : [...list, recipient]
+}
+
+// "Name (id)" when they differ, so two accounts with one display name stay tellable apart.
+function recipientLabel({ id, name }: StagedRecipient): string {
+  return name === id ? name : `${name} (${id})`
 }
 
 type ConfirmationTarget =
@@ -322,7 +332,9 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
   const [shareLinks, setShareLinks] = useState<ShareLinkInfo[]>([])
   const [addUsername, setAddUsername] = useState('')
   const [directory, setDirectory] = useState<DirectorySearch>(NO_DIRECTORY_SEARCH)
-  const [selectedUser, setSelectedUser] = useState<DirectorySelection | null>(null)
+  const [staged, setStaged] = useState<StagedRecipient[]>([])
+  // Focus stays in the field when a chip is added or removed, so the change is announced here.
+  const [composerNotice, setComposerNotice] = useState('')
   const [activeDirectoryIndex, setActiveDirectoryIndex] = useState(0)
   // The result popover is dismissed when focus leaves the combobox or on Escape; typing or
   // refocusing brings it back. The query and its search survive a dismissal.
@@ -331,39 +343,56 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
   const activeDirectoryOptionRef = useRef<HTMLButtonElement>(null)
   const directoryListboxRef = useRef<HTMLDivElement>(null)
   const directoryAnchorRef = useRef<HTMLDivElement>(null)
+  const peopleInputRef = useRef<HTMLInputElement>(null)
   const wasOpenRef = useRef(false)
   const userSearchEnabled = useServerConfig()?.userSearchEnabled ?? false
+  const isOwner = !metadata.owner
+  const containsRestrictedData = metadata.containsRestrictedData === true
+  // The server refuses share links and non-owner invites once this is set; hide those controls.
+  const ownerInvitesOnly = metadata.ownerInvitesOnly === true
+  const canInvite = !ownerInvitesOnly || isOwner
+  const canUseShareLinks = !ownerInvitesOnly
   const directoryQuery = addUsername.trim()
   // Everyone already on the workspace: the caller, the owner (absent from listCollaborators()
-  // when the caller is a collaborator), and every collaborator.
+  // when the caller is a collaborator), and every collaborator -- plus everyone already staged.
   const directoryExcludeIds = useMemo(() => [
     ...(currentUser ? [currentUser.id] : []),
     ...(metadata.owner ? [metadata.owner.id] : []),
     ...collaborators.map(({ profile }) => profile.id),
-  ], [collaborators, currentUser, metadata.owner])
-  const directoryExclusionsKey = JSON.stringify(directoryExcludeIds)
-  const selectedDirectoryUser = selectedUser?.exclusionsKey === directoryExclusionsKey
-    ? selectedUser.user
-    : null
+    ...staged.map(recipient => recipient.id),
+  ], [collaborators, currentUser, metadata.owner, staged])
   const membershipSettled = open && wasOpenRef.current && membershipStatus !== 'loading'
   const membershipReady = membershipSettled && membershipStatus === 'ready'
-  const directorySearching = userSearchEnabled && membershipReady &&
-    selectedDirectoryUser === null && directoryQuery !== ''
+  const directorySearching = userSearchEnabled && membershipReady && directoryQuery !== ''
   const directoryCurrent = directory.query === directoryQuery
-  const directoryOpen = directorySearching && directoryCurrent && !directoryDismissed
+  // Gated on canInvite too: a live metadata update can set ownerInvitesOnly while results are
+  // open, unmounting the search field without blurring it, and the popover's scroll lock on the
+  // dialog body must not outlive the field.
+  const directoryOpen = canInvite && directorySearching && directoryCurrent && !directoryDismissed
   const directorySettled = directory.status !== 'loading' && directoryCurrent
   const showDirectDirectoryOption = directory.status === 'ready' && directory.results.length > 0
   const directoryOptionCount = directory.results.length + (showDirectDirectoryOption ? 1 : 0)
   const activeDirectoryOptionId = directoryOpen && activeDirectoryIndex < directoryOptionCount
     ? `${directoryListboxId}-option-${activeDirectoryIndex}`
     : undefined
-  // Once the search has settled, the typed text can always be submitted as a canonical id: the
+  // Once the search has settled, the typed text can always be staged as a canonical id: the
   // directory is a lazily backfilled convenience, so a valid id may be missing from it (or
   // shadowed by unrelated substring matches), and a directory outage must not block invites.
   // A membership-load failure also falls back to the authoritative direct-invite path.
-  const canInviteUser = selectedDirectoryUser !== null ||
-    (directoryQuery !== '' && (!userSearchEnabled ||
-      (membershipSettled && (!membershipReady || directorySettled))))
+  const canStage = directoryQuery !== '' && (!userSearchEnabled ||
+    (membershipSettled && (!membershipReady || directorySettled)))
+  // What the composer holds besides the chips: the highlighted result, else the typed text once
+  // it can be staged.
+  const highlightedUser = directoryOpen ? directory.results[activeDirectoryIndex] : undefined
+  const typedRecipient: StagedRecipient | null = highlightedUser
+    ? { id: highlightedUser.id, name: highlightedUser.name }
+    : canStage ? { id: directoryQuery, name: directoryQuery } : null
+  // Exactly what Invite would send, so the label never counts a typed id that is already a chip.
+  const pendingRecipients = typedRecipient ? withRecipient(staged, typedRecipient) : staged
+  const inviteCount = pendingRecipients.length
+  // Nothing is sent while the field holds text that cannot be staged yet (its search is still
+  // pending), so the button waits too: Enter already does, and a click would silently drop the name.
+  const canSubmitInvite = inviteCount > 0 && (directoryQuery === '' || typedRecipient !== null)
   const [addRole, setAddRole] = useState<CollaboratorRole>('use')
   const [adding, setAdding] = useState(false)
   const [newLinkRole, setNewLinkRole] = useState<CollaboratorRole>('use')
@@ -371,7 +400,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
   const [newShareLink, setNewShareLink] = useState<string | null>(null)
   const [newShareLinkId, setNewShareLinkId] = useState<string | null>(null)
   const [newShareLinkCopied, setNewShareLinkCopied] = useState(false)
-  const [invitedName, setInvitedName] = useState<string | null>(null)
+  const [invitedNames, setInvitedNames] = useState<string[]>([])
   const [invitedLinkCopied, setInvitedLinkCopied] = useState(false)
   const [requirements, setRequirements] =
     useState<Record<CollaboratorRole, ObserverBindingNeed[]> | null>(null)
@@ -387,7 +416,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
   const [directoryPortalContainer, setDirectoryPortalContainer] =
     useState<HTMLDivElement | null>(null)
   const [scrolled, setScrolled] = useState(false)
-  const [landedPersonId, setLandedPersonId] = useState<string | null>(null)
+  const [landedPersonIds, setLandedPersonIds] = useState<ReadonlySet<string>>(NO_IDS)
   const [landedShareLinkId, setLandedShareLinkId] = useState<string | null>(null)
   const [editingShareLinkId, setEditingShareLinkId] = useState<string | null>(null)
   const [editingShareLinkNote, setEditingShareLinkNote] = useState('')
@@ -452,14 +481,16 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
   }, [authenticatedApi, directoryExcludeIds, directorySearching, directoryQuery, open])
 
   // Keep the listbox inside the dialog's accessibility tree, but outside its scrolling body so
-  // opening results cannot make the dialog itself scroll.
+  // opening results cannot make the dialog itself scroll. The anchor grows and shrinks as chips
+  // wrap (or a batch settles mid-search), so it is observed as well as the viewport.
   useLayoutEffect(() => {
     if (!directoryOpen) return
+    const anchor = directoryAnchorRef.current
+    if (!anchor) return
     const position = () => {
-      const anchor = directoryAnchorRef.current
       const listbox = directoryListboxRef.current
       const dialog = listbox?.parentElement
-      if (!anchor || !listbox || !dialog) return
+      if (!listbox || !dialog) return
       const anchorRect = anchor.getBoundingClientRect()
       const dialogRect = dialog.getBoundingClientRect()
       listbox.style.left = `${anchorRect.left - dialogRect.left}px`
@@ -471,11 +502,14 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
       ))}px`
     }
     position()
+    const observer = new ResizeObserver(position)
+    observer.observe(anchor)
     const viewport = window.visualViewport
     window.addEventListener('resize', position)
     viewport?.addEventListener('resize', position)
     viewport?.addEventListener('scroll', position)
     return () => {
+      observer.disconnect()
       window.removeEventListener('resize', position)
       viewport?.removeEventListener('resize', position)
       viewport?.removeEventListener('scroll', position)
@@ -511,9 +545,6 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
       element.remove()
     }
   }, [])
-
-  const isOwner = !metadata.owner
-  const containsRestrictedData = metadata.containsRestrictedData === true
 
   const loadData = useCallback(async () => {
     try {
@@ -569,11 +600,15 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
       loadData()
       if (!wasOpenRef.current) {
         setAddUsername('')
+        setComposerNotice('')
         setNewShareLink(null)
-        setSelectedUser(null)
+        // A fresh open starts the composer over, except for people whose invite is still in flight
+        // or has failed: their chip is the only record of the outcome.
+        const inFlight = addingRef.current
+        setStaged(current => inFlight ? current : current.filter(recipient => recipient.error))
         setNewShareLinkId(null)
         setNewShareLinkCopied(false)
-        setInvitedName(null)
+        setInvitedNames([])
         setInvitedLinkCopied(false)
         setNewLinkNote('')
         setShowLinkComposer(false)
@@ -604,7 +639,9 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
     [shareLinks],
   )
   let recipientVerification: ReactNode = null
-  if (requirementsFailed) {
+  if (!canInvite) {
+    // Nothing this user can do here admits a recipient, so there is nothing to verify.
+  } else if (requirementsFailed) {
     recipientVerification = (
       <RecipientVerification
         requirements={null}
@@ -615,7 +652,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
     )
   } else if (requirements !== null) {
     const inviteRequirements = requirements[addRole]
-    if (!showLinkComposer && !newShareLink) {
+    if (!canUseShareLinks || (!showLinkComposer && !newShareLink)) {
       recipientVerification = (
         <RecipientVerification
           requirements={inviteRequirements}
@@ -693,29 +730,47 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
     }
   }
 
-  const showLandedRow = (kind: 'person' | 'shareLink', id: string) => {
+  const showLandedRow = (kind: 'person' | 'shareLink', ids: string[]) => {
     if (landedTimerRef.current !== null) window.clearTimeout(landedTimerRef.current)
-    setLandedPersonId(kind === 'person' ? id : null)
-    setLandedShareLinkId(kind === 'shareLink' ? id : null)
+    setLandedPersonIds(kind === 'person' ? new Set(ids) : NO_IDS)
+    setLandedShareLinkId(kind === 'shareLink' ? ids[0] : null)
     landedTimerRef.current = window.setTimeout(() => {
-      setLandedPersonId(null)
+      setLandedPersonIds(NO_IDS)
       setLandedShareLinkId(null)
       landedTimerRef.current = null
     }, 2200)
   }
 
-  const selectDirectoryUser = (user: UserDirectoryRecord) => {
-    setSelectedUser({ user, exclusionsKey: directoryExclusionsKey })
-    setAddUsername(user.name)
+  // Queue a person in the composer and clear the field for the next name. Focus stays in the
+  // input so a run of names can be entered without reaching for the mouse.
+  const stageRecipient = (recipient: StagedRecipient) => {
+    const label = recipientLabel(recipient)
+    setComposerNotice(staged.some(entry => entry.id === recipient.id)
+      ? `${label} is already listed.`
+      : `Added ${label}.`)
+    setStaged(current => withRecipient(current, recipient))
+    setAddUsername('')
+    peopleInputRef.current?.focus({ preventScroll: true })
+    setDirectoryDismissed(true)
+  }
+
+  const removeStaged = (recipient: StagedRecipient) => {
+    setComposerNotice(`Removed ${recipientLabel(recipient)}.`)
+    setStaged(current => current.filter(entry => entry.id !== recipient.id))
+    peopleInputRef.current?.focus({ preventScroll: true })
   }
 
   const handleDirectoryKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (isImeComposing(event)) return
     if (event.key === 'Enter') {
       event.preventDefault()
-      const user = directoryOpen ? directory.results[activeDirectoryIndex] : undefined
-      if (user) selectDirectoryUser(user)
-      else void handleAddCollaborator()
+      if (typedRecipient) stageRecipient(typedRecipient)
+      else if (directoryQuery === '' && staged.length > 0) void handleInvite()
+      return
+    }
+    if (event.key === 'Backspace' && addUsername === '' && staged.length > 0 && !adding) {
+      event.preventDefault()
+      removeStaged(staged[staged.length - 1])
       return
     }
     if (!directorySearching) return
@@ -738,32 +793,58 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
     }
   }
 
-  const handleAddCollaborator = async (userIdOverride?: string) => {
-    const userId = userIdOverride ?? selectedDirectoryUser?.id ??
-      (canInviteUser ? directoryQuery : '')
-    if (!userId || addingRef.current) return
+  // Invite everyone staged, plus whatever the composer still holds. Each addCollaborator() call is
+  // independently atomic and idempotent on the server, so they are all issued up front (pipelined
+  // over the one connection) and the membership list is refetched once. Failures are not toasted:
+  // the person's chip stays in the composer carrying the reason, so it can be fixed and resent.
+  // The composer stays live meanwhile: more people can be staged (they wait for the next batch)
+  // but none removed, since a call already issued cannot be cancelled.
+  const handleInvite = async (extra: StagedRecipient | null = null) => {
+    const recipients = extra ? withRecipient(staged, extra) : staged
+    if (recipients.length === 0 || addingRef.current) return
+    if (extra) stageRecipient(extra)
 
     addingRef.current = true
     setAdding(true)
     try {
-      const result = await overseer.addCollaborator(userId, addRole, undefined)
-      if (result === null) {
-        toasts.add({ title: 'No account found for that username or email.', variant: 'error' })
-      } else {
-        const landedId = result.profile.id
-        setAddUsername('')
-        setSelectedUser(null)
-        setInvitedName(result.profile.name)
+      const settled = await Promise.allSettled(
+        recipients.map(recipient => overseer.addCollaborator(recipient.id, addRole, undefined)))
+      const added: AiChatAuthorInfo[] = []
+      const failed: StagedRecipient[] = []
+      settled.forEach((outcome, index) => {
+        const recipient = recipients[index]
+        if (outcome.status === 'rejected') {
+          const { reason } = outcome
+          failed.push({
+            ...recipient,
+            error: reason instanceof Error ? reason.message : 'Failed to add collaborator.',
+          })
+        } else if (outcome.value === null) {
+          failed.push({ ...recipient, error: 'No account found for that username or email.' })
+        } else {
+          added.push(outcome.value.profile)
+        }
+      })
+      // Touch only the chips this batch sent: drop the added, keep the failed with their reason,
+      // and leave anything staged since the batch started where it is.
+      const batch = new Set(recipients.map(recipient => recipient.id))
+      const failure = new Map(failed.map(recipient => [recipient.id, recipient]))
+      setStaged(current => current.flatMap(recipient => {
+        if (!batch.has(recipient.id)) return [recipient]
+        const outcome = failure.get(recipient.id)
+        return outcome ? [outcome] : []
+      }))
+      if (added.length > 0) {
+        const names = added.map(profile => profile.name)
+        setInvitedNames(names)
         setInvitedLinkCopied(false)
         await loadData()
-        showLandedRow('person', landedId)
-        toasts.add({ title: `Added ${result.profile.name} as a collaborator.`, variant: 'success' })
+        showLandedRow('person', added.map(profile => profile.id))
+        toasts.add({
+          title: `Added ${NAME_LIST.format(names)} as ${names.length === 1 ? 'a collaborator' : 'collaborators'}.`,
+          variant: 'success',
+        })
       }
-    } catch (error: unknown) {
-      toasts.add({
-        title: error instanceof Error ? error.message : 'Failed to add collaborator.',
-        variant: 'error',
-      })
     } finally {
       addingRef.current = false
       setAdding(false)
@@ -784,7 +865,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
       setNewShareLinkId(linkId)
       copiedUrlsRef.current.set(linkId, url)
       await loadData()
-      showLandedRow('shareLink', linkId)
+      showLandedRow('shareLink', [linkId])
     } catch (err: any) {
       // Keep the composer and its values open so the user can retry without re-entering them.
       toasts.add({ title: err.message || 'Failed to create share link.', variant: 'error' })
@@ -814,7 +895,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
         return
       }
       setCopiedLinkId(linkId)
-      showLandedRow('shareLink', linkId)
+      showLandedRow('shareLink', [linkId])
       if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
       copiedTimerRef.current = window.setTimeout(() => {
         setCopiedLinkId(current => (current === linkId ? null : current))
@@ -888,7 +969,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
       await overseer.updateShareLink(linkId, note || undefined)
       cancelRenameShareLink()
       await loadData()
-      showLandedRow('shareLink', linkId)
+      showLandedRow('shareLink', [linkId])
       toasts.add({ title: 'Share link renamed.', variant: 'success' })
     } catch (err: any) {
       toasts.add({ title: err.message || 'Failed to rename share link.', variant: 'error' })
@@ -945,7 +1026,9 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
               <Trans>Share “{metadata.title}”</Trans>
             </Dialog.Title>
             <Dialog.Description className="mt-1 text-[13px] leading-[18px] tracking-[-0.25px] text-kumo-subtle">
-              <Trans>Invite people or share a link.</Trans>
+              {canUseShareLinks
+                ? <Trans>Invite people or share a link.</Trans>
+                : canInvite ? <Trans>Invite people.</Trans> : <Trans>Manage access.</Trans>}
             </Dialog.Description>
           </div>
           <Dialog.Close
@@ -961,21 +1044,32 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
           className={`chat-panel min-h-0 flex-1 overscroll-contain px-4 pb-6 sm:px-6 ${directoryOpen ? 'overflow-hidden' : 'overflow-y-auto'}`}
           onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 0)}
         >
-          {containsRestrictedData && (
+          {(containsRestrictedData || ownerInvitesOnly) && (
             <div className="mb-3 flex items-start gap-2.5 rounded-2xl bg-kumo-warning-tint px-3 py-2.5">
               <div className="grid h-6 w-6 shrink-0 place-items-center text-kumo-warning">
                 <ShieldWarning size={18} weight="duotone" />
               </div>
-              <p className="text-[12px] leading-[18px] tracking-[-0.1px] text-kumo-default">
-                <Trans>This workspace has read sensitive data. People you invite are asked to verify their
-                own access to the connections it uses at their access level — some may be unable to
-                open it. Anything the workspace has already saved is visible to everyone who can.</Trans>
-              </p>
+              {ownerInvitesOnly ? (
+                <p className="text-[12px] leading-[18px] tracking-[-0.1px] text-kumo-default">
+                  <Trans>This workspace has read data from a connection that doesn’t allow share links, so
+                  only the owner can add people. People the owner invites are asked to verify their
+                  own access to the connections it uses at their access level — some may be unable to
+                  open it. Anything the workspace has already saved is visible to everyone who can.</Trans>
+                </p>
+              ) : (
+                <p className="text-[12px] leading-[18px] tracking-[-0.1px] text-kumo-default">
+                  <Trans>This workspace has read sensitive data. People you invite are asked to verify their
+                  own access to the connections it uses at their access level — some may be unable to
+                  open it. Anything the workspace has already saved is visible to everyone who can.</Trans>
+                </p>
+              )}
             </div>
           )}
+          {canInvite && (
           <div className={`sticky top-0 z-10 bg-kumo-base pb-3 transition-shadow duration-200 ${scrolled ? 'themed-bottom-shadow border-b border-kumo-line/60' : ''}`}>
           <div
             ref={directoryAnchorRef}
+            data-testid="people-composer"
             className="themed-compact-shadow grid min-h-12 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-2xl border border-kumo-line/80 bg-kumo-base p-1.5 pl-3 transition-[border-color,box-shadow] focus-within:border-kumo-fill sm:flex"
             data-keeper-ignore="true"
             data-1p-ignore="true"
@@ -985,8 +1079,34 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-kumo-tint text-kumo-subtle">
               <UserPlus size={15} weight="duotone" />
             </div>
-            <div className="relative min-w-0 flex-1">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              {staged.map(recipient => (
+                <span
+                  key={recipient.id}
+                  title={recipient.error ?? (recipient.name !== recipient.id ? recipient.id : undefined)}
+                  className={`inline-flex max-w-full items-center gap-1 rounded-full border py-[3px] pl-2.5 pr-1 text-[11px] leading-4 font-medium tracking-[-0.1px] ${
+                    recipient.error
+                      ? 'border-kumo-danger bg-kumo-danger-tint/40 text-kumo-danger'
+                      : 'border-kumo-line bg-kumo-tint/70 text-kumo-default'
+                  }`}
+                >
+                  <span className="truncate">{recipient.name}</span>
+                  {recipient.name !== recipient.id && (
+                    <span className="truncate font-mono text-[10px] text-kumo-subtle">{recipient.id}</span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${recipientLabel(recipient)}`}
+                    onClick={() => removeStaged(recipient)}
+                    disabled={adding}
+                    className="grid h-4 w-4 shrink-0 cursor-pointer place-items-center rounded-full opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100 disabled:cursor-not-allowed"
+                  >
+                    <X size={10} weight="bold" />
+                  </button>
+                </span>
+              ))}
               <input
+                ref={peopleInputRef}
                 type="search"
                 role={userSearchEnabled ? 'combobox' : undefined}
                 placeholder={userSearchEnabled ? t`Search by name or email` : t`Username or email`}
@@ -998,7 +1118,6 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                 value={addUsername}
                 onChange={(event) => {
                   setAddUsername(event.target.value)
-                  setSelectedUser(null)
                   setDirectoryDismissed(false)
                 }}
                 onFocus={() => setDirectoryDismissed(false)}
@@ -1014,7 +1133,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                 data-lpignore="true"
                 data-bwignore="true"
                 data-form-type="other"
-                className="h-9 w-full min-w-0 appearance-none border-0 bg-transparent p-0 text-[14px] leading-5 tracking-[-0.25px] text-kumo-default outline-none placeholder:text-kumo-inactive disabled:cursor-not-allowed [&::-webkit-search-cancel-button]:hidden"
+                className="h-9 min-w-0 grow basis-32 appearance-none border-0 bg-transparent p-0 text-[14px] leading-5 tracking-[-0.25px] text-kumo-default outline-none placeholder:text-kumo-inactive disabled:cursor-not-allowed [&::-webkit-search-cancel-button]:hidden"
               />
             </div>
             <RoleMenu
@@ -1030,15 +1149,10 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                 // Keep the visible result highlighted until the click handler chooses it.
                 if (directoryOpen) event.preventDefault()
               }}
-              onClick={() => {
-                const highlightedUser = directoryOpen
-                  ? directory.results[activeDirectoryIndex]
-                  : undefined
-                void handleAddCollaborator(highlightedUser?.id)
-              }}
-              disabled={!canInviteUser || adding}
+              onClick={() => void handleInvite(typedRecipient)}
+              disabled={!canSubmitInvite || adding}
             >
-              {adding ? t`Inviting…` : t`Invite`}
+              {adding ? t`Inviting…` : inviteCount > 1 ? t`Invite ${inviteCount} people` : t`Invite`}
             </WorkshopButton>
             {directoryOpen && directoryPortalContainer && createPortal(
               <div
@@ -1071,7 +1185,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                         role="option"
                         aria-selected={index === activeDirectoryIndex}
                         onMouseEnter={() => setActiveDirectoryIndex(index)}
-                        onClick={() => selectDirectoryUser(user)}
+                        onClick={() => stageRecipient({ id: user.id, name: user.name })}
                         className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left ${
                           index === activeDirectoryIndex ? 'bg-kumo-tint' : 'hover:bg-kumo-tint/70'
                         }`}
@@ -1096,7 +1210,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                       role="option"
                       aria-selected={activeDirectoryIndex === directory.results.length}
                       onMouseEnter={() => setActiveDirectoryIndex(directory.results.length)}
-                      onClick={() => void handleAddCollaborator(directoryQuery)}
+                      onClick={() => stageRecipient({ id: directoryQuery, name: directoryQuery })}
                       className={`mt-1 flex w-full items-center gap-3 rounded-xl border-t border-kumo-line/60 px-3 py-2 text-left ${
                         activeDirectoryIndex === directory.results.length
                           ? 'bg-kumo-tint'
@@ -1106,7 +1220,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                       <UserPlus size={15} className="shrink-0 text-kumo-subtle" />
                       <span className="min-w-0">
                         <span className="block truncate text-[13px] font-medium text-kumo-default">
-                          <Trans>Invite &ldquo;{directoryQuery}&rdquo; exactly</Trans>
+                          <Trans>Add &ldquo;{directoryQuery}&rdquo; exactly</Trans>
                         </span>
                         <span className="block text-[11px] text-kumo-subtle">
                           <Trans>Use the text as a username or email</Trans>
@@ -1119,8 +1233,18 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
               directoryPortalContainer,
             )}
           </div>
+          <p role="status" aria-live="polite" className="sr-only">{composerNotice}</p>
+          {staged.some(recipient => recipient.error) && (
+            <p role="alert" className="mt-1.5 px-1 text-[12px] leading-4 text-kumo-danger">
+              {staged.filter(recipient => recipient.error).map(recipient => (
+                <span key={recipient.id} className="block break-words">
+                  {recipientLabel(recipient)}: {recipient.error}
+                </span>
+              ))}
+            </p>
+          )}
 
-          {invitedName && (
+          {invitedNames.length > 0 && (
             <div className="themed-compact-shadow mt-2 flex flex-wrap items-center gap-3 rounded-2xl border border-kumo-line/80 bg-kumo-base px-3 py-2.5 share-fade-in">
               <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-kumo-tint text-kumo-subtle">
                 {invitedLinkCopied ? <Check size={15} weight="bold" /> : <UserPlus size={15} weight="duotone" />}
@@ -1128,7 +1252,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
               <div className="min-w-[160px] flex-1">
                 <div className="flex items-baseline gap-1.5">
                   <p className="text-[13px] leading-[18px] font-medium text-kumo-default">
-                    <Trans>Added {invitedName}</Trans>
+                    <Trans>Added {NAME_LIST.format(invitedNames)}</Trans>
                   </p>
                   <span className="text-[11px] leading-4 text-kumo-inactive">
                     {invitedLinkCopied ? t`Link copied to your clipboard` : t`Send them this link to open it`}
@@ -1142,13 +1266,14 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
               </WorkshopButton>
               <WorkshopIconButton
                 aria-label={t`Dismiss added collaborator`}
-                onClick={() => { setInvitedName(null); setInvitedLinkCopied(false) }}
+                onClick={() => { setInvitedNames([]); setInvitedLinkCopied(false) }}
               >
                 <X size={14} />
               </WorkshopIconButton>
             </div>
           )}
 
+          {canUseShareLinks && (
           <div className="mt-2">
             {(showLinkComposer || newShareLink) ? (
               newShareLink ? (
@@ -1218,7 +1343,9 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
               </button>
             )}
           </div>
+          )}
           </div>
+          )}
 
           {recipientVerification}
 
@@ -1237,7 +1364,7 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                   ? removeTarget.dependents.filter(dep => dep.profile.id !== profile.id)
                   : []
                 return (
-                  <div key={key} className={`group ${index > 0 ? 'border-t border-kumo-line/70' : ''} ${landedPersonId === profile.id ? 'share-row-land' : 'transition-colors duration-150 hover:bg-kumo-elevated/50'} px-3 py-2.5`}>
+                  <div key={key} className={`group ${index > 0 ? 'border-t border-kumo-line/70' : ''} ${landedPersonIds.has(profile.id) ? 'share-row-land' : 'transition-colors duration-150 hover:bg-kumo-elevated/50'} px-3 py-2.5`}>
                     <div className="flex items-center gap-3">
                       <PersonAvatar api={authenticatedApi} userId={profile.id} name={profile.name} size={32} />
                       <div className="min-w-0 flex-1">
@@ -1360,14 +1487,16 @@ export default function ShareModal({ open, onClose, overseer, metadata, currentU
                         ) : (
                           <>
                             <RoleBadge role={sk.role} />
-                            <WorkshopIconButton
-                              className="!h-7 !w-7"
-                              onClick={() => handleCopyShareLink(sk.linkId)}
-                              aria-label={t`Copy ${sk.note || t`share link`}`}
-                              disabled={confirmationBusy || copyingLinkId === sk.linkId}
-                            >
-                              {copiedLinkId === sk.linkId ? <Check size={13} weight="bold" /> : <Copy size={13} />}
-                            </WorkshopIconButton>
+                            {canUseShareLinks && (
+                              <WorkshopIconButton
+                                className="!h-7 !w-7"
+                                onClick={() => handleCopyShareLink(sk.linkId)}
+                                aria-label={t`Copy ${sk.note || t`share link`}`}
+                                disabled={confirmationBusy || copyingLinkId === sk.linkId}
+                              >
+                                {copiedLinkId === sk.linkId ? <Check size={13} weight="bold" /> : <Copy size={13} />}
+                              </WorkshopIconButton>
+                            )}
                             <WorkshopIconButton
                               className="!h-7 !w-7 opacity-35 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                               onClick={() => startRenameShareLink(sk)}

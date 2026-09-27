@@ -20,7 +20,7 @@
   "devDependencies": {
     "@gadgets/scripts": "workspace:*",
     "typescript": "catalog:",
-    "typescript6": "npm:typescript@6.0.3",
+    "typescript6": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:"
   }
