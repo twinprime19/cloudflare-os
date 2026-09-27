@@ -8,13 +8,19 @@
 // -- including a chat deleted while the documents were converting -- leaving no record behind.
 //
 // Runs the real OverseerImpl inside workerd over real Durable Object storage, the harness
-// chat-attachment-overseer-caps.test.ts uses.
+// chat-attachment-overseer-caps.test.ts uses. The last suite borrows that harness for the storage
+// a workbook attachment needs: its row chunks, written with the attachment record and deleted
+// wherever it is.
 
 import { describe, expect, it, vi } from "vitest";
 import { env } from "cloudflare:workers";
 import { runInDurableObject } from "cloudflare:test";
+import * as XLSX from "xlsx";
 import type { AiChatMessage, ChatAttachmentRef } from "@gadgets/workshop-shared/api";
+import { validateChatAttachmentUpload } from "../src/chat-attachment-validation.js";
+import type { ChatAttachmentUpload } from "@gadgets/workshop-shared/api";
 import type { OverseerDurableObject } from "../src/overseer.js";
+import type { WorkbookRowChunk } from "../src/chat-attachment-workbook.js";
 
 declare module "cloudflare:workers" {
   interface ProvidedEnv {
@@ -30,6 +36,12 @@ const SOURCE_LABEL = "Outlook Mailbox";
 const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PPTX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const PDF_MIME_TYPE = "application/pdf";
+const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const WORKBOOK_TOO_LARGE_MESSAGE =
+    "This workbook is too large to read. Split it or remove unused sheets.";
+
+// Staged attachments are swept once they are this old.
+const STAGED_ATTACHMENT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 let doCounter = 0;
 
@@ -70,6 +82,68 @@ function ooxmlBytes(totalBytes = 64): Uint8Array {
   return bytes;
 }
 
+// A real workbook: one small sheet, plus a sheet wide enough that its rows need more than one
+// stored chunk, so the per-file grouping is exercised against several records.
+function workbookBytes(): Uint8Array {
+  let workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet([["Region", "Units"], ["North", 5], ["South", 7]]),
+      "Sales");
+  let ledger = Array.from({ length: 1_200 }, (_, index) => [index, "x".repeat(900)]);
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(ledger), "Ledger");
+  return new Uint8Array(XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayBuffer);
+}
+
+function workbookUpload(name = "quarterly.xlsx"): ChatAttachmentUpload {
+  return { mimeType: XLSX_MIME_TYPE, content: workbookBytes(), name };
+}
+
+/** One attachment's stored row chunks, in the order the index groups them. */
+function chunksOf(impl: any, fileId: string) {
+  return [...impl.storage.chatWorkbookRows.byFileId.get(fileId)];
+}
+
+/** Every row chunk in the workspace, whoever it belongs to. */
+function allChunks(impl: any) {
+  return [...impl.storage.chatWorkbookRows.list()];
+}
+
+/** Validates an upload the way uploadChatAttachment() does, workbook parser worker included. */
+function validateUpload(impl: any, upload: ChatAttachmentUpload) {
+  return validateChatAttachmentUpload(upload, "anthropic", {
+    parseWorkbook: (bytes, mimeType, name) => impl.parseWorkbookUpload(bytes, mimeType, name),
+  });
+}
+
+/** Stages an upload the way uploadChatAttachment() does: validate, then stage under a new id. */
+async function stageUpload(impl: any, upload: ChatAttachmentUpload): Promise<string> {
+  let validated = await validateUpload(impl, upload);
+  let id = crypto.randomUUID();
+  await impl.stageChatAttachment(validated, id);
+  return id;
+}
+
+/**
+ * A validated workbook upload whose rows are handed out by `rows` instead of the parser: the
+ * stream itself is what the staging tests below exercise. `returned` records whether the reader
+ * stopped the stream, which is how the parser worker gets released early.
+ */
+async function withRows(
+  impl: any,
+  rows: (real: AsyncIterable<WorkbookRowChunk>) => AsyncGenerator<WorkbookRowChunk>,
+) {
+  let validated = await validateUpload(impl, workbookUpload());
+  let stream = rows(validated.workbook!.rows);
+  let state = { returned: false };
+  let original = stream.return.bind(stream);
+  stream.return = (value) => {
+    state.returned = true;
+    return original(value);
+  };
+  return { validated: { ...validated, workbook: { ...validated.workbook!, rows: stream } }, state };
+}
+
 /** Points the workspace's document conversion at a stub instead of Workers AI. */
 function stubConversion(impl: any, markdown = "# Converted\n\nBody text.") {
   let toMarkdown = vi.fn(async (doc: { name: string; blob: Blob }) => ({
@@ -80,7 +154,8 @@ function stubConversion(impl: any, markdown = "# Converted\n\nBody text.") {
     tokens: 0,
     data: markdown,
   }));
-  impl.env = { WORKERS_AI: { toMarkdown } };
+  // The rest of the env stays: spreadsheets are parsed through its LOADER, not converted.
+  impl.env = { ...impl.env, WORKERS_AI: { toMarkdown } };
   return toMarkdown;
 }
 
@@ -372,6 +447,238 @@ describe("importChatAttachments rejections", () => {
         "anthropic")).rejects.toThrow(`No such chat: ${CHAT_ID}`);
 
     expect(attachmentRecords(impl)).toEqual([]);
+    expect(chatMessages(impl)).toEqual([]);
+  }));
+});
+
+// A workbook attachment is stored in two halves: the summary the model reads every turn, as the
+// attachment's own bytes, and the rows behind it, as chunk records a binding pages through. They
+// are written together and have to go together -- a summary without its rows describes a
+// spreadsheet nothing can open, and rows without their record are unreachable bytes no sweep
+// would ever find.
+describe("workbook attachment storage", () => {
+  it("stores the summary as the attachment and the rows as chunks under its file id",
+      () => withChat(async impl => {
+    let toMarkdown = stubConversion(impl);
+
+    await impl.importChatAttachments(
+        CHAT_ID, [workbookUpload()], SOURCE_LABEL, "anthropic");
+
+    // Reading a workbook costs no Workers AI call: it is parsed in a worker of its own.
+    expect(toMarkdown).not.toHaveBeenCalled();
+
+    let ref = importedMessage(impl)!.attachments![0];
+    let stored = impl.storage.chatAttachmentContent.get(ref.id);
+    expect(ref.mimeType).toBe("text/markdown");
+    expect(ref.name).toBe("quarterly.xlsx");
+    expect(new TextDecoder().decode(stored.data)).toContain(`## Sheet "Sales" (3 rows × 2 cols)`);
+
+    // The index the binding pages against survives the commit, on the record rather than the ref.
+    expect(stored.state).toEqual({ type: "committed", chatId: CHAT_ID });
+    expect(stored.workbook.sheets.map((sheet: any) => sheet.name)).toEqual(["Sales", "Ledger"]);
+    expect(stored.workbook.sheets[0].chunkRowStarts).toEqual([0]);
+    expect(stored.workbook.sheets[1].chunkRowStarts.length).toBeGreaterThan(1);
+
+    // One chunk record per chunk the index names, keyed under the attachment and ordered by
+    // sheet then chunk.
+    let chunks = chunksOf(impl, ref.id);
+    let expected = stored.workbook.sheets.flatMap((sheet: any, sheetIndex: number) =>
+        sheet.chunkRowStarts.map((rowStart: number, chunkIndex: number) =>
+            ({ sheetIndex, chunkIndex, rowStart })));
+    expect(chunks.map(chunk => ({
+      sheetIndex: chunk.sheetIndex, chunkIndex: chunk.chunkIndex, rowStart: chunk.rowStart,
+    }))).toEqual(expected);
+    expect(chunks.every(chunk => chunk.fileId === ref.id && chunk.key.startsWith(`${ref.id}.`)))
+        .toBe(true);
+    expect(JSON.parse(new TextDecoder().decode(chunks[0].rows)))
+        .toEqual([["Region", "Units"], ["North", 5], ["South", 7]]);
+  }));
+
+  it("carries the original spreadsheet type on the committed ref", () => withChat(async impl => {
+    // The staged metadata is dropped at commit, so this is the only record of what the stored
+    // Markdown was made from -- and what tells a later reader the attachment has rows to bind.
+    await impl.importChatAttachments(
+        CHAT_ID, [workbookUpload()], SOURCE_LABEL, "anthropic");
+
+    expect(importedMessage(impl)!.attachments![0].convertedFrom).toBe(XLSX_MIME_TYPE);
+  }));
+
+  it("reads a workbook in a workspace under sharing lockdown", () => withChat(async impl => {
+    // Lockdown forbids shipping a document to Workers AI for conversion. Parsing a workbook sends
+    // nothing anywhere, so it stays available -- and it is those workspaces whose spreadsheets
+    // most need to stay in the isolate.
+    stubConversion(impl);
+    impl.storage.containsRestrictedData.put(true);
+
+    await impl.importChatAttachments(
+        CHAT_ID, [workbookUpload()], SOURCE_LABEL, "anthropic");
+
+    let ref = importedMessage(impl)!.attachments![0];
+    expect(impl.storage.chatAttachmentContent.get(ref.id).workbook).toBeDefined();
+    expect(chunksOf(impl, ref.id).length).toBeGreaterThan(1);
+  }));
+
+  it("stores every chunk before the staged upload can be handed out", () => withChat(async impl => {
+    // The id reaches the client only when staging resolves, so resolving early would let a
+    // workbook be attached with rows still on their way.
+    let release!: () => void;
+    let gate = new Promise<void>(resolve => { release = resolve; });
+    let { validated } = await withRows(impl, async function* (real) {
+      let chunks = await Array.fromAsync(real);
+      yield* chunks.slice(0, -1);
+      await gate;
+      yield chunks[chunks.length - 1];
+    });
+    let expected = validated.workbook.meta.sheets
+        .reduce((total, sheet) => total + sheet.chunkRowStarts.length, 0);
+    let id = crypto.randomUUID();
+
+    let settled = false;
+    let staging = impl.stageChatAttachment(validated, id).then(() => { settled = true; });
+    await scheduler.wait(10);
+    expect(settled).toBe(false);
+    expect(impl.storage.chatAttachmentContent.get(id).state.type).toBe("staged");
+    expect(chunksOf(impl, id)).toHaveLength(expected - 1);
+
+    release();
+    await staging;
+    expect(chunksOf(impl, id)).toHaveLength(expected);
+  }));
+
+  it("stores nothing when the row stream fails partway", () => withChat(async impl => {
+    let { validated } = await withRows(impl, async function* (real) {
+      let sent = 0;
+      for await (let chunk of real) {
+        if (sent++ === 2) throw new Error(WORKBOOK_TOO_LARGE_MESSAGE);
+        yield chunk;
+      }
+    });
+    let id = crypto.randomUUID();
+
+    await expect(impl.stageChatAttachment(validated, id))
+        .rejects.toThrow(WORKBOOK_TOO_LARGE_MESSAGE);
+
+    expect(impl.storage.chatAttachmentContent.get(id)).toBeUndefined();
+    expect(allChunks(impl)).toEqual([]);
+  }));
+
+  it("stores nothing, and stops the stream, when storing a chunk fails",
+      () => withChat(async impl => {
+    let { validated, state } = await withRows(impl, async function* (real) {
+      yield* real;
+    });
+    let put = impl.storage.chatWorkbookRows.put.bind(impl.storage.chatWorkbookRows);
+    let written = 0;
+    impl.storage.chatWorkbookRows.put = (record: unknown) => {
+      if (++written === 2) throw new Error("storage refused the write");
+      return put(record);
+    };
+    let id = crypto.randomUUID();
+
+    await expect(impl.stageChatAttachment(validated, id))
+        .rejects.toThrow("storage refused the write");
+
+    expect(state.returned).toBe(true);
+    expect(impl.storage.chatAttachmentContent.get(id)).toBeUndefined();
+    expect(allChunks(impl)).toEqual([]);
+  }));
+
+  it("sweeps the chunks of a workbook whose stream never finished", () => withChat(async impl => {
+    // The object can be evicted mid-stream, leaving a staged record and some of its chunks with
+    // no one to clean up after them; the staged-age sweep reaps them together.
+    let { validated } = await withRows(impl, async function* (real) {
+      let chunks = await Array.fromAsync(real);
+      yield chunks[0];
+      await new Promise(() => {});
+    });
+    let id = crypto.randomUUID();
+    void impl.stageChatAttachment(validated, id);
+    await scheduler.wait(10);
+    expect(chunksOf(impl, id)).toHaveLength(1);
+
+    let record = impl.storage.chatAttachmentContent.get(id);
+    impl.storage.chatAttachmentContent.put({
+      ...record,
+      state: { ...record.state, uploadedAt: Date.now() - STAGED_ATTACHMENT_MAX_AGE_MS - 1 },
+    });
+    impl.sweepStagedChatAttachments();
+
+    expect(impl.storage.chatAttachmentContent.get(id)).toBeUndefined();
+    expect(allChunks(impl)).toEqual([]);
+  }));
+
+  it("stores nothing when the parser refuses the workbook", () => withChat(async impl => {
+    // One row whose JSON cannot fit a stored chunk: the parser worker refuses it, and the refusal
+    // reaches the uploader in its own words.
+    let workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.aoa_to_sheet([Array.from({ length: 40 }, () => "y".repeat(30_000))]),
+        "Wide");
+    let content = new Uint8Array(
+        XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayBuffer);
+
+    await expect(impl.importChatAttachments(
+        CHAT_ID, [{ mimeType: XLSX_MIME_TYPE, content, name: "wide.xlsx" }], SOURCE_LABEL,
+        "anthropic")).rejects.toThrow(WORKBOOK_TOO_LARGE_MESSAGE);
+
+    expect(attachmentRecords(impl)).toEqual([]);
+    expect(allChunks(impl)).toEqual([]);
+    expect(chatMessages(impl)).toEqual([]);
+  }));
+
+  it("drops the chunks when a staged upload is discarded", () => withChat(async impl => {
+    let id = await stageUpload(impl, workbookUpload());
+    expect(chunksOf(impl, id).length).toBeGreaterThan(1);
+
+    impl.deleteStagedChatAttachment(id);
+
+    expect(impl.storage.chatAttachmentContent.get(id)).toBeUndefined();
+    expect(allChunks(impl)).toEqual([]);
+  }));
+
+  it("drops the chunks when a staged upload ages out", () => withChat(async impl => {
+    let id = await stageUpload(impl, workbookUpload());
+    // Age the staging record past the sweep's cutoff, as sitting unsent for a day would.
+    let record = impl.storage.chatAttachmentContent.get(id);
+    impl.storage.chatAttachmentContent.put({
+      ...record,
+      state: { ...record.state, uploadedAt: Date.now() - STAGED_ATTACHMENT_MAX_AGE_MS - 1 },
+    });
+
+    impl.sweepStagedChatAttachments();
+
+    expect(impl.storage.chatAttachmentContent.get(id)).toBeUndefined();
+    expect(allChunks(impl)).toEqual([]);
+  }));
+
+  it("drops the chunks of a workbook staged by an import that then fails",
+      () => withChat(async impl => {
+    // The workbook stages, the file behind it is refused, and the batch is rolled back: the rows
+    // written for the first file have to go with its record.
+    await expect(impl.importChatAttachments(
+        CHAT_ID,
+        [workbookUpload(), { mimeType: "application/zip", content: new Uint8Array(16), name: "bad.zip" }],
+        SOURCE_LABEL,
+        "anthropic")).rejects.toThrow("Unsupported file type");
+
+    expect(attachmentRecords(impl)).toEqual([]);
+    expect(allChunks(impl)).toEqual([]);
+    expect(chatMessages(impl)).toEqual([]);
+  }));
+
+  it("drops the chunks when the chat holding the attachment is deleted",
+      () => withChat(async impl => {
+    await impl.importChatAttachments(
+        CHAT_ID, [workbookUpload()], SOURCE_LABEL, "anthropic");
+    let ref = importedMessage(impl)!.attachments![0];
+    expect(chunksOf(impl, ref.id).length).toBeGreaterThan(1);
+
+    // The step deleteChat() runs over the chat's messages and their attachments.
+    impl.deleteChatMessagesAndAttachments(CHAT_ID);
+
+    expect(impl.storage.chatAttachmentContent.get(ref.id)).toBeUndefined();
+    expect(allChunks(impl)).toEqual([]);
     expect(chatMessages(impl)).toEqual([]);
   }));
 });

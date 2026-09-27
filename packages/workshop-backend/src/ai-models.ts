@@ -164,13 +164,16 @@ function modelTokenWindow(config: AiModelConfig, catalog: Model<Api> | undefined
 }
 
 // Compat flags for a Workers AI model reached over its OpenAI-compatible endpoint (direct REST
-// or the gateway's workers-ai route). Matches pi's own generated Workers AI catalog entries.
+// or the gateway's workers-ai route). Matches pi's own generated Workers AI catalog entries, plus
+// supportsReasoningEffort for reasoning models: pi only forwards a reasoningEffort as
+// `reasoning_effort` when the compat flag is set, and Workers AI honors it (see makeHandle).
 function workersAiCompat(catalog: Model<Api> | undefined): OpenAICompletionsCompat {
   return {
     supportsStore: false,
     supportsDeveloperRole: false,
     supportsLongCacheRetention: false,
     ...(catalog?.compat as OpenAICompletionsCompat | undefined),
+    ...(catalog?.reasoning === true ? { supportsReasoningEffort: true } : {}),
     sendSessionAffinityHeaders: true,
   };
 }
@@ -350,6 +353,9 @@ function observeFailedRequests(transport: FetchFunction, handle: ModelHandle): F
   };
 }
 
+// Reasoning effort sent to Workers AI reasoning models on every request (see makeHandle).
+const WORKERS_AI_REASONING_EFFORT = "low";
+
 function makeHandle(args: HandleArgs): ModelHandle {
   const streamFn = API_STREAMS[args.model.api];
   if (!streamFn) {
@@ -366,12 +372,20 @@ function makeHandle(args: HandleArgs): ModelHandle {
   //   when no effort is passed; effort selection also makes pi request encrypted reasoning
   //   content, which -- with pi's unconditional `store: false` -- preserves the old stateless
   //   ZDR behavior with reasoning carried between tool steps.
+  // - Workers AI reasoning models (e.g. GLM): low reasoning effort, on every request including
+  //   `thinking: false` ones. Workers AI ignores `thinking: {type:"disabled"}` and applies no
+  //   reasoning cap of its own, so without an effort the model can reason up to its whole output
+  //   budget and reply with nothing; low is the floor. pi only forwards it as `reasoning_effort`
+  //   when compat.supportsReasoningEffort is set (workersAiCompat).
   // - Everything else: provider defaults.
   const anthropicCompat = args.model.compat as AnthropicMessagesCompat | undefined;
+  const workersAiExtras: Record<string, unknown> =
+      args.model.provider === "cloudflare-workers-ai" && args.model.reasoning
+          ? { reasoningEffort: WORKERS_AI_REASONING_EFFORT } : {};
   const apiExtras: Record<string, unknown> =
       args.model.api === "anthropic-messages"
           ? (anthropicCompat?.forceAdaptiveThinking === true ? { thinkingEnabled: true } : {}) :
-      args.model.api === "openai-responses" ? { reasoningEffort: "medium" } : {};
+      args.model.api === "openai-responses" ? { reasoningEffort: "medium" } : workersAiExtras;
 
   const handle: ModelHandle = {
     model: args.model,
@@ -398,13 +412,14 @@ function makeHandle(args: HandleArgs): ModelHandle {
         // replaces them with a quick request. Managed-effort Anthropic models must use adaptive
         // thinking, so select their lowest effort; other Anthropic models disable it (or omit
         // the unsupported off setting). For OpenAI Responses, passing no reasoningEffort disables
-        // reasoning.
+        // reasoning. Workers AI reasoning models have no off switch, so they keep their low effort
+        // either way.
         ...(thinking
             ? apiExtras
             : args.model.api === "anthropic-messages"
                 ? (anthropicCompat?.supportsMidConvoEffort === true
                     ? { effort: "low" } : { thinkingEnabled: false })
-                : {}),
+                : workersAiExtras),
         ...options,
         ...(transportFetch !== undefined ? { fetch: transportFetch } : {}),
         ...(args.apiKey !== undefined ? { apiKey: args.apiKey } : {}),

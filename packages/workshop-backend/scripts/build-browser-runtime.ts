@@ -7,6 +7,7 @@ const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtimeOutputFile = resolve(packageDir, "src/generated/browser-export-runtime.txt");
 const sanitizerOutputFile = resolve(packageDir, "src/generated/html-sanitizer-runtime.txt");
 const pageOutputFile = resolve(packageDir, "src/generated/browser-export-page.js");
+const workbookParserOutputFile = resolve(packageDir, "src/generated/workbook-parser-runtime.txt");
 
 const runtimeResult = await build({
   entryPoints: [resolve(packageDir, "browser/browser-export-runtime.ts")],
@@ -34,10 +35,25 @@ const sanitizerResult = await build({
   minify: true,
   write: false,
 });
+// The workbook parser, loaded as a dynamic worker's main module (see
+// src/workbook-parser-isolate.ts). It is the only bundle SheetJS goes into; `cloudflare:workers` is
+// the runtime's own module, provided to the loaded worker rather than bundled.
+const workbookParserResult = await build({
+  entryPoints: [resolve(packageDir, "worker-runtimes/workbook-parser-runtime.ts")],
+  bundle: true,
+  format: "esm",
+  platform: "browser",
+  conditions: ["workerd", "worker"],
+  external: ["cloudflare:workers"],
+  target: "es2025",
+  minify: true,
+  write: false,
+});
 
 writeIfChanged(runtimeOutputFile, runtimeResult.outputFiles[0].contents);
 writeIfChanged(sanitizerOutputFile, sanitizerResult.outputFiles[0].contents);
 writeIfChanged(pageOutputFile, pageResult.outputFiles[0].contents);
+writeIfChanged(workbookParserOutputFile, workbookParserResult.outputFiles[0].contents);
 
 function writeIfChanged(outputFile: string, bytes: Uint8Array) {
   const contents = new TextDecoder().decode(bytes);

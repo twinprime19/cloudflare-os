@@ -82,6 +82,28 @@ describe("getModel AI Gateway routing", () => {
     capturedRequests.length = 0;
   });
 
+  describe("Workers AI reasoning effort in the request body", () => {
+    const GLM_CONFIG: AiModelConfig = { ...WORKERS_AI_CONFIG, model: "@cf/zai-org/glm-5.3-flash" };
+
+    // Workers AI ignores a thinking-disabled request and caps nothing itself, so a reasoning
+    // model always gets low effort -- also on thinking-off calls such as chat titles.
+    it.each([true, false])("sends low reasoning effort to a Workers AI reasoning model " +
+        "(thinking: %s)", async (thinking) => {
+      const handle = getModel(env(), GLM_CONFIG, INITIATOR);
+      expect(handle.model.reasoning).toBe(true);
+      const request = await captureRequest(handle, { thinking });
+      expect(JSON.parse(request.body)).toMatchObject({ reasoning_effort: "low" });
+    }, 15000);
+
+    it.each([true, false])("sends no reasoning effort to a non-reasoning Workers AI model " +
+        "(thinking: %s)", async (thinking) => {
+      const handle = getModel(env(), WORKERS_AI_CONFIG, INITIATOR);
+      expect(handle.model.reasoning).toBe(false);
+      const request = await captureRequest(handle, { thinking });
+      expect(JSON.parse(request.body)).not.toHaveProperty("reasoning_effort");
+    }, 15000);
+  });
+
   it("routes non-Workers providers through the platform gateway", async () => {
     const handle = getModel(env(), ANTHROPIC_CONFIG, INITIATOR, {
       metadata: { source: "chat", gadgetId: "gadget-123", chatId: 7 },

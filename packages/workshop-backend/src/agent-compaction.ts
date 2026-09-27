@@ -4,6 +4,7 @@ import {composeCodeChange, type CodeChange} from "@gadgets/workshop-shared/code-
 import type {Api, Message, Model} from "@earendil-works/pi-ai";
 import type {ChatBindingEntry, CompactionCheckpoint} from "./agent";
 import {zeroUsage} from "./ai-invoke";
+import {deriveWorkbookBindings} from "./workbook-names";
 
 // Context compaction keeps long chats within the model's limit. It summarizes the messages before a
 // boundary and stores their replay state in a checkpoint. Canonical history keeps every message, so
@@ -374,6 +375,12 @@ export function protectRetainedReverts(
 /**
  * Fold state before `compactedTo` into a new checkpoint. `initialBindings` is the chat's frozen seed
  * layer, which `previous` already contains once a chat has compacted before.
+ *
+ * The checkpoint's binding map is the one replay would have built over the compacted span: pasted
+ * resources, created gadgets and worktrees, agent callbacks, accepted connections, and the
+ * spreadsheet attachments of user and gadget messages. Workbook names are derived rather than
+ * stamped, so the fold repeats replay's derivation against the same taken set -- including the
+ * names pending connection requests hold -- or a workbook could land under a different suffix.
  */
 export function buildCompactionState(
     messages: AiChatMessage[], compactedTo: number,
@@ -383,12 +390,24 @@ export function buildCompactionState(
   let compacted = messages.filter(message => message.sequence < compactedTo);
   let chatBindings = new Map(previous?.chatBindings ?? initialBindings);
   let nextChangeId = previous?.nextChangeId ?? 0;
+  // Replay's claimed names: a pending request reserves its name without binding it. A request's
+  // record changes state in place, so an accepted one is bound below and a denied one holds
+  // nothing. Replay starts past a checkpoint with none claimed, so neither does this fold.
+  let pendingNames = new Set<string>();
 
   for (let message of compacted) {
     if (message.type === "message") {
       for (let capsule of message.capsules ?? []) {
         if (capsule.bindingName !== undefined && !chatBindings.has(capsule.bindingName)) {
           chatBindings.set(capsule.bindingName, {type: "workpiece", id: capsule.gatekeeperId});
+        }
+      }
+      // Replay binds attachments only where it renders them, on user and gadget messages, and
+      // before the message's tool calls.
+      if (message.author.type === "user" || message.author.type === "gadget") {
+        let taken = new Set([...chatBindings.keys(), ...pendingNames]);
+        for (let {name, attachmentId} of deriveWorkbookBindings(message.attachments, taken)) {
+          chatBindings.set(name, {type: "attachment", id: attachmentId});
         }
       }
       for (let call of message.toolCalls ?? []) {
@@ -406,6 +425,8 @@ export function buildCompactionState(
       if (message.bindingName !== undefined) {
         chatBindings.set(message.bindingName, {type: "value", messageSequence: message.sequence});
       }
+    } else if (message.type === "connectionRequest" && message.state === "pending") {
+      if (message.bindingName !== undefined) pendingNames.add(message.bindingName);
     } else if (message.type === "connectionRequest" && message.state === "accepted" &&
                message.gatekeeperId !== undefined && message.bindingName !== undefined) {
       if (!chatBindings.has(message.bindingName)) {

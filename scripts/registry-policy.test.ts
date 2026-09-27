@@ -6,6 +6,11 @@ import { describe, it } from "node:test";
 // only reach registry.npmjs.org, so every dependency has to resolve from there.
 const PUBLIC_REGISTRY = "https://registry.npmjs.org/";
 
+// Public vendor-hosted tarballs that everyone can reach as well. SheetJS publishes its current
+// releases only on its own CDN (the npm registry copy is frozen at 0.18.5, which lacks the dense
+// sheet mode the workbook parser relies on); the lockfile pins the tarball's integrity hash.
+const PUBLIC_TARBALL_ALLOWLIST = ["https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"];
+
 const lockfile = readFileSync(new URL("../pnpm-lock.yaml", import.meta.url), "utf8");
 const npmrc = readFileSync(new URL("../.npmrc", import.meta.url), "utf8");
 
@@ -14,7 +19,8 @@ describe("registry policy", () => {
     const offenders = lockfile
       .split("\n")
       .filter((line) => /tarball: (?!https:\/\/registry\.npmjs\.org\/)/.test(line))
-      .map((line) => line.trim());
+      .map((line) => line.trim())
+      .filter((line) => !PUBLIC_TARBALL_ALLOWLIST.some((url) => line.includes(`tarball: ${url}`)));
 
     assert.deepEqual(
       offenders,

@@ -30,9 +30,11 @@ import {
 } from "./ai-gateway";
 import { AgentGadgetInfo, AgentHooks, AiChatAgentContext, CHAT_CHANGE_MESSAGE_BUDGET, ChatBindingEntry, SeedBindingInfo, runAgent, summarizeArgs, type AgentStepChange, type AiChatMessageBodyWithModelData, type ChatHistory, type CompactionCheckpoint, type StoredAssistantMessage, type WorktreeTurnAccess, GIT_BINDING_NAME } from "./agent";
 import { WorktreeSessionImpl } from "./worktree-session";
+import { readSheetRange, WorkbookSessionImpl } from "./workbook-session";
 import { GitImpl } from "./git-binding";
 import { scanWorkpieceForGrep, type GrepScan } from "./grep";
 import WORKTREE_BINDING_TYPES from "./worktree-binding.txt";
+import WORKBOOK_BINDING_TYPES from "./workbook-binding.txt";
 import { deploymentOutputForBlueprint, FormatOffer, listFormatOffers, readAdminConfig } from "./admin-config";
 import { chatChangeStatuses, foldProposedChanges, type ChangeBatch } from "./agent-compaction";
 import { ambientGatekeeperMode } from "./provisioning-policy";
@@ -62,6 +64,10 @@ import {
   validateChatAttachmentUpload,
   MAX_CHAT_ATTACHMENTS_PER_MESSAGE,
 } from "./chat-attachment-validation";
+import type { ValidatedChatAttachmentUpload } from "./chat-attachment-validation";
+import { formatCount, type WorkbookMeta } from "./chat-attachment-workbook";
+import { deriveWorkbookBindings } from "./workbook-names";
+import { parseWorkbookIsolated } from "./workbook-parser-isolate";
 import type { DocToMarkdownEnv } from "./doc-to-markdown";
 import { renderGadgetInBrowser } from "./browser-export";
 import {
@@ -592,14 +598,14 @@ type BlueprintKvRecord = {
   gadgetId: string;
 };
 
-// The agent-facing section of the worktree binding's type definitions: worktree-binding.txt is
-// a symlink to worktree-binding.d.ts shipped as a text module (the agent-spawner-binding.txt
-// pattern), and describeBinding serves everything below the marker.
-const WORKTREE_AGENT_API_MARKER = "// ---- BEGIN AGENT API ----\n";
-function worktreeAgentApiText(): string {
-  let index = WORKTREE_BINDING_TYPES.indexOf(WORKTREE_AGENT_API_MARKER);
-  return index < 0 ? WORKTREE_BINDING_TYPES
-      : WORKTREE_BINDING_TYPES.slice(index + WORKTREE_AGENT_API_MARKER.length).trimStart();
+// The agent-facing section of a binding's type definitions: each binding's `.txt` is a symlink to
+// its `.d.ts` shipped as a text module (the agent-spawner-binding.txt pattern), whose header
+// explains the binding to a reader of this repo while everything below the marker is written for
+// the agent. describeBinding serves that half.
+const AGENT_API_MARKER = "// ---- BEGIN AGENT API ----\n";
+function agentApiText(types: string): string {
+  let index = types.indexOf(AGENT_API_MARKER);
+  return index < 0 ? types : types.slice(index + AGENT_API_MARKER.length).trimStart();
 }
 
 // Compact kind label for a blueprint binding, used in agent-facing blueprint listings.
@@ -666,7 +672,32 @@ type ChatAttachmentContentRecord = {
         type: "committed";
         chatId: number;
       };
+
+  // Shape of the spreadsheet this attachment was parsed from: sheet names, dimensions, and where
+  // each stored row chunk begins. Set only on workbook uploads, and kept across the commit (unlike
+  // the staged metadata, which the message's ref takes over) because nothing else records it --
+  // it is the index a reader pages the chunks against.
+  workbook?: WorkbookMeta;
 };
+
+// One stored page of a workbook attachment's rows (see chatWorkbookRows).
+type ChatWorkbookRowsRecord = {
+  /** The attachment, sheet and chunk this page belongs to; compose it with chatWorkbookRowKey. */
+  key: string;
+  fileId: string;
+  sheetIndex: number;
+  chunkIndex: number;
+  /** 0-based index, within the sheet, of this chunk's first row. */
+  rowStart: number;
+  /** UTF-8 JSON array of rows. */
+  rows: Uint8Array;
+};
+
+// Key of one stored row page. The indexes are encoded rather than written as decimals so the
+// records sort the way a reader pages through them -- chunk 10 after chunk 9, not after chunk 1.
+function chatWorkbookRowKey(fileId: string, sheetIndex: number, chunkIndex: number): string {
+  return `${fileId}.${keyString(sheetIndex)}.${keyString(chunkIndex)}`;
+}
 
 // Canonical refs for one message's attachments, plus the byte total of the converted documents
 // among them. Only converted text counts against the message's combined text budget; attachments
@@ -1013,6 +1044,31 @@ class WorkspaceSessionExpiredError extends Error {
     super("This workspace session expired because nobody was using it. Reconnect to continue.");
     this.name = "WorkspaceSessionExpiredError";
   }
+}
+
+// Cap on the console output an executeCode run returns to the agent. Every byte of it lands in
+// the model's context (and is replayed on every later step), so a run that prints a whole dataset
+// would swamp the prompt; legitimate compact results are far smaller.
+const MAX_EXECUTE_CODE_OUTPUT_BYTES = 32 * 1024;
+
+// Cuts an executeCode console log to MAX_EXECUTE_CODE_OUTPUT_BYTES of UTF-8, at the last line
+// break that fits (whole lines read better to the model), or -- when the kept part holds no line
+// break -- at the last character boundary that fits, so no character is split. A cut log ends
+// with a notice saying how much was dropped and how to avoid it.
+function capExecuteCodeOutput(log: string): string {
+  let bytes = new TextEncoder().encode(log);
+  if (bytes.length <= MAX_EXECUTE_CODE_OUTPUT_BYTES) return log;
+  let cut = bytes.lastIndexOf(0x0a, MAX_EXECUTE_CODE_OUTPUT_BYTES);
+  if (cut <= 0) {
+    // Back up over UTF-8 continuation bytes (10xxxxxx) to the start of the character that
+    // straddles the cap.
+    cut = MAX_EXECUTE_CODE_OUTPUT_BYTES;
+    while (cut > 0 && (bytes[cut] & 0xc0) === 0x80) --cut;
+  }
+  let kept = new TextDecoder().decode(bytes.subarray(0, cut));
+  let dropped = bytes.length - cut;
+  return `${kept}\n… output truncated at 32 KiB (${dropped} bytes dropped). ` +
+      `Log less: compute in code and print compact results.`;
 }
 
 // Safely convert an unknown thrown value to a human-readable string.
@@ -1486,6 +1542,22 @@ export function makeOverseerStorage(storage: DurableObjectStorage) {
         nonUniqueIndexes: {
           stagedByUploadedAt(record: ChatAttachmentContentRecord) {
             return record.state.type === "staged" ? record.state.uploadedAt : null;
+          },
+        },
+      }),
+
+      // A workbook attachment's rows, one record per chunk. They live outside the attachment
+      // record because a spreadsheet's rows run to megabytes while a Durable Object record holds
+      // 2 MB, and because nothing replays them: the attachment itself carries only the summary the
+      // model reads every turn, and these are opened a page at a time through a binding.
+      //
+      // The index groups a file's chunks so the cascade can drop them all by fileId; the key
+      // orders them by sheet and chunk, which is the order a reader pages through.
+      chatWorkbookRows: collection<ChatWorkbookRowsRecord>()({
+        primaryKey: "key",
+        nonUniqueIndexes: {
+          byFileId(record: ChatWorkbookRowsRecord) {
+            return record.fileId;
           },
         },
       }),
@@ -3763,6 +3835,18 @@ class OverseerImpl implements AgentHooks {
           env[name] = stored.args;
           break;
         }
+        case "attachment": {
+          // The programmatic Workbook binding (see workbook-session.ts), one per spreadsheet
+          // attached to this chat. Skipped -- like a deleted gadget above -- when the attachment
+          // is gone or belongs to another chat, so an env name the history still mentions costs
+          // the run nothing instead of failing it; the agent finds out when it uses the name.
+          let content = this.storage.chatAttachmentContent.get(entry.id);
+          if (content?.state.type === "committed" && content.state.chatId === chatId &&
+              content.workbook) {
+            env[name] = this.makeBindingLoopback({type: "workbook", id: entry.id}, caller);
+          }
+          break;
+        }
         default:
           entry satisfies never;
       }
@@ -5827,6 +5911,25 @@ class OverseerImpl implements AgentHooks {
             new WorktreeSessionImpl(this, target.id, turn.access, async () => initiator));
       }
 
+      case "workbook": {
+        // The programmatic Workbook binding (workbook-session.ts): the rows of a spreadsheet
+        // attached to a chat. An attachment belongs to the history of exactly one chat, so a
+        // session opens only for that chat's own agent: a gadget or a user calling the loopback
+        // directly is refused here, and so is another chat's attachment. The agent's own code can
+        // still pass the stub on, as it can any binding in its env; what the holder gets is this
+        // one committed attachment of this one chat. No execution scoping beyond that: the rows
+        // are durable and read-only, so there is no turn state for a retained stub to revive
+        // against.
+        if (caller.from !== "agent") {
+          throw new Error("Workbook bindings are only available to the agent's executeCode.");
+        }
+        let content = this.storage.chatAttachmentContent.get(validateChatAttachmentId(target.id));
+        if (!content || content.state.type !== "committed" ||
+            content.state.chatId !== caller.chatId || !content.workbook) {
+          throw new Error("This workbook is no longer attached to this chat.");
+        }
+        return Promise.resolve(new WorkbookSessionImpl(this, target.id, content.workbook));
+      }
       case "git":
         return Promise.resolve(new GitImpl(this, () => this.#gitAuthorFor(caller)));
 
@@ -6044,6 +6147,12 @@ class OverseerImpl implements AgentHooks {
         mimeType: content.state.mimeType,
         name: content.state.name,
         size: content.data.byteLength,
+        // The staged state is dropped at commit, so the ref is where this has to survive: it is
+        // what later tells a reader that the stored text stands in for a document, and which kind.
+        // Absent, not undefined, when there was no conversion: the key's presence is the signal.
+        ...(content.state.convertedFrom !== undefined
+            ? {convertedFrom: content.state.convertedFrom}
+            : {}),
       });
     }
     if (total > MAX_CHAT_ATTACHMENT_TOTAL_BYTES) {
@@ -6063,15 +6172,119 @@ class OverseerImpl implements AgentHooks {
         fileId: id,
         data: content.data,
         state: {type: "committed", chatId},
+        // Carried across: it indexes the row chunks, which outlive the commit, and no message ref
+        // records it.
+        workbook: content.workbook,
       });
     }
+  }
+
+  // Stage an upload's bytes, and a workbook's rows with them.
+  //
+  // The summary and the chunks are halves of one attachment: a summary stored without its rows
+  // would describe a spreadsheet the binding cannot open, and chunks stored without their record
+  // would be unreachable and unswept. The rows stream in from the parser worker a chunk at a time,
+  // so they cannot share one transaction with the record -- none may be held across an await.
+  // Instead the record is written first, so every chunk that follows has a staged owner the sweep
+  // can find, and each chunk is written as it arrives. The caller hands out the id only once this
+  // resolves, so a half-stored workbook is never attachable; if the stream fails or is stopped,
+  // the record and every chunk already written go with it, and if the object is evicted mid-stream
+  // the staged-age sweep reaps them together.
+  async stageChatAttachment(validated: ValidatedChatAttachmentUpload, id: string): Promise<void> {
+    let attachment = validated.attachment;
+    this.storage.chatAttachmentContent.put({
+      fileId: id,
+      data: new Uint8Array(attachment.content),
+      state: {
+        type: "staged",
+        uploadedAt: Date.now(),
+        mimeType: attachment.mimeType,
+        name: attachment.name,
+        convertedFrom: validated.convertedFrom,
+      },
+      workbook: validated.workbook?.meta,
+    });
+    if (!validated.workbook) return;
+
+    try {
+      for await (let chunk of validated.workbook.rows) {
+        this.storage.chatWorkbookRows.put({
+          key: chatWorkbookRowKey(id, chunk.sheetIndex, chunk.chunkIndex),
+          fileId: id,
+          sheetIndex: chunk.sheetIndex,
+          chunkIndex: chunk.chunkIndex,
+          rowStart: chunk.rowStart,
+          rows: chunk.bytes,
+        });
+      }
+    } catch (err) {
+      this.deleteChatAttachmentContent(id);
+      throw err;
+    }
+  }
+
+  // Parse a spreadsheet upload in a dynamic worker loaded for it alone, so a workbook that
+  // materializes more than an isolate holds takes that worker down rather than this object (see
+  // workbook-parser-isolate.ts).
+  parseWorkbookUpload(bytes: Uint8Array, mimeType: string, name: string) {
+    return parseWorkbookIsolated(this.env.LOADER, bytes, mimeType, name);
+  }
+
+  // WorkbookSessionHost implementation: one stored row page of a workbook attachment, for the
+  // Workbook binding (workbook-session.ts). Ownership is settled when the session is opened (see
+  // startGatekeeperSession), and the session reads only chunks its own attachment's index names,
+  // so this takes the key as given.
+  readWorkbookChunk(fileId: string, sheetIndex: number, chunkIndex: number)
+      : Uint8Array | undefined {
+    return this.storage.chatWorkbookRows
+        .get(chatWorkbookRowKey(fileId, sheetIndex, chunkIndex))?.rows;
+  }
+
+  // Erase an attachment's stored bytes and everything derived from them, wherever an attachment
+  // goes away: an aged-out staging record, a rolled-back import, a discarded upload, a deleted
+  // chat. A workbook's rows live in their own records, so dropping the content record alone would
+  // strand megabytes of chunks that nothing can reach and no sweep would ever see.
+  deleteChatAttachmentContent(fileId: string): void {
+    this.ctx.storage.transactionSync(() => {
+      this.storage.chatAttachmentContent.delete(fileId);
+      this.storage.chatWorkbookRows.byFileId.delete(fileId);
+    });
   }
 
   sweepStagedChatAttachments(): void {
     let cutoff = Date.now() - MAX_STAGED_CHAT_ATTACHMENT_AGE_MS;
     this.ctx.storage.transactionSync(() => {
       for (let content of Array.from(this.storage.chatAttachmentContent.stagedByUploadedAt.list({end: cutoff}))) {
-        this.storage.chatAttachmentContent.delete(content.fileId);
+        this.deleteChatAttachmentContent(content.fileId);
+      }
+    });
+  }
+
+  // Discard a staged upload the user removed before sending it. A committed attachment belongs to
+  // its message and is left alone; it goes when the chat does.
+  deleteStagedChatAttachment(id: string): void {
+    let content = this.storage.chatAttachmentContent.get(validateChatAttachmentId(id));
+    if (content?.state.type === "staged") this.deleteChatAttachmentContent(content.fileId);
+  }
+
+  // Delete a chat's messages and the attachment content they reference. Attachment metadata is
+  // canonical in each message's ChatAttachmentRef, so no separate attachment index is needed.
+  //
+  // The messages are buffered before the loop rather than streamed: dropping a workbook
+  // attachment lists the index over its row chunks, and the storage interface allows only one
+  // list at a time.
+  deleteChatMessagesAndAttachments(chatId: number): void {
+    this.ctx.storage.transactionSync(() => {
+      for (let msg of Array.from(this.storage.chats.list({prefix: `${keyString(chatId)}.`}))) {
+        if (msg.type === "message") {
+          for (let attachment of msg.attachments ?? []) {
+            let content = this.storage.chatAttachmentContent.get(attachment.id);
+            if (content?.state.type === "committed" && content.state.chatId === chatId) {
+              this.deleteChatAttachmentContent(attachment.id);
+            }
+          }
+        }
+        this.storage.chats.delete(`${keyString(msg.chatId)}.${keyString(msg.sequence)}`);
       }
     });
   }
@@ -6126,20 +6339,14 @@ class OverseerImpl implements AgentHooks {
         let validated = await validateChatAttachmentUpload(
           {mimeType: upload.mimeType, content: upload.content, name: upload.name},
           provider,
-          () => this.getDocumentConversionEnv(),
+          {
+            parseWorkbook: (bytes, mimeType, name) =>
+                this.parseWorkbookUpload(bytes, mimeType, name),
+            getConversionEnv: () => this.getDocumentConversionEnv(),
+          },
         );
         let id = crypto.randomUUID();
-        this.storage.chatAttachmentContent.put({
-          fileId: id,
-          data: new Uint8Array(validated.attachment.content),
-          state: {
-            type: "staged",
-            uploadedAt: Date.now(),
-            mimeType: validated.attachment.mimeType,
-            name: validated.attachment.name,
-            convertedFrom: validated.convertedFrom,
-          },
-        });
+        await this.stageChatAttachment(validated, id);
         handles.push({id});
       }
 
@@ -6178,7 +6385,7 @@ class OverseerImpl implements AgentHooks {
       // A failed import leaves nothing behind. The sweep would only reap these once they aged out,
       // and until then a half-staged batch would still be attachable by id.
       for (let {id} of handles) {
-        this.storage.chatAttachmentContent.delete(id);
+        this.deleteChatAttachmentContent(id);
       }
       throw err;
     }
@@ -7378,7 +7585,7 @@ class OverseerImpl implements AgentHooks {
           `env.${envName} implements the \`Worktree\` interface as defined below:\n` +
           `\n` +
           `\`\`\`\n` +
-          `${worktreeAgentApiText()}` +
+          `${agentApiText(WORKTREE_BINDING_TYPES)}` +
           `\`\`\`\n`;
     }
     if (gadget) {
@@ -7396,6 +7603,64 @@ class OverseerImpl implements AgentHooks {
     return this.describeGatekeeper(envName, gatekeeper);
   }
 
+  // AgentHooks implementation: describe the spreadsheet behind one of the chat's attachment
+  // bindings, for the agent's describeBinding tool. `envName` is the bare binding name (the
+  // sentence below builds the `env.` form itself).
+  //
+  // Only immutable facts go in: the file name its message recorded and the shape the parse
+  // measured.
+  async describeAttachmentBinding(chatId: number, envName: string, id: string): Promise<string> {
+    let workbook = this.#chatWorkbook(chatId, envName, id);
+    let name = this.#chatAttachmentName(chatId, id);
+    let sheets = workbook.sheets.map(sheet =>
+        `${JSON.stringify(sheet.name)} (${formatCount(sheet.rowCount, "row")} × ` +
+        `${formatCount(sheet.colCount, "col")})`).join(", ");
+    return `Binding: ${envName}\n` +
+        `\n` +
+        `This binding is the workbook ${fenceUntrustedFileName(name ?? "(unnamed)")} attached ` +
+        `to this chat: ${formatCount(workbook.sheets.length, "sheet")} — ${sheets}. The ` +
+        `attachment text in the conversation is only a summary of it; in executeCode, ` +
+        `env.${envName} provides the following API over the full data:\n` +
+        `\n` +
+        `\`\`\`\n` +
+        `${agentApiText(WORKBOOK_BINDING_TYPES)}` +
+        `\`\`\`\n`;
+  }
+
+  // AgentHooks implementation: one range of the spreadsheet behind one of the chat's attachment
+  // bindings, as the text of the agent's readSheet tool (workbook-session.ts, readSheetRange).
+  // Refused, exactly as describeAttachmentBinding refuses, for an attachment that is not this
+  // chat's or is gone: only the owning chat's agent may read a user's spreadsheet.
+  async readWorkbookRange(chatId: number, envName: string, id: string, sheet: string,
+                          range: string | undefined): Promise<string> {
+    return readSheetRange(this, id, this.#chatWorkbook(chatId, envName, id), sheet, range);
+  }
+
+  // The stored index of a workbook attachment committed to this chat, or the error both agent
+  // paths give for one that belongs to another chat or is gone.
+  #chatWorkbook(chatId: number, envName: string, id: string): WorkbookMeta {
+    let content = this.storage.chatAttachmentContent.get(validateChatAttachmentId(id));
+    if (!content || content.state.type !== "committed" || content.state.chatId !== chatId ||
+        !content.workbook) {
+      throw new Error(`The attachment behind ${envName} is no longer available.`);
+    }
+    return content.workbook;
+  }
+
+  // The file name an attachment was uploaded under, from the canonical ref of the message that
+  // carries it. A committed attachment's content record keeps only the bytes -- the message owns
+  // that metadata -- and chat messages are immutable, so reading it back from the log is both the
+  // only source and a stable one.
+  #chatAttachmentName(chatId: number, id: string): string | undefined {
+    for (let msg of this.storage.chats.list({prefix: `${keyString(chatId)}.`})) {
+      if (msg.type !== "message") continue;
+      for (let attachment of msg.attachments ?? []) {
+        if (attachment.id === id) return attachment.name;
+      }
+    }
+    return undefined;
+  }
+
   // Describe the env.GIT binding, for the agent's describeBinding tool.
   describeGitBinding(envName: string): string {
     return `Binding: ${envName}\n` +
@@ -7405,7 +7670,7 @@ class OverseerImpl implements AgentHooks {
         `binding. It implements the \`Git\` interface as defined below:\n` +
         `\n` +
         `\`\`\`\n` +
-        `${worktreeAgentApiText()}` +
+        `${agentApiText(WORKTREE_BINDING_TYPES)}` +
         `\`\`\`\n`;
   }
 
@@ -8068,6 +8333,11 @@ class OverseerImpl implements AgentHooks {
         for (let capsule of msg.capsules ?? []) {
           if (capsule.bindingName !== undefined) taken.add(capsule.bindingName);
         }
+        // A spreadsheet attachment's name is derived from its file name at replay rather than
+        // stamped on the message (see agent.ts), so the derivation is repeated here, in the same
+        // order. Without it a gadget or connection named later could be handed a name a workbook
+        // already holds and would shadow it in the agent's env.
+        for (let {name} of deriveWorkbookBindings(msg.attachments, taken)) taken.add(name);
         for (let call of msg.toolCalls ?? []) {
           if ((call.toolName === "createGadget" || call.toolName === "createWorktree") &&
               call.input.bindingName !== undefined) {
@@ -8287,6 +8557,9 @@ class OverseerImpl implements AgentHooks {
             anythingToName = true;
           }
         }
+        // As in chatScopeNames: workbook binding names are derived, not stamped, so they have to
+        // be claimed here too or a resource named at this chokepoint could take one.
+        for (let {name} of deriveWorkbookBindings(msg.attachments, taken)) taken.add(name);
         for (let call of msg.toolCalls ?? []) {
           if (call.toolName === "createGadget") {
             taken.add(call.input.bindingName);
@@ -9157,6 +9430,9 @@ class OverseerImpl implements AgentHooks {
         }).join(" ");
       }).join("\n");
 
+      // The cap applies to what the code logged; the exception suffix is appended after it, so
+      // the failure that ended the run is never among the dropped bytes.
+      log = capExecuteCodeOutput(log);
       if (error !== undefined) {
         log += `\n\nUncaught exception: ${error}`;
       } else if (log === "") {
@@ -10833,6 +11109,14 @@ type BindingLoopbackTarget = {
   // of coming back to life against a later execution's turn.
   executionId: string;
 } | {
+  type: "workbook";
+
+  // The chat attachment whose rows this binding reads (a ChatAttachmentContentRecord fileId, not
+  // a workpiece). Unlike a worktree, it carries no executionId: the rows are immutable and
+  // read-only, so a stub that outlives its execution can only read them again. What bounds it is
+  // ownership, checked at every open -- see startGatekeeperSession.
+  id: string;
+} | {
   // The `env.GIT` binding (see git-binding.ts).
   type: "git";
 };
@@ -12096,24 +12380,18 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
     let validated = await validateChatAttachmentUpload(
       attachment,
       provider,
-      () => this.impl.getDocumentConversionEnv(),
+      {
+        parseWorkbook: (bytes, mimeType, name) =>
+            this.impl.parseWorkbookUpload(bytes, mimeType, name),
+        getConversionEnv: () => this.impl.getDocumentConversionEnv(),
+      },
     );
-    attachment = validated.attachment;
-
     this.impl.sweepStagedChatAttachments();
 
     let id = crypto.randomUUID();
-    this.impl.storage.chatAttachmentContent.put({
-      fileId: id,
-      data: new Uint8Array(attachment.content),
-      state: {
-        type: "staged",
-        uploadedAt: Date.now(),
-        mimeType: attachment.mimeType,
-        name: attachment.name,
-        convertedFrom: validated.convertedFrom,
-      },
-    });
+    // Resolves only once the last row chunk is stored: the client cannot name an attachment it
+    // has not been handed, so it can never attach one still streaming in.
+    await this.impl.stageChatAttachment(validated, id);
     return {id};
   }
 
@@ -12128,11 +12406,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
   }
 
   async deleteChatAttachment(id: string): Promise<void> {
-    id = validateChatAttachmentId(id);
-    let content = this.impl.storage.chatAttachmentContent.get(id);
-    if (content?.state.type === "staged") {
-      this.impl.storage.chatAttachmentContent.delete(id);
-    }
+    this.impl.deleteStagedChatAttachment(id);
   }
 
   // Compaction boundaries delimit the pages: the newest page is the tail replay still scans, and each
@@ -12359,21 +12633,7 @@ class OverseerClientInterface extends RpcTarget implements Overseer {
           `${keyString(draft.chatId)}.${keyString(draft.timestamp.valueOf())}`);
     }
 
-    // Delete the chat's messages and the attachment content referenced by them. Attachment metadata
-    // is canonical in each message's ChatAttachmentRef, so no separate attachment index is needed.
-    this.impl.ctx.storage.transactionSync(() => {
-      for (let msg of this.impl.storage.chats.list({prefix: `${keyString(chatId)}.`})) {
-        if (msg.type === "message") {
-          for (let attachment of msg.attachments ?? []) {
-            let content = this.impl.storage.chatAttachmentContent.get(attachment.id);
-            if (content?.state.type === "committed" && content.state.chatId === chatId) {
-              this.impl.storage.chatAttachmentContent.delete(attachment.id);
-            }
-          }
-        }
-        this.impl.storage.chats.delete(`${keyString(msg.chatId)}.${keyString(msg.sequence)}`);
-      }
-    });
+    this.impl.deleteChatMessagesAndAttachments(chatId);
 
     // Clean up agentCallbackArgs for this chat, and any calls to its agent not yet delivered.
     for (let entry of this.impl.storage.agentCallbackArgs.list(

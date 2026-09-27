@@ -3301,6 +3301,16 @@ export type ChatAttachmentRef = ChatAttachmentHandle & {
 
   /** Inlined bytes for small image attachments. Present only for images. */
   content?: Uint8Array;
+
+  /**
+   * The document's original MIME type, when the upload was converted on the way in and `mimeType`
+   * describes the stored text rather than the file the user picked. Absent on attachments stored
+   * as they arrived, and on messages written before this was recorded.
+   *
+   * The ref is the only place this survives once an attachment is committed, so it is what tells a
+   * later reader -- replay especially -- what kind of document produced the stored text.
+   */
+  convertedFrom?: string;
 };
 
 /** Whether attachment bytes can be decoded and inlined into the agent's prompt as text. */
@@ -3566,6 +3576,27 @@ export type AiToolCall = {
    * Output, if the fetch actually completed. (Otherwise, `error` should be present.) This is
    * stored so that the agent's chat history can be replayed without re-issuing the fetch.
    * Formatted as a YAML-frontmatter header followed by the body (see formatWebFetchResult).
+   */
+  output?: string;
+} | {
+  /**
+   * Read one range of a spreadsheet attached to the chat as addressed text (every cell written
+   * `COLUMN=value`). Offered only in chats holding a spreadsheet attachment.
+   */
+  toolName: "readSheet";
+  input: {
+    /** Chat binding name of the spreadsheet attachment (e.g. `big_xlsx`). */
+    file: string;
+    /** Sheet name, exactly as the workbook holds it. */
+    sheet: string;
+    /** `A150:AV160` or `150:160` (1-based, inclusive); omitted means the first 50 rows. */
+    range?: string;
+  };
+
+  /**
+   * Output, if the read completed. (Otherwise, `error` should be present.) Replayed verbatim, never
+   * re-read: history replays the same text even after the attachment is deleted, as webFetch
+   * replays a page that has since changed.
    */
   output?: string;
 } | {
