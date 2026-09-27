@@ -16,6 +16,12 @@ msgstr ""
 msgid "(Draft)"
 msgstr "(Nháp)"
 
+msgid "(empty)"
+msgstr "(trống)"
+
+msgid "(none)"
+msgstr "(không có)"
+
 #. placeholder {0}: downstreamDependents.length
 #. placeholder {1}: profile.name
 msgid "{0, plural, one {# other person loses} other {# other people lose}} access through {1}. Keep anyone?"
@@ -36,10 +42,6 @@ msgstr "{0, plural, other {# tài nguyên cần thêm}}"
 #. placeholder {0}: row.hidden
 msgid "{0, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
 msgstr "{0, plural, other {Hiện # dòng đã xóa bị ẩn}}"
-
-#. placeholder {0}: formatOf(gadget.output).noun
-msgid "{0} · Click to open"
-msgstr "{0} · Nhấn để mở"
 
 #. placeholder {0}: format.blueprintTitle
 #. placeholder {1}: format.output!.plural
@@ -98,9 +100,6 @@ msgstr "{badgeCount} đang chờ"
 msgid "{DEFAULT_ACCENT_COLOR} (default)"
 msgstr "{DEFAULT_ACCENT_COLOR} (mặc định)"
 
-msgid "{filename} is being edited"
-msgstr "{filename} đang được chỉnh sửa"
-
 msgid "{initialRoom, plural, one {Only the first attachment was attached} other {Only the first # attachments were attached}}"
 msgstr "{initialRoom, plural, other {Chỉ # tệp đính kèm đầu tiên được thêm vào}}"
 
@@ -109,6 +108,12 @@ msgstr "{kept, plural, other {# tin nhắn sau điểm cắt được giữ lạ
 
 msgid "{label}. Switch to {nextMode}."
 msgstr "{label}. Chuyển sang {nextMode}."
+
+msgid "{noun} · Click to open"
+msgstr "{noun} · Nhấn để mở"
+
+msgid "{path} is being edited"
+msgstr "{path} đang được chỉnh sửa"
 
 #. placeholder {0}: bindingEntries.length
 msgid "{readyCount} of {0} ready. Suggestions are used automatically when they match one of your connected accounts."
@@ -168,8 +173,8 @@ msgstr "Các hành động mà tác nhân có thể thực hiện mà không c�
 msgid "Actions for {0}"
 msgstr "Hành động cho {0}"
 
-msgid "Actions for {filename}"
-msgstr "Hành động cho {filename}"
+msgid "Actions for {path}"
+msgstr "Hành động cho {path}"
 
 msgid "Activity"
 msgstr "Hoạt động"
@@ -177,6 +182,9 @@ msgstr "Hoạt động"
 #. placeholder {0}: pending.length
 msgid "Activity — {0, plural, one {# request needs} other {# requests need}} review"
 msgstr "Hoạt động — {0, plural, other {# yêu cầu cần}} xem xét"
+
+msgid "Add “{directoryQuery}” exactly"
+msgstr "Thêm đúng “{directoryQuery}”"
 
 #. placeholder {0}: vendorDescription.displayName
 msgid "Add {0}"
@@ -240,8 +248,9 @@ msgstr "Thêm nhà cung cấp đầu tiên của bạn"
 msgid "Added"
 msgstr "Đã thêm"
 
-msgid "Added {invitedName}"
-msgstr "Đã thêm {invitedName}"
+#. placeholder {0}: NAME_LIST.format(invitedNames)
+msgid "Added {0}"
+msgstr "Đã thêm {0}"
 
 msgid "Added in this chat; kept when you accept the chat's changes"
 msgstr "Đã thêm trong cuộc trò chuyện này; được giữ lại khi bạn chấp nhận thay đổi của cuộc trò chuyện"
@@ -474,6 +483,10 @@ msgstr "Đổi logo"
 msgid "Change password"
 msgstr "Đổi mật khẩu"
 
+#. placeholder {0}: changes.length
+msgid "Changes ({0})"
+msgstr "Thay đổi ({0})"
+
 msgid "Changing…"
 msgstr "Đang đổi…"
 
@@ -531,9 +544,6 @@ msgstr "Xóa mô hình mặc định"
 msgid "Click the avatar to upload a new photo"
 msgstr "Nhấn vào ảnh đại diện để tải lên ảnh mới"
 
-msgid "Click to re-authenticate this account"
-msgstr "Nhấn để xác thực lại tài khoản này"
-
 msgid "Click to set as default model"
 msgstr "Nhấn để đặt làm mô hình mặc định"
 
@@ -558,6 +568,9 @@ msgstr "Đóng bản xem trước"
 msgid "Close screenshot"
 msgstr "Đóng ảnh chụp màn hình"
 
+msgid "Close worktree pane"
+msgstr "Đóng ngăn worktree"
+
 msgid "Cloudflare account"
 msgstr "Tài khoản Cloudflare"
 
@@ -578,6 +591,9 @@ msgstr "Thu gọn thanh bên"
 
 msgid "Command palette"
 msgstr "Bảng lệnh"
+
+msgid "Commit email"
+msgstr "Email commit"
 
 msgid "Compacting…"
 msgstr "Đang nén…"
@@ -642,6 +658,9 @@ msgstr "Tài khoản đã kết nối"
 msgid "Connecting..."
 msgstr "Đang kết nối..."
 
+msgid "Connecting…"
+msgstr "Đang kết nối…"
+
 msgid "connection"
 msgstr "kết nối"
 
@@ -659,6 +678,9 @@ msgstr "Tên kết nối"
 
 msgid "Connections"
 msgstr "Kết nối"
+
+msgid "Contents not shown"
+msgstr "Không hiển thị nội dung"
 
 msgid "Context & Skills"
 msgstr "Ngữ cảnh & kỹ năng"
@@ -717,6 +739,9 @@ msgstr "Không thể kiểm tra yêu cầu — tải lại trang để thử l�
 msgid "Could not complete the connection"
 msgstr "Không thể hoàn tất kết nối"
 
+msgid "Could not download the source files"
+msgstr "Không thể tải xuống các tệp mã nguồn"
+
 msgid "Could not finish checking for requests — reload the page to try again."
 msgstr "Không thể hoàn tất việc kiểm tra yêu cầu — tải lại trang để thử lại."
 
@@ -754,8 +779,11 @@ msgstr "Không thể tải kỹ năng."
 msgid "Create"
 msgstr "Tạo"
 
-msgid "Create a new file in this gadget."
-msgstr "Tạo tệp mới trong gadget này."
+msgid "Create a new file in this gadget. Include a directory to place it there."
+msgstr "Tạo tệp mới trong gadget này. Thêm thư mục vào tên tệp để đặt tệp ở đó."
+
+msgid "Create a new file in this worktree. Include a directory to place it there."
+msgstr "Tạo tệp mới trong worktree này. Thêm thư mục vào tên tệp để đặt tệp ở đó."
 
 msgid "Create a share link"
 msgstr "Tạo liên kết chia sẻ"
@@ -1035,6 +1063,9 @@ msgstr "Chỉnh sửa blueprint"
 msgid "Edit blueprint settings"
 msgstr "Chỉnh sửa cài đặt blueprint"
 
+msgid "Edit commit email"
+msgstr "Sửa email commit"
+
 msgid "Edit display name"
 msgstr "Chỉnh sửa tên hiển thị"
 
@@ -1173,8 +1204,14 @@ msgstr "Không thể tải blueprint."
 msgid "Failed to load this conversation's code changes. Try reloading the page."
 msgstr "Không thể tải các thay đổi mã của cuộc trò chuyện này. Thử tải lại trang."
 
+msgid "Failed to load this file."
+msgstr "Không thể tải tệp này."
+
 msgid "Failed to load this gadget's code."
 msgstr "Không thể tải mã của gadget này."
+
+msgid "Failed to load this worktree's code."
+msgstr "Không thể tải mã của worktree này."
 
 msgid "Failed to prepare the logo image."
 msgstr "Không thể chuẩn bị hình ảnh logo."
@@ -1288,6 +1325,17 @@ msgstr "Cấp quyền truy cập cần thiết để xác minh tài nguyên này
 msgid "Have AI review a Google Doc, summarize Slack threads, triage Jira tickets, and more."
 msgstr "Để AI xem xét một Google Doc, tóm tắt các luồng Slack, phân loại ticket Jira và nhiều việc khác."
 
+#. placeholder {0}: summary.headCommit
+#. placeholder {1}: summary.baseCommit
+msgid "HEAD {0}\n"
+"Created at {1}"
+msgstr "HEAD {0}\n"
+"Được tạo từ commit {1}"
+
+#. placeholder {0}: summary.headCommit
+msgid "HEAD {0} (no commits since the worktree was created)"
+msgstr "HEAD {0} (chưa có commit nào kể từ khi tạo worktree)"
+
 msgid "Help text for {displayTitle}"
 msgstr "Văn bản trợ giúp cho {displayTitle}"
 
@@ -1353,11 +1401,14 @@ msgstr "Kích thước hình ảnh không hợp lệ."
 msgid "Invite"
 msgstr "Mời"
 
-msgid "Invite “{directoryQuery}” exactly"
-msgstr "Mời đúng “{directoryQuery}”"
+msgid "Invite {inviteCount} people"
+msgstr "Mời {inviteCount} người"
 
 msgid "Invite people or share a link."
 msgstr "Mời mọi người hoặc chia sẻ liên kết."
+
+msgid "Invite people."
+msgstr "Mời mọi người."
 
 msgid "Inviting…"
 msgstr "Đang mời…"
@@ -1394,6 +1445,9 @@ msgstr "Để trống một trường để dùng tên do blueprint khai báo. M
 
 msgid "Leave a field empty to use the name the blueprint declares. Applies to outputs made from now on — existing ones keep the name they were made with."
 msgstr "Để trống một trường để dùng tên do blueprint khai báo. Áp dụng cho các đầu ra được tạo từ bây giờ trở đi — các đầu ra hiện có vẫn giữ tên đã được đặt khi tạo."
+
+msgid "Leave blank to use an address based on your user ID."
+msgstr "Để trống để dùng địa chỉ dựa trên ID người dùng của bạn."
 
 msgid "Let users find other accounts by name or email when sharing a workspace. When off, people can only be invited by their exact username or email. Applies on each user’s next connection."
 msgstr "Cho phép người dùng tìm tài khoản khác theo tên hoặc email khi chia sẻ không gian làm việc. Khi tắt, chỉ có thể mời người khác bằng đúng tên người dùng hoặc email của họ. Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
@@ -1464,6 +1518,9 @@ msgstr "Đang tải tin nhắn trước đó…"
 msgid "Loading export formats"
 msgstr "Đang tải định dạng xuất"
 
+msgid "Loading file..."
+msgstr "Đang tải tệp..."
+
 msgid "Loading gatekeepers..."
 msgstr "Đang tải gatekeeper..."
 
@@ -1509,6 +1566,9 @@ msgstr "Kích thước ảnh gốc của logo quá lớn."
 
 msgid "Logo source image is too large (max 5 MB)."
 msgstr "Ảnh gốc của logo quá lớn (tối đa 5 MB)."
+
+msgid "Manage access."
+msgstr "Quản lý quyền truy cập."
 
 msgid "Manage the AI models everyone on this deployment can use."
 msgstr "Quản lý các mô hình AI mà mọi người trên bản triển khai này có thể sử dụng."
@@ -1583,7 +1643,7 @@ msgstr "Cần xem xét"
 msgid "New {0}"
 msgstr "{0} mới"
 
-#. placeholder {0}: formatOf(gadget.output).noun.toLowerCase()
+#. placeholder {0}: noun.toLowerCase()
 msgid "New {0} · Click to preview"
 msgstr "{0} mới · Nhấn để xem trước"
 
@@ -1734,6 +1794,9 @@ msgstr "Chưa kết nối"
 msgid "Not now"
 msgstr "Không phải bây giờ"
 
+msgid "Not set — commits use an address based on your user ID"
+msgstr "Chưa đặt — commit sẽ dùng địa chỉ dựa trên ID người dùng của bạn"
+
 msgid "Nothing after it was kept."
 msgstr "Không có gì sau đó được giữ lại."
 
@@ -1748,6 +1811,9 @@ msgstr "Ở đây chưa có gì để cung cấp cho tác nhân được tạo. 
 
 msgid "Nothing is waiting on you."
 msgstr "Không có gì đang chờ bạn."
+
+msgid "Nothing to download"
+msgstr "Không có gì để tải xuống"
 
 msgid "Nothing to review"
 msgstr "Không có gì để xem xét"
@@ -1766,6 +1832,9 @@ msgstr "Cung cấp như định dạng chuẩn"
 
 msgid "Oldest first"
 msgstr "Cũ nhất trước"
+
+msgid "Omitted: description limit reached"
+msgstr "Đã lược bỏ: đã đạt giới hạn mô tả"
 
 msgid "On for everyone automatically"
 msgstr "Tự động bật cho mọi người"
@@ -1915,6 +1984,9 @@ msgstr "Xuất bản không gian làm việc dưới dạng blueprint, hoặc th
 msgid "Publish this gadget as a reusable template."
 msgstr "Xuất bản gadget này dưới dạng mẫu có thể tái sử dụng."
 
+msgid "Re-authenticate this account"
+msgstr "Xác thực lại tài khoản này"
+
 msgid "Re-authenticating…"
 msgstr "Đang xác thực lại…"
 
@@ -1968,6 +2040,7 @@ msgid "Remove “{0}”?"
 msgstr "Gỡ “{0}”?"
 
 #. placeholder {0}: profile.name
+#. placeholder {0}: recipientLabel(recipient)
 msgid "Remove {0}"
 msgstr "Gỡ {0}"
 
@@ -1995,8 +2068,8 @@ msgstr "Đổi tên"
 msgid "Rename {0}"
 msgstr "Đổi tên {0}"
 
-msgid "Rename {filename}"
-msgstr "Đổi tên {filename}"
+msgid "Rename {path}"
+msgstr "Đổi tên {path}"
 
 msgid "Rename chat"
 msgstr "Đổi tên trò chuyện"
@@ -2019,6 +2092,9 @@ msgstr "Đổi tên đầu ra cho mọi người có quyền truy cập vào “
 
 msgid "Replace all placeholders in the URL before selecting an account"
 msgstr "Thay thế tất cả các phần giữ chỗ trong URL trước khi chọn tài khoản."
+
+msgid "Requesting access…"
+msgstr "Đang yêu cầu quyền truy cập…"
 
 msgid "Requests that need your approval show up here and in the workspace header."
 msgstr "Các yêu cầu cần bạn duyệt sẽ xuất hiện ở đây và trong tiêu đề không gian làm việc."
@@ -2053,8 +2129,8 @@ msgstr "Thử lại xuất bản"
 msgid "Retry the last action."
 msgstr "Thử lại hành động gần nhất."
 
-msgid "Return to the last accepted version. Any gadgets created by these changes will be permanently deleted. Pending changes can't be restored."
-msgstr "Quay lại phiên bản đã chấp nhận gần nhất. Mọi gadget được tạo bởi các thay đổi này sẽ bị xóa vĩnh viễn. Các thay đổi chưa được chấp nhận sẽ không thể khôi phục."
+msgid "Return to the last accepted version. Any gadgets or worktrees created by these changes will be permanently deleted. Pending changes can't be restored."
+msgstr "Quay lại phiên bản đã chấp nhận gần nhất. Mọi gadget hoặc worktree được tạo bởi các thay đổi này sẽ bị xóa vĩnh viễn. Các thay đổi chưa được chấp nhận sẽ không thể khôi phục."
 
 #. placeholder {0}: ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 msgid "Returned to the gadget state before the prompt sent at {0}."
@@ -2078,6 +2154,9 @@ msgstr "Lưu"
 
 msgid "Save chat title"
 msgstr "Lưu tiêu đề trò chuyện"
+
+msgid "Save commit email"
+msgstr "Lưu email commit"
 
 msgid "Save connection"
 msgstr "Lưu kết nối"
@@ -2249,8 +2328,16 @@ msgstr "Hiện mật khẩu"
 msgid "Show thinking"
 msgstr "Hiện suy nghĩ"
 
+#. placeholder {0}: field.truncated.shownBytes
+#. placeholder {1}: field.truncated.totalBytes
+msgid "Showing {0} of {1} bytes"
+msgstr "Đang hiển thị {0} trên {1} byte"
+
 msgid "Shown centered in the top navigation bar. Markdown is supported, so you can include links. Keep it short — it renders on a single line. Leave empty to show nothing. Applies on each user’s next connection."
 msgstr "Hiển thị ở giữa thanh điều hướng trên cùng. Hỗ trợ Markdown nên bạn có thể thêm liên kết. Giữ nội dung ngắn gọn — nội dung hiển thị trên một dòng duy nhất. Để trống nếu không muốn hiển thị gì. Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
+
+msgid "Shown escaped: contains invisible characters"
+msgstr "Hiển thị dạng thoát ký tự: có chứa ký tự vô hình"
 
 msgid "Shown in the app chrome, sign-in screens, and browser tab. Images are scaled without cropping and converted to a static PNG. Square images work best. Applies on each user’s next connection."
 msgstr "Hiển thị trong giao diện ứng dụng, màn hình đăng nhập và tab trình duyệt. Hình ảnh được thay đổi kích thước mà không cắt xén và chuyển đổi thành PNG tĩnh. Hình vuông cho kết quả tốt nhất. Áp dụng vào lần kết nối tiếp theo của mỗi người dùng."
@@ -2313,6 +2400,9 @@ msgstr "Đã xảy ra lỗi khi tải các nhà cung cấp của bạn."
 
 msgid "Something went wrong loading your workspaces."
 msgstr "Đã xảy ra lỗi khi tải các không gian làm việc của bạn."
+
+msgid "Source is still loading — try again in a moment"
+msgstr "Mã nguồn vẫn đang tải — hãy thử lại sau giây lát"
 
 msgid "Split diff"
 msgstr "Diff chia đôi"
@@ -2445,6 +2535,9 @@ msgstr "Kết nối này không còn cung cấp hành động này; quy tắc v�
 msgid "This conversation has pending changes"
 msgstr "Cuộc trò chuyện này có thay đổi đang chờ xử lý"
 
+msgid "This description is incomplete: part of what this action will send isn't shown."
+msgstr "Mô tả này chưa đầy đủ: một phần nội dung mà hành động này sẽ gửi không được hiển thị."
+
 msgid "This file can’t be previewed here."
 msgstr "Không thể xem trước tệp này ở đây."
 
@@ -2476,14 +2569,23 @@ msgstr "Thao tác này sẽ xóa <0>{0}</0>. Bạn không thể hoàn tác việ
 msgid "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
 msgstr "Thao tác này sẽ xóa <0>{deletingFile}</0> khỏi gadget. Bạn không thể hoàn tác việc này."
 
+msgid "This removes <0>{deletingFile}</0> from the worktree. You can't undo this."
+msgstr "Thao tác này sẽ xóa <0>{deletingFile}</0> khỏi worktree. Bạn không thể hoàn tác việc này."
+
 msgid "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
 msgstr "Không thể hủy bỏ bản cập nhật này: nó đã đưa vào các thay đổi vốn đã được chấp nhận ở nơi khác. Thay vào đó, chỉnh sửa các tệp."
 
 msgid "This workspace has no gadgets yet."
 msgstr "Không gian làm việc này chưa có gadget nào."
 
+msgid "This workspace has read data from a connection that doesn’t allow share links, so only the owner can add people. People the owner invites are asked to verify their own access to the connections it uses at their access level — some may be unable to open it. Anything the workspace has already saved is visible to everyone who can."
+msgstr "Không gian làm việc này đã đọc dữ liệu từ một kết nối không cho phép liên kết chia sẻ, nên chỉ chủ sở hữu mới có thể thêm người. Những người được chủ sở hữu mời sẽ được yêu cầu xác minh quyền truy cập của chính họ vào các kết nối mà nó sử dụng theo cấp truy cập của họ — một số người có thể không mở được. Mọi thứ không gian làm việc đã lưu đều hiển thị với tất cả những ai mở được."
+
 msgid "This workspace has read sensitive data. People you invite are asked to verify their own access to the connections it uses at their access level — some may be unable to open it. Anything the workspace has already saved is visible to everyone who can."
 msgstr "Không gian làm việc này đã đọc dữ liệu nhạy cảm. Những người bạn mời sẽ được yêu cầu xác minh quyền truy cập của chính họ vào các kết nối mà nó sử dụng theo cấp truy cập của họ — một số người có thể không mở được. Mọi thứ không gian làm việc đã lưu đều hiển thị với tất cả những ai mở được."
+
+msgid "This workspace has read sensitive data. Read the full request below before approving — you are responsible for making sure it contains none of that data."
+msgstr "Không gian làm việc này đã đọc dữ liệu nhạy cảm. Hãy đọc toàn bộ yêu cầu bên dưới trước khi duyệt — bạn có trách nhiệm đảm bảo yêu cầu không chứa bất kỳ dữ liệu nào như vậy."
 
 msgid "Throw away these draft edits."
 msgstr "Hủy bỏ các chỉnh sửa nháp này."
@@ -2674,14 +2776,8 @@ msgstr "Đợi quá trình hủy bỏ các thay đổi đang chờ xử lý hoà
 msgid "Wait for the agent to finish before accepting changes."
 msgstr "Đợi tác nhân hoàn tất trước khi chấp nhận thay đổi."
 
-msgid "Waiting for access…"
-msgstr "Đang chờ quyền truy cập…"
-
 msgid "Waiting for agent…"
 msgstr "Đang chờ tác nhân…"
-
-msgid "Waiting for connection…"
-msgstr "Đang chờ kết nối…"
 
 msgid "Waiting for server…"
 msgstr "Đang chờ server…"
@@ -2689,8 +2785,8 @@ msgstr "Đang chờ server…"
 msgid "Waits for your approval"
 msgstr "Chờ bạn duyệt"
 
-msgid "We couldn’t confirm your access to everything this workspace has read. Re-authenticate the account below, or choose a different one, then try again."
-msgstr "Chúng tôi không thể xác nhận quyền truy cập của bạn vào mọi thứ mà không gian làm việc này đã đọc. Xác thực lại tài khoản bên dưới, hoặc chọn một tài khoản khác, rồi thử lại."
+msgid "We couldn’t confirm your access to everything this workspace has read. Depending on the reason below, re-authenticate an expired account, choose a different one, or ask the workspace owner to share what your account can’t access."
+msgstr "Chúng tôi không thể xác nhận quyền truy cập của bạn vào mọi thứ mà không gian làm việc này đã đọc. Tùy theo lý do bên dưới, hãy xác thực lại tài khoản đã hết hạn, chọn một tài khoản khác, hoặc nhờ chủ sở hữu không gian làm việc chia sẻ những gì tài khoản của bạn không truy cập được."
 
 msgid "We couldn't find anything matching your search."
 msgstr "Không tìm thấy kết quả nào khớp với tìm kiếm của bạn."
@@ -2716,6 +2812,9 @@ msgstr "Khi tắt, người dùng hiện có vẫn có thể đăng nhập nhưn
 msgid "When the gadget builds one, it will appear here."
 msgstr "Khi gadget tạo ra một mục, nó sẽ xuất hiện ở đây."
 
+msgid "Won't apply: this workspace has read sensitive data, so actions always require manual approval."
+msgstr "Không áp dụng: không gian làm việc này đã đọc dữ liệu nhạy cảm, nên các hành động luôn cần được duyệt thủ công."
+
 msgid "Working"
 msgstr "Đang xử lý"
 
@@ -2728,6 +2827,12 @@ msgstr "Không gian làm việc hoạt động {0}"
 
 msgid "Workspaces"
 msgstr "Không gian làm việc"
+
+msgid "Worktree · Click to open its code"
+msgstr "Worktree · Nhấn để mở mã nguồn"
+
+msgid "Worktrees"
+msgstr "Worktree"
 
 msgid "Yes, disconnect"
 msgstr "Có, ngắt kết nối"

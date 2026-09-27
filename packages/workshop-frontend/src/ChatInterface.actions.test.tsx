@@ -44,6 +44,7 @@ vi.mock('./AuthContext', () => {
   }
 })
 
+import { i18n } from '@gadgets/i18n'
 import { entry, makeOverseer, makeTestRoot } from './action-test-harness'
 import ChatInterface from './ChatInterface'
 import { INCOMPLETE_DESCRIPTION_COPY } from './components/IncompleteDescriptionNotice'
@@ -198,31 +199,31 @@ describe('restricted approval', () => {
   it('shows the notice and the full request on a pending card while restricted', async () => {
     await renderPendingCard(pendingLog(), { restricted: true })
 
-    expect(document.body.textContent).toContain(RESTRICTED_APPROVAL_COPY)
+    expect(document.body.textContent).toContain(i18n._(RESTRICTED_APPROVAL_COPY))
     expect(document.body.textContent).toContain('Regards, the workspace.')
     expect(clampedDescription()).toBeNull()
     // The controls precede the review text in DOM order, so the buttons name it explicitly.
     const described = approveDescribedBy()
-    expect(described).toContain(RESTRICTED_APPROVAL_COPY)
+    expect(described).toContain(i18n._(RESTRICTED_APPROVAL_COPY))
     expect(described).toContain('Regards, the workspace.')
-    expect(described).toContain(INCOMPLETE_DESCRIPTION_COPY)
+    expect(described).toContain(i18n._(INCOMPLETE_DESCRIPTION_COPY))
   })
 
   it('names only the restricted notice and request for a complete description', async () => {
     await renderPendingCard(pendingLog({ descriptionIsComplete: true }), { restricted: true })
 
     const described = approveDescribedBy()
-    expect(described).toContain(RESTRICTED_APPROVAL_COPY)
-    expect(described).not.toContain(INCOMPLETE_DESCRIPTION_COPY)
+    expect(described).toContain(i18n._(RESTRICTED_APPROVAL_COPY))
+    expect(described).not.toContain(i18n._(INCOMPLETE_DESCRIPTION_COPY))
   })
 
   it('shows the notice and the full request on a blocking card while restricted', async () => {
     await renderPendingCard(pendingLog({ awaitDecision: true }), { restricted: true })
 
-    expect(document.body.textContent).toContain(RESTRICTED_APPROVAL_COPY)
+    expect(document.body.textContent).toContain(i18n._(RESTRICTED_APPROVAL_COPY))
     expect(clampedDescription()).toBeNull()
     const described = approveDescribedBy()
-    expect(described).toContain(RESTRICTED_APPROVAL_COPY)
+    expect(described).toContain(i18n._(RESTRICTED_APPROVAL_COPY))
     expect(described).toContain('Regards, the workspace.')
   })
 
@@ -247,7 +248,7 @@ describe('restricted approval', () => {
   it('keeps the scrolling description and no notice when not restricted', async () => {
     await renderPendingCard(pendingLog())
 
-    expect(document.body.textContent).not.toContain(RESTRICTED_APPROVAL_COPY)
+    expect(document.body.textContent).not.toContain(i18n._(RESTRICTED_APPROVAL_COPY))
     expect(clampedDescription()).not.toBeNull()
     expect(approveDescribedBy()).toBeNull()
   })
@@ -257,20 +258,20 @@ describe('incomplete description notice', () => {
   it('flags a pending action whose description is not marked complete', async () => {
     await renderPendingCard(pendingLog())
 
-    expect(document.body.textContent).toContain(INCOMPLETE_DESCRIPTION_COPY)
+    expect(document.body.textContent).toContain(i18n._(INCOMPLETE_DESCRIPTION_COPY))
   })
 
   it('flags a blocking action whose description is not marked complete', async () => {
     await renderPendingCard(pendingLog({ awaitDecision: true }))
 
-    expect(document.body.textContent).toContain(INCOMPLETE_DESCRIPTION_COPY)
+    expect(document.body.textContent).toContain(i18n._(INCOMPLETE_DESCRIPTION_COPY))
   })
 
   it('shows no notice when the description is complete', async () => {
     await renderPendingCard(pendingLog({ descriptionIsComplete: true }))
 
     expect(document.body.textContent).toContain('Regards, the workspace.')
-    expect(document.body.textContent).not.toContain(INCOMPLETE_DESCRIPTION_COPY)
+    expect(document.body.textContent).not.toContain(i18n._(INCOMPLETE_DESCRIPTION_COPY))
   })
 })
 

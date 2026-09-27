@@ -1331,7 +1331,9 @@ export default function WorkpieceCodeInterface({
         style={{ height }}
       >
         <p className="m-0 text-sm text-kumo-danger">
-          <Trans>Failed to load this {workpieceNoun}&apos;s code.</Trans>
+          {workpieceNoun === 'worktree'
+            ? <Trans>Failed to load this worktree&apos;s code.</Trans>
+            : <Trans>Failed to load this gadget&apos;s code.</Trans>}
         </p>
         <WorkshopButton
           tone="secondary"
@@ -1498,8 +1500,8 @@ export default function WorkpieceCodeInterface({
               <span
                 className="flex shrink-0 items-center gap-1 rounded bg-kumo-tint px-1.5 py-0.5 font-mono text-[11px] leading-4 text-kumo-subtle"
                 title={summary.headCommit === summary.baseCommit
-                  ? `HEAD ${summary.headCommit} (no commits since the worktree was created)`
-                  : `HEAD ${summary.headCommit}\nCreated at ${summary.baseCommit}`}
+                  ? t`HEAD ${summary.headCommit} (no commits since the worktree was created)`
+                  : t`HEAD ${summary.headCommit}\nCreated at ${summary.baseCommit}`}
               >
                 <GitBranch size={11} aria-hidden="true" />
                 <span className="sr-only">HEAD </span>
@@ -1547,18 +1549,18 @@ export default function WorkpieceCodeInterface({
             ) : activeResolved === undefined || activeReviewLoading ? (
               activeFileError !== null ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 bg-kumo-base px-6 text-center">
-                  <p className="m-0 text-sm text-kumo-danger">Failed to load this file.</p>
+                  <p className="m-0 text-sm text-kumo-danger"><Trans>Failed to load this file.</Trans></p>
                   <WorkshopButton
                     tone="secondary"
                     className="!h-8"
                     onClick={() => setFileRetryToken(token => token + 1)}
                   >
-                    Try again
+                    <Trans>Try again</Trans>
                   </WorkshopButton>
                 </div>
               ) : (
                 <div className="flex h-full items-center justify-center bg-kumo-base text-kumo-subtle">
-                  Loading file...
+                  <Trans>Loading file...</Trans>
                 </div>
               )
             ) : activeFileUnreadable !== null ? (

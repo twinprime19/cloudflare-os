@@ -130,7 +130,7 @@ const CommitEmailRow = ({ initialCommitEmail }: { initialCommitEmail?: string })
   return (
     <div className="flex items-end gap-2 px-5 py-4">
       <div className="min-w-0 flex-1">
-        <FieldLabel>Commit email</FieldLabel>
+        <FieldLabel><Trans>Commit email</Trans></FieldLabel>
         {isEditing ? (
           <>
             <input
@@ -143,20 +143,20 @@ const CommitEmailRow = ({ initialCommitEmail }: { initialCommitEmail?: string })
                 if (e.key === 'Escape') setIsEditing(false)
               }}
               placeholder="name@example.com"
-              aria-label="Commit email"
+              aria-label={t`Commit email`}
               autoComplete="email"
               autoFocus
               className={`mt-1.5 ${INPUT} ${error ? 'border-kumo-danger focus:border-kumo-danger' : ''}`}
             />
             <p className={`mt-1 text-[12px] tracking-[-0.1px] ${error ? 'text-kumo-danger' : 'text-kumo-subtle'}`}>
-              {error ?? 'Leave blank to use an address based on your user ID.'}
+              {error ?? t`Leave blank to use an address based on your user ID.`}
             </p>
           </>
         ) : commitEmail ? (
           <p className="mt-1 truncate text-[14px] tracking-[-0.25px] text-kumo-default">{commitEmail}</p>
         ) : (
           <p className="mt-1 text-[14px] tracking-[-0.25px] text-kumo-inactive">
-            Not set — commits use an address based on your user ID
+            <Trans>Not set — commits use an address based on your user ID</Trans>
           </p>
         )}
       </div>
@@ -166,16 +166,16 @@ const CommitEmailRow = ({ initialCommitEmail }: { initialCommitEmail?: string })
             type="button"
             onClick={handleSave}
             disabled={saving}
-            aria-label="Save commit email"
+            aria-label={t`Save commit email`}
             className={PRIMARY_BTN}
           >
             <Check size={15} weight="bold" />
-            Save
+            <Trans>Save</Trans>
           </button>
           <button
             type="button"
             onClick={() => setIsEditing(false)}
-            aria-label="Cancel"
+            aria-label={t`Cancel`}
             className={ICON_BTN}
           >
             <X size={15} />
@@ -185,7 +185,7 @@ const CommitEmailRow = ({ initialCommitEmail }: { initialCommitEmail?: string })
         <button
           type="button"
           onClick={startEditing}
-          aria-label="Edit commit email"
+          aria-label={t`Edit commit email`}
           className={ICON_BTN}
         >
           <Pencil size={14} />

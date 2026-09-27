@@ -16,6 +16,12 @@ msgstr ""
 msgid "(Draft)"
 msgstr "(Draft)"
 
+msgid "(empty)"
+msgstr "(empty)"
+
+msgid "(none)"
+msgstr "(none)"
+
 #. placeholder {0}: downstreamDependents.length
 #. placeholder {1}: profile.name
 msgid "{0, plural, one {# other person loses} other {# other people lose}} access through {1}. Keep anyone?"
@@ -36,10 +42,6 @@ msgstr "{0, plural, one {# resource to add} other {# resources to add}}"
 #. placeholder {0}: row.hidden
 msgid "{0, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
 msgstr "{0, plural, one {Show # hidden deleted line} other {Show # hidden deleted lines}}"
-
-#. placeholder {0}: formatOf(gadget.output).noun
-msgid "{0} · Click to open"
-msgstr "{0} · Click to open"
 
 #. placeholder {0}: format.blueprintTitle
 #. placeholder {1}: format.output!.plural
@@ -98,9 +100,6 @@ msgstr "{badgeCount} pending"
 msgid "{DEFAULT_ACCENT_COLOR} (default)"
 msgstr "{DEFAULT_ACCENT_COLOR} (default)"
 
-msgid "{filename} is being edited"
-msgstr "{filename} is being edited"
-
 msgid "{initialRoom, plural, one {Only the first attachment was attached} other {Only the first # attachments were attached}}"
 msgstr "{initialRoom, plural, one {Only the first attachment was attached} other {Only the first # attachments were attached}}"
 
@@ -109,6 +108,12 @@ msgstr "{kept, plural, one {The message after the cut was kept in full.} other {
 
 msgid "{label}. Switch to {nextMode}."
 msgstr "{label}. Switch to {nextMode}."
+
+msgid "{noun} · Click to open"
+msgstr "{noun} · Click to open"
+
+msgid "{path} is being edited"
+msgstr "{path} is being edited"
 
 #. placeholder {0}: bindingEntries.length
 msgid "{readyCount} of {0} ready. Suggestions are used automatically when they match one of your connected accounts."
@@ -168,8 +173,8 @@ msgstr "Actions agents may take without asking. Everything else waits for your r
 msgid "Actions for {0}"
 msgstr "Actions for {0}"
 
-msgid "Actions for {filename}"
-msgstr "Actions for {filename}"
+msgid "Actions for {path}"
+msgstr "Actions for {path}"
 
 msgid "Activity"
 msgstr "Activity"
@@ -177,6 +182,9 @@ msgstr "Activity"
 #. placeholder {0}: pending.length
 msgid "Activity — {0, plural, one {# request needs} other {# requests need}} review"
 msgstr "Activity — {0, plural, one {# request needs} other {# requests need}} review"
+
+msgid "Add “{directoryQuery}” exactly"
+msgstr "Add “{directoryQuery}” exactly"
 
 #. placeholder {0}: vendorDescription.displayName
 msgid "Add {0}"
@@ -240,8 +248,9 @@ msgstr "Add your first provider"
 msgid "Added"
 msgstr "Added"
 
-msgid "Added {invitedName}"
-msgstr "Added {invitedName}"
+#. placeholder {0}: NAME_LIST.format(invitedNames)
+msgid "Added {0}"
+msgstr "Added {0}"
 
 msgid "Added in this chat; kept when you accept the chat's changes"
 msgstr "Added in this chat; kept when you accept the chat's changes"
@@ -474,6 +483,10 @@ msgstr "Change logo"
 msgid "Change password"
 msgstr "Change password"
 
+#. placeholder {0}: changes.length
+msgid "Changes ({0})"
+msgstr "Changes ({0})"
+
 msgid "Changing…"
 msgstr "Changing…"
 
@@ -531,9 +544,6 @@ msgstr "Clear default model"
 msgid "Click the avatar to upload a new photo"
 msgstr "Click the avatar to upload a new photo"
 
-msgid "Click to re-authenticate this account"
-msgstr "Click to re-authenticate this account"
-
 msgid "Click to set as default model"
 msgstr "Click to set as default model"
 
@@ -558,6 +568,9 @@ msgstr "Close preview"
 msgid "Close screenshot"
 msgstr "Close screenshot"
 
+msgid "Close worktree pane"
+msgstr "Close worktree pane"
+
 msgid "Cloudflare account"
 msgstr "Cloudflare account"
 
@@ -578,6 +591,9 @@ msgstr "Collapse sidebar"
 
 msgid "Command palette"
 msgstr "Command palette"
+
+msgid "Commit email"
+msgstr "Commit email"
 
 msgid "Compacting…"
 msgstr "Compacting…"
@@ -642,6 +658,9 @@ msgstr "Connected account"
 msgid "Connecting..."
 msgstr "Connecting..."
 
+msgid "Connecting…"
+msgstr "Connecting…"
+
 msgid "connection"
 msgstr "connection"
 
@@ -659,6 +678,9 @@ msgstr "Connection name"
 
 msgid "Connections"
 msgstr "Connections"
+
+msgid "Contents not shown"
+msgstr "Contents not shown"
 
 msgid "Context & Skills"
 msgstr "Context & Skills"
@@ -717,6 +739,9 @@ msgstr "Could not check for requests — reload the page to try again."
 msgid "Could not complete the connection"
 msgstr "Could not complete the connection"
 
+msgid "Could not download the source files"
+msgstr "Could not download the source files"
+
 msgid "Could not finish checking for requests — reload the page to try again."
 msgstr "Could not finish checking for requests — reload the page to try again."
 
@@ -754,8 +779,11 @@ msgstr "Couldn’t load skills."
 msgid "Create"
 msgstr "Create"
 
-msgid "Create a new file in this gadget."
-msgstr "Create a new file in this gadget."
+msgid "Create a new file in this gadget. Include a directory to place it there."
+msgstr "Create a new file in this gadget. Include a directory to place it there."
+
+msgid "Create a new file in this worktree. Include a directory to place it there."
+msgstr "Create a new file in this worktree. Include a directory to place it there."
 
 msgid "Create a share link"
 msgstr "Create a share link"
@@ -1035,6 +1063,9 @@ msgstr "Edit blueprint"
 msgid "Edit blueprint settings"
 msgstr "Edit blueprint settings"
 
+msgid "Edit commit email"
+msgstr "Edit commit email"
+
 msgid "Edit display name"
 msgstr "Edit display name"
 
@@ -1173,8 +1204,14 @@ msgstr "Failed to load blueprint."
 msgid "Failed to load this conversation's code changes. Try reloading the page."
 msgstr "Failed to load this conversation's code changes. Try reloading the page."
 
+msgid "Failed to load this file."
+msgstr "Failed to load this file."
+
 msgid "Failed to load this gadget's code."
 msgstr "Failed to load this gadget's code."
+
+msgid "Failed to load this worktree's code."
+msgstr "Failed to load this worktree's code."
 
 msgid "Failed to prepare the logo image."
 msgstr "Failed to prepare the logo image."
@@ -1288,6 +1325,17 @@ msgstr "Grant the access needed to verify this resource"
 msgid "Have AI review a Google Doc, summarize Slack threads, triage Jira tickets, and more."
 msgstr "Have AI review a Google Doc, summarize Slack threads, triage Jira tickets, and more."
 
+#. placeholder {0}: summary.headCommit
+#. placeholder {1}: summary.baseCommit
+msgid "HEAD {0}\n"
+"Created at {1}"
+msgstr "HEAD {0}\n"
+"Created at {1}"
+
+#. placeholder {0}: summary.headCommit
+msgid "HEAD {0} (no commits since the worktree was created)"
+msgstr "HEAD {0} (no commits since the worktree was created)"
+
 msgid "Help text for {displayTitle}"
 msgstr "Help text for {displayTitle}"
 
@@ -1353,11 +1401,14 @@ msgstr "Invalid image dimensions."
 msgid "Invite"
 msgstr "Invite"
 
-msgid "Invite “{directoryQuery}” exactly"
-msgstr "Invite “{directoryQuery}” exactly"
+msgid "Invite {inviteCount} people"
+msgstr "Invite {inviteCount} people"
 
 msgid "Invite people or share a link."
 msgstr "Invite people or share a link."
+
+msgid "Invite people."
+msgstr "Invite people."
 
 msgid "Inviting…"
 msgstr "Inviting…"
@@ -1394,6 +1445,9 @@ msgstr "Leave a field empty to use the name the blueprint declares. A bundled bl
 
 msgid "Leave a field empty to use the name the blueprint declares. Applies to outputs made from now on — existing ones keep the name they were made with."
 msgstr "Leave a field empty to use the name the blueprint declares. Applies to outputs made from now on — existing ones keep the name they were made with."
+
+msgid "Leave blank to use an address based on your user ID."
+msgstr "Leave blank to use an address based on your user ID."
 
 msgid "Let users find other accounts by name or email when sharing a workspace. When off, people can only be invited by their exact username or email. Applies on each user’s next connection."
 msgstr "Let users find other accounts by name or email when sharing a workspace. When off, people can only be invited by their exact username or email. Applies on each user’s next connection."
@@ -1464,6 +1518,9 @@ msgstr "Loading earlier messages…"
 msgid "Loading export formats"
 msgstr "Loading export formats"
 
+msgid "Loading file..."
+msgstr "Loading file..."
+
 msgid "Loading gatekeepers..."
 msgstr "Loading gatekeepers..."
 
@@ -1509,6 +1566,9 @@ msgstr "Logo source dimensions are too large."
 
 msgid "Logo source image is too large (max 5 MB)."
 msgstr "Logo source image is too large (max 5 MB)."
+
+msgid "Manage access."
+msgstr "Manage access."
 
 msgid "Manage the AI models everyone on this deployment can use."
 msgstr "Manage the AI models everyone on this deployment can use."
@@ -1583,7 +1643,7 @@ msgstr "Needs review"
 msgid "New {0}"
 msgstr "New {0}"
 
-#. placeholder {0}: formatOf(gadget.output).noun.toLowerCase()
+#. placeholder {0}: noun.toLowerCase()
 msgid "New {0} · Click to preview"
 msgstr "New {0} · Click to preview"
 
@@ -1734,6 +1794,9 @@ msgstr "Not connected"
 msgid "Not now"
 msgstr "Not now"
 
+msgid "Not set — commits use an address based on your user ID"
+msgstr "Not set — commits use an address based on your user ID"
+
 msgid "Nothing after it was kept."
 msgstr "Nothing after it was kept."
 
@@ -1748,6 +1811,9 @@ msgstr "Nothing is available to offer spawned agents here. Create the agent from
 
 msgid "Nothing is waiting on you."
 msgstr "Nothing is waiting on you."
+
+msgid "Nothing to download"
+msgstr "Nothing to download"
 
 msgid "Nothing to review"
 msgstr "Nothing to review"
@@ -1766,6 +1832,9 @@ msgstr "Offer as a standard format"
 
 msgid "Oldest first"
 msgstr "Oldest first"
+
+msgid "Omitted: description limit reached"
+msgstr "Omitted: description limit reached"
 
 msgid "On for everyone automatically"
 msgstr "On for everyone automatically"
@@ -1915,6 +1984,9 @@ msgstr "Publish a workspace as a blueprint, or add one from Explore."
 msgid "Publish this gadget as a reusable template."
 msgstr "Publish this gadget as a reusable template."
 
+msgid "Re-authenticate this account"
+msgstr "Re-authenticate this account"
+
 msgid "Re-authenticating…"
 msgstr "Re-authenticating…"
 
@@ -1968,6 +2040,7 @@ msgid "Remove “{0}”?"
 msgstr "Remove “{0}”?"
 
 #. placeholder {0}: profile.name
+#. placeholder {0}: recipientLabel(recipient)
 msgid "Remove {0}"
 msgstr "Remove {0}"
 
@@ -1995,8 +2068,8 @@ msgstr "Rename"
 msgid "Rename {0}"
 msgstr "Rename {0}"
 
-msgid "Rename {filename}"
-msgstr "Rename {filename}"
+msgid "Rename {path}"
+msgstr "Rename {path}"
 
 msgid "Rename chat"
 msgstr "Rename chat"
@@ -2019,6 +2092,9 @@ msgstr "Renames the output for everyone with access to “{0}”."
 
 msgid "Replace all placeholders in the URL before selecting an account"
 msgstr "Replace all placeholders in the URL before selecting an account"
+
+msgid "Requesting access…"
+msgstr "Requesting access…"
 
 msgid "Requests that need your approval show up here and in the workspace header."
 msgstr "Requests that need your approval show up here and in the workspace header."
@@ -2053,8 +2129,8 @@ msgstr "Retry publish"
 msgid "Retry the last action."
 msgstr "Retry the last action."
 
-msgid "Return to the last accepted version. Any gadgets created by these changes will be permanently deleted. Pending changes can't be restored."
-msgstr "Return to the last accepted version. Any gadgets created by these changes will be permanently deleted. Pending changes can't be restored."
+msgid "Return to the last accepted version. Any gadgets or worktrees created by these changes will be permanently deleted. Pending changes can't be restored."
+msgstr "Return to the last accepted version. Any gadgets or worktrees created by these changes will be permanently deleted. Pending changes can't be restored."
 
 #. placeholder {0}: ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 msgid "Returned to the gadget state before the prompt sent at {0}."
@@ -2078,6 +2154,9 @@ msgstr "Save"
 
 msgid "Save chat title"
 msgstr "Save chat title"
+
+msgid "Save commit email"
+msgstr "Save commit email"
 
 msgid "Save connection"
 msgstr "Save connection"
@@ -2249,8 +2328,16 @@ msgstr "Show password"
 msgid "Show thinking"
 msgstr "Show thinking"
 
+#. placeholder {0}: field.truncated.shownBytes
+#. placeholder {1}: field.truncated.totalBytes
+msgid "Showing {0} of {1} bytes"
+msgstr "Showing {0} of {1} bytes"
+
 msgid "Shown centered in the top navigation bar. Markdown is supported, so you can include links. Keep it short — it renders on a single line. Leave empty to show nothing. Applies on each user’s next connection."
 msgstr "Shown centered in the top navigation bar. Markdown is supported, so you can include links. Keep it short — it renders on a single line. Leave empty to show nothing. Applies on each user’s next connection."
+
+msgid "Shown escaped: contains invisible characters"
+msgstr "Shown escaped: contains invisible characters"
 
 msgid "Shown in the app chrome, sign-in screens, and browser tab. Images are scaled without cropping and converted to a static PNG. Square images work best. Applies on each user’s next connection."
 msgstr "Shown in the app chrome, sign-in screens, and browser tab. Images are scaled without cropping and converted to a static PNG. Square images work best. Applies on each user’s next connection."
@@ -2313,6 +2400,9 @@ msgstr "Something went wrong loading your providers."
 
 msgid "Something went wrong loading your workspaces."
 msgstr "Something went wrong loading your workspaces."
+
+msgid "Source is still loading — try again in a moment"
+msgstr "Source is still loading — try again in a moment"
 
 msgid "Split diff"
 msgstr "Split diff"
@@ -2445,6 +2535,9 @@ msgstr "This connection no longer offers this action; the rule still applies."
 msgid "This conversation has pending changes"
 msgstr "This conversation has pending changes"
 
+msgid "This description is incomplete: part of what this action will send isn't shown."
+msgstr "This description is incomplete: part of what this action will send isn't shown."
+
 msgid "This file can’t be previewed here."
 msgstr "This file can’t be previewed here."
 
@@ -2476,14 +2569,23 @@ msgstr "This removes <0>{0}</0>. You can't undo this."
 msgid "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
 msgstr "This removes <0>{deletingFile}</0> from the gadget. You can't undo this."
 
+msgid "This removes <0>{deletingFile}</0> from the worktree. You can't undo this."
+msgstr "This removes <0>{deletingFile}</0> from the worktree. You can't undo this."
+
 msgid "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
 msgstr "This update can't be discarded: it brought in changes already accepted elsewhere. Edit the files instead."
 
 msgid "This workspace has no gadgets yet."
 msgstr "This workspace has no gadgets yet."
 
+msgid "This workspace has read data from a connection that doesn’t allow share links, so only the owner can add people. People the owner invites are asked to verify their own access to the connections it uses at their access level — some may be unable to open it. Anything the workspace has already saved is visible to everyone who can."
+msgstr "This workspace has read data from a connection that doesn’t allow share links, so only the owner can add people. People the owner invites are asked to verify their own access to the connections it uses at their access level — some may be unable to open it. Anything the workspace has already saved is visible to everyone who can."
+
 msgid "This workspace has read sensitive data. People you invite are asked to verify their own access to the connections it uses at their access level — some may be unable to open it. Anything the workspace has already saved is visible to everyone who can."
 msgstr "This workspace has read sensitive data. People you invite are asked to verify their own access to the connections it uses at their access level — some may be unable to open it. Anything the workspace has already saved is visible to everyone who can."
+
+msgid "This workspace has read sensitive data. Read the full request below before approving — you are responsible for making sure it contains none of that data."
+msgstr "This workspace has read sensitive data. Read the full request below before approving — you are responsible for making sure it contains none of that data."
 
 msgid "Throw away these draft edits."
 msgstr "Throw away these draft edits."
@@ -2674,14 +2776,8 @@ msgstr "Wait for pending changes to finish discarding."
 msgid "Wait for the agent to finish before accepting changes."
 msgstr "Wait for the agent to finish before accepting changes."
 
-msgid "Waiting for access…"
-msgstr "Waiting for access…"
-
 msgid "Waiting for agent…"
 msgstr "Waiting for agent…"
-
-msgid "Waiting for connection…"
-msgstr "Waiting for connection…"
 
 msgid "Waiting for server…"
 msgstr "Waiting for server…"
@@ -2689,8 +2785,8 @@ msgstr "Waiting for server…"
 msgid "Waits for your approval"
 msgstr "Waits for your approval"
 
-msgid "We couldn’t confirm your access to everything this workspace has read. Re-authenticate the account below, or choose a different one, then try again."
-msgstr "We couldn’t confirm your access to everything this workspace has read. Re-authenticate the account below, or choose a different one, then try again."
+msgid "We couldn’t confirm your access to everything this workspace has read. Depending on the reason below, re-authenticate an expired account, choose a different one, or ask the workspace owner to share what your account can’t access."
+msgstr "We couldn’t confirm your access to everything this workspace has read. Depending on the reason below, re-authenticate an expired account, choose a different one, or ask the workspace owner to share what your account can’t access."
 
 msgid "We couldn't find anything matching your search."
 msgstr "We couldn't find anything matching your search."
@@ -2716,6 +2812,9 @@ msgstr "When off, existing users can still log in but no new accounts can be cre
 msgid "When the gadget builds one, it will appear here."
 msgstr "When the gadget builds one, it will appear here."
 
+msgid "Won't apply: this workspace has read sensitive data, so actions always require manual approval."
+msgstr "Won't apply: this workspace has read sensitive data, so actions always require manual approval."
+
 msgid "Working"
 msgstr "Working"
 
@@ -2728,6 +2827,12 @@ msgstr "Workspace active {0}"
 
 msgid "Workspaces"
 msgstr "Workspaces"
+
+msgid "Worktree · Click to open its code"
+msgstr "Worktree · Click to open its code"
+
+msgid "Worktrees"
+msgstr "Worktrees"
 
 msgid "Yes, disconnect"
 msgstr "Yes, disconnect"

@@ -1,12 +1,14 @@
 import { ShieldWarning } from '@phosphor-icons/react'
+import { msg } from '@lingui/core/macro'
+import { i18n } from '@gadgets/i18n'
 
 /**
  * What an approver is told before approving an action in a workspace that has read restricted
- * data: the kernel does not check the action for that data, the approver does.
+ * data: the kernel does not check the action for that data, the approver does. A message
+ * descriptor, not a resolved string: module scope evaluates before a locale is active, so the
+ * render site resolves it with `i18n._()` against the locale active at render time.
  */
-export const RESTRICTED_APPROVAL_COPY =
-  'This workspace has read sensitive data. Read the full request below before approving — you ' +
-  'are responsible for making sure it contains none of that data.'
+export const RESTRICTED_APPROVAL_COPY = msg`This workspace has read sensitive data. Read the full request below before approving — you are responsible for making sure it contains none of that data.`
 
 /**
  * Shown above a pending action's description on every approve surface (Activity review pane,
@@ -24,7 +26,7 @@ export function RestrictedApprovalNotice({ id, className = '' }: { id?: string, 
         <ShieldWarning size={18} weight="duotone" />
       </div>
       <p className="m-0 text-[12px] leading-[18px] tracking-[-0.1px] text-kumo-default">
-        {RESTRICTED_APPROVAL_COPY}
+        {i18n._(RESTRICTED_APPROVAL_COPY)}
       </p>
     </div>
   )

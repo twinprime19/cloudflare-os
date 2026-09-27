@@ -1,5 +1,7 @@
 import type { ActionField } from '@gadgets/workshop-shared/gatekeeper'
 import type { ActionLogEntry } from '@gadgets/workshop-shared/api'
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { formatAttachmentSize } from '../features/chat/attachmentFormatting'
 
 /** The typed values an entry's gatekeeper attached to its description; hooks carry none. */
@@ -58,11 +60,11 @@ const FieldValue = ({ field, uncapped }: { field: ActionField, uncapped?: boolea
   switch (field.kind) {
     case 'inline':
       return field.value === ''
-        ? <Placeholder>(empty)</Placeholder>
+        ? <Placeholder>{t`(empty)`}</Placeholder>
         : <code className={codeClass}>{field.value}</code>
     case 'text':
     case 'json': {
-      if (field.value === '') return <Placeholder>(empty)</Placeholder>
+      if (field.value === '') return <Placeholder>{t`(empty)`}</Placeholder>
       const syntax = field.kind === 'json' ? 'JSON' : field.syntax && SYNTAX_LABELS[field.syntax]
       return (
         <>
@@ -78,7 +80,7 @@ const FieldValue = ({ field, uncapped }: { field: ActionField, uncapped?: boolea
       )
     }
     case 'list':
-      if (field.items.length === 0) return <Placeholder>(none)</Placeholder>
+      if (field.items.length === 0) return <Placeholder>{t`(none)`}</Placeholder>
       return (
         <ul className="m-0 flex list-none flex-col items-start gap-1 p-0">
           {field.items.map((item, index) => (
@@ -96,13 +98,13 @@ const FieldValue = ({ field, uncapped }: { field: ActionField, uncapped?: boolea
             <ExactName text={field.mediaType} /> · {formatSize(field.size)}
           </p>
           {(UNDISPLAYABLE.test(field.name) || UNDISPLAYABLE.test(field.mediaType)) && (
-            <p className={`m-0 mt-0.5 ${captionClass}`}>Shown escaped: contains invisible characters</p>
+            <p className={`m-0 mt-0.5 ${captionClass}`}><Trans>Shown escaped: contains invisible characters</Trans></p>
           )}
           {field.sha256 && (
             <p className={`m-0 mt-0.5 break-all font-mono ${captionClass}`}>SHA-256 {field.sha256}</p>
           )}
           {field.origin === 'agent' && (
-            <p className="m-0 mt-1 text-[12px] leading-4 text-kumo-warning">Contents not shown</p>
+            <p className="m-0 mt-1 text-[12px] leading-4 text-kumo-warning"><Trans>Contents not shown</Trans></p>
           )}
         </div>
       )
@@ -126,13 +128,13 @@ export const ActionFields = ({ fields, uncapped, className = '' }: {
           <dt className="mb-1 text-[12px] font-semibold leading-4 text-kumo-default">{field.label}</dt>
           <dd className="m-0 min-w-0">
             {field.truncated?.shownBytes === 0 ? (
-              <Placeholder>Omitted: description limit reached</Placeholder>
+              <Placeholder>{t`Omitted: description limit reached`}</Placeholder>
             ) : (
               <>
                 <FieldValue field={field} uncapped={uncapped} />
                 {field.truncated && (
                   <p className={`m-0 mt-1 ${captionClass}`}>
-                    Showing {field.truncated.shownBytes} of {field.truncated.totalBytes} bytes
+                    <Trans>Showing {field.truncated.shownBytes} of {field.truncated.totalBytes} bytes</Trans>
                   </p>
                 )}
               </>

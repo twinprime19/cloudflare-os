@@ -12,6 +12,7 @@ vi.mock('@cloudflare/kumo', async (importOriginal) => {
   return { ...actual, Popover: parts, useKumoToastManager: () => toasts }
 })
 
+import { i18n } from '@gadgets/i18n'
 import { entry, flushFrames, makeOverseer, makeTestRoot } from './action-test-harness'
 import ActivityNotifications from './ActivityNotifications'
 import { INCOMPLETE_DESCRIPTION_COPY } from './components/IncompleteDescriptionNotice'
@@ -70,35 +71,35 @@ function approveDescribedBy(): string | null {
 describe('ActivityNotifications', () => {
   it('shows the review notice and the untruncated request while restricted', async () => {
     const description = await renderPending(true)
-    expect(document.body.textContent).toContain(RESTRICTED_APPROVAL_COPY)
+    expect(document.body.textContent).toContain(i18n._(RESTRICTED_APPROVAL_COPY))
     expect(description.classList.contains('line-clamp-2')).toBe(false)
     // The controls precede the review text in DOM order, so the buttons name it explicitly.
     const described = approveDescribedBy()
-    expect(described).toContain(RESTRICTED_APPROVAL_COPY)
+    expect(described).toContain(i18n._(RESTRICTED_APPROVAL_COPY))
     expect(described).toContain('Regards, the workspace.')
-    expect(described).toContain(INCOMPLETE_DESCRIPTION_COPY)
+    expect(described).toContain(i18n._(INCOMPLETE_DESCRIPTION_COPY))
   })
 
   it('names only the restricted notice and request for a complete description', async () => {
     await renderPending(true, true)
-    expect(approveDescribedBy()).not.toContain(INCOMPLETE_DESCRIPTION_COPY)
+    expect(approveDescribedBy()).not.toContain(i18n._(INCOMPLETE_DESCRIPTION_COPY))
   })
 
   it('clamps the request and shows no notice when not restricted', async () => {
     const description = await renderPending()
-    expect(document.body.textContent).not.toContain(RESTRICTED_APPROVAL_COPY)
+    expect(document.body.textContent).not.toContain(i18n._(RESTRICTED_APPROVAL_COPY))
     expect(description.classList.contains('line-clamp-2')).toBe(true)
     expect(approveDescribedBy()).toBeNull()
   })
 
   it('flags a request whose description is not marked complete', async () => {
     await renderPending()
-    expect(document.body.textContent).toContain(INCOMPLETE_DESCRIPTION_COPY)
+    expect(document.body.textContent).toContain(i18n._(INCOMPLETE_DESCRIPTION_COPY))
   })
 
   it('shows no incomplete notice when the description is complete', async () => {
     await renderPending(false, true)
-    expect(document.body.textContent).not.toContain(INCOMPLETE_DESCRIPTION_COPY)
+    expect(document.body.textContent).not.toContain(i18n._(INCOMPLETE_DESCRIPTION_COPY))
   })
 })
 

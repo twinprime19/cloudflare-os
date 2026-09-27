@@ -1,12 +1,15 @@
 import { Warning } from '@phosphor-icons/react'
 import type { ActionLogEntry } from '@gadgets/workshop-shared/api'
+import { msg } from '@lingui/core/macro'
+import { i18n } from '@gadgets/i18n'
 
 /**
  * What an approver is told when the gatekeeper did not mark an action's description complete:
- * the text is a summary, truncated, or leaves out bytes that cannot be shown.
+ * the text is a summary, truncated, or leaves out bytes that cannot be shown. A message
+ * descriptor, not a resolved string: module scope evaluates before a locale is active, so the
+ * render site resolves it with `i18n._()` against the locale active at render time.
  */
-export const INCOMPLETE_DESCRIPTION_COPY =
-  "This description is incomplete: part of what this action will send isn't shown."
+export const INCOMPLETE_DESCRIPTION_COPY = msg`This description is incomplete: part of what this action will send isn't shown.`
 
 /**
  * True when a pending entry should carry the notice: an action its gatekeeper did not mark
@@ -32,7 +35,7 @@ export function IncompleteDescriptionNotice({ id, className = '' }: { id?: strin
         <Warning size={18} weight="duotone" />
       </div>
       <p className="m-0 text-[12px] leading-[18px] tracking-[-0.1px] text-kumo-default">
-        {INCOMPLETE_DESCRIPTION_COPY}
+        {i18n._(INCOMPLETE_DESCRIPTION_COPY)}
       </p>
     </div>
   )
