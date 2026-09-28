@@ -4,6 +4,7 @@ import { Sparkle } from '@phosphor-icons/react'
 import { RpcStub, RpcTarget, newMessagePortRpcSession } from 'capnweb'
 import { GadgetClient, ConsoleLogEvent } from '@gadgets/workshop-shared/api'
 import { waitWhilePaused } from './connectionPause'
+import { noteWorkspaceActivity } from './useWorkspaceIdle'
 
 // We want to inject Cap'n Web into the Gadget. Luckily it has no dependencies, so we can just take
 // the whole module and embed it. We can import the module using ?raw to get a string of the
@@ -71,6 +72,20 @@ window.addEventListener('keydown', (event) => {
   }
 }, true);
 
+// Report real input to the parent so its idle timer does not pause the connection under a user who
+// is working inside the gadget. Throttled: the parent only compares timestamps every 30 seconds.
+{
+  let lastActivitySent = 0;
+  for (let type of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
+    window.addEventListener(type, () => {
+      let now = Date.now();
+      if (now - lastActivitySent < 10000) return;
+      lastActivitySent = now;
+      window.parent.postMessage({ type: 'activity' }, '*');
+    }, { capture: true, passive: true });
+  }
+}
+
 window.addEventListener('click', (event) => {
   if (!(event.target instanceof Element)) {
     return;
@@ -128,6 +143,9 @@ interface GadgetUIProps {
   // Fires when the user presses Escape while the gadget iframe has focus. Sandboxed iframes
   // capture keydown events, so we forward Escape explicitly from inside the iframe.
   onIframeEscape?: () => void
+  // Reports whether the "No gadget UI yet" placeholder is showing: true only once a load has
+  // confirmed the gadget has no UI, so a spinner or a not-yet-loaded view never counts.
+  onNoUiChange?: (showsNoUi: boolean) => void
 }
 
 // How long to wait for a UI bundle before offering a retry instead of a spinner. Not a latency
@@ -139,7 +157,7 @@ export default function GadgetUI(props: GadgetUIProps) {
   return <GadgetUISession key={props.chatId} {...props} />
 }
 
-function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chatId, onConsoleLog, onIframeEscape }: GadgetUIProps) {
+function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chatId, onConsoleLog, onIframeEscape, onNoUiChange }: GadgetUIProps) {
   const [sandboxedHtml, setSandboxedHtml] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -169,6 +187,17 @@ function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chat
   const onConsoleLogRef = useRef(onConsoleLog)
   onIframeEscapeRef.current = onIframeEscape
   onConsoleLogRef.current = onConsoleLog
+  const onNoUiChangeRef = useRef(onNoUiChange)
+  onNoUiChangeRef.current = onNoUiChange
+
+  // A code change invalidates the view without clearing `hasLoaded`, so the previous load's "no UI"
+  // result must not keep counting while the replacement load is pending.
+  const showsNoUi = hasLoaded && !isInvalidated && !loading && !error && !sandboxedHtml
+  useEffect(() => {
+    if (!showsNoUi) return
+    onNoUiChangeRef.current?.(true)
+    return () => onNoUiChangeRef.current?.(false)
+  }, [showsNoUi])
 
   const suspendGadgetCalls = () => {
     if (!pendingGadgetStubRef.current) {
@@ -395,6 +424,10 @@ function GadgetUISession({ gadget, height, reloadTrigger, isVisible = true, chat
         })
       } else if (event.data?.type === 'escape') {
         onIframeEscapeRef.current?.()
+      } else if (event.data?.type === 'activity') {
+        // Input inside the sandboxed frame never reaches the parent's listeners; without this the
+        // idle timer would pause the connection under an active user.
+        noteWorkspaceActivity()
       }
     }
 

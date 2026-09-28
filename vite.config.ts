@@ -17,7 +17,7 @@ export default defineConfig({
       suspicious: 'error',
     },
     plugins: ['typescript', 'unicorn', 'oxc', 'import'],
-    jsPlugins: ['./scripts/oxlint-plugin.mjs'],
+    jsPlugins: ['./scripts/oxlint-plugin.ts'],
     options: {
       // Note: type-aware linting is intentionally not enabled yet.
       // Enabling them is its own change: triage the first run's findings, decide a `no-floating-promises` policy (RPC promise
@@ -92,7 +92,7 @@ export default defineConfig({
       '**/generated/**',
       // Bundled blueprint files are user-authored gadget source extracted verbatim for review. They
       // do not follow the host repository's lint rules and must round-trip without code changes.
-      '**/format-blueprints/*/files/**',
+      '**/bundled-blueprints/blueprints/*/files/**',
       '**/*.gen.ts',
       '**/node_modules/**',
       '**/.wrangler/**',
@@ -140,7 +140,7 @@ export default defineConfig({
         },
       },
       {
-        files: ['scripts/**/*.ts', 'scripts/**/*.mjs'],
+        files: ['scripts/**/*.ts'],
         env: {
           node: true,
           es2024: true,

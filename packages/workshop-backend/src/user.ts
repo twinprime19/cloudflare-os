@@ -1,6 +1,6 @@
 import { RpcStub } from "capnweb";
-import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult, AUTH_ERROR_CODES, createAuthError } from '@gadgets/workshop-shared/api';
-import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
+import { GadgetMetadataWithTimestamps, AiChatAuthorInfo, AiModelConfig, SUGGESTED_MODELS, CollaboratorRole, ConnectedAccountsSubscriber, ConnectedAccountsFilter, GatekeeperVendorFilter, GadgetMetadata, BlueprintMetadata, BlueprintLibrarySummary, BlueprintSource, BlueprintUserSummary, BLUEPRINT_SCREENSHOT_R2_PREFIX, GatekeeperVendorInfo, BlueprintOutput, OutputSummary, WorkpieceId, ListOutputsResult, AUTH_ERROR_CODES, createAuthError, ConnectFlowStart, validateCommitEmail } from '@gadgets/workshop-shared/api';
+import { Gatekeeper, GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor, AccountDescription, VendorDescription, GatekeeperConnectCallback, ConnectHandoff, SupportedResource, ResourceConfiguratorFrame, AppUiContext, GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
 import { shouldAutoProvisionAccount, ambientGatekeeperMode } from "./provisioning-policy.js";
 import { CloudflareGatekeeperUser } from "@gadgets/workshop-shared/cloudflare-gatekeeper";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
@@ -12,6 +12,7 @@ import type { AdminSettings } from "./admin-settings.js";
 import { isReservedBlueprintKey, readBlueprintKvRecord } from "./blueprint-archive.js";
 import { filterEnabledResources, isResourceDisabled, readAdminConfig } from "./admin-config.js";
 import { buildGatekeeperVendorMap } from "./auth/auth-vendors.js";
+import { CONNECT_FLOW_LIFETIME_MS, handoffTargetOrigin, hashPresentedSecret, newSecretToken, PENDING_HANDOFF_LIFETIME_MS } from "./connect-handoff.js";
 
 const logger = createWorkshopLogger("workshop.user");
 
@@ -30,6 +31,31 @@ type ConnectedAccountRecord = {
   // (no OAuth flow), rather than the user connecting it. Such accounts are protected from manual
   // disconnect, since deleting one permanently destroys the user's data in that gatekeeper.
   autoProvisioned?: boolean;
+};
+
+// A connect ("connect") or reconnect/ensureResources ("restore") flow that a gatekeeper has finished
+// but the user's browser has not yet confirmed (see connect-handoff.ts). Keyed by the SHA-256 of the
+// ticket; single-use, and swept by alarm() once `expiresAt` passes.
+type PendingHandoffRecord = {
+  ticketHash: string;
+  kind: "connect" | "restore";
+  accountId: number;
+  expiresAt: Date;
+  credentialExpiresAt?: Date;
+  // The staged account, present for `kind: "connect"` only; becomes the ConnectedAccountRecord.
+  connect?: Pick<ConnectedAccountRecord, "account" | "description" | "vendorId">;
+  // The gatekeeper's id for the staged credentials, present for `kind: "restore"` only; passed back
+  // in commitReconnect() so this ticket can activate no other stage's credentials.
+  stageId?: string;
+};
+
+// A started connect / reconnect / ensure-resources flow, keyed by the hash of the nonce the Workshop
+// tab gave the popup (see ConnectFlowStart); completeConnectHandoff requires the ticket's record and
+// the nonce's flow to name the same account. Single-use, and swept by alarm() once `expiresAt` passes.
+type PendingConnectFlow = {
+  nonceHash: string;
+  accountId: number;
+  expiresAt: Date;
 };
 
 /**
@@ -191,6 +217,12 @@ function makeUserStorage(storage: DurableObjectStorage) {
       sessions: collection<LoginSessionRecord>()({
         primaryKey: "tokenId",
       }),
+      pendingHandoffs: collection<PendingHandoffRecord>()({
+        primaryKey: "ticketHash",
+      }),
+      pendingConnectFlows: collection<PendingConnectFlow>()({
+        primaryKey: "nonceHash",
+      }),
       blueprints: collection<BlueprintUserRecord>()({
         primaryKey: "id",
       }),
@@ -243,6 +275,14 @@ function makeUserStorage(storage: DurableObjectStorage) {
       //
       // null = password disabled (e.g. because some other auth mechanism is used)
       passwordHashHash: <Uint8Array | null>null,
+      // Current profile revision, bumped every time the user updates their
+      // public-facing profile. Currently this is only bumped when the user
+      // changes their display name.
+      profileRev: 0,
+      // Profile revision the deployment-wide user directory last acknowledged
+      // (-1 = never, which also lazily backfills users created before the
+      // directory existed). See #syncDirectory().
+      directoryRev: -1,
     }
   });
 }
@@ -323,6 +363,29 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     this.vendors = buildGatekeeperVendorMap(env);
   }
 
+  // Mirrors the profile into the deployment-wide user directory. Best-effort
+  // and does not block the caller. The `syncUser` call opens this DO's input
+  // gate, so a rename can start a second sync while one is in flight, and the
+  // two can reach the directory in either order. Each sync carries its
+  // `profileRev` and the directory keeps the highest, so no ordering is needed
+  // here. The revision counter only increases, and a failed sync leaves it
+  // behind so the next authentication retries.
+  #syncDirectory(): void {
+    const rev = this.storage.profileRev.get();
+    if (rev === this.storage.directoryRev.get()) return;
+    const profile = this.storage.profile.get();
+    this.ctx.exports.UserDirectoryDurableObject.getByName("")
+        .syncUser({ id: profile.id, name: profile.name }, rev)
+        .then(() => {
+          if (rev > this.storage.directoryRev.get()) this.storage.directoryRev.put(rev);
+        }, (error: unknown) => {
+          logger.warn("failed to sync user directory record", {
+            event: "user.directory.sync.failed",
+            error,
+          });
+        });
+  }
+
   async authenticate(token: string): Promise<void> {
     let tokenBytes: Uint8Array;
     try {
@@ -338,6 +401,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     if (!session) {
       throw createAuthError(AUTH_ERROR_CODES.invalidSessionToken);
     }
+    this.#syncDirectory();
   }
 
   /**
@@ -346,7 +410,8 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
    * existing users can still sign in.
    */
   async authenticateFromCfAccess(email: string, allowCreate: boolean): Promise<boolean> {
-    if (!this.storage.created.get()) {
+    const isNew = !this.storage.created.get();
+    if (isNew) {
       if (!allowCreate) {
         throw new Error("New sign-ups are currently disabled on this deployment.");
       }
@@ -357,20 +422,15 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         name: email.split("@")[0],
         id: email,
       });
-      return true;
     }
-
-    return false;
+    this.#syncDirectory();
+    return isNew;
   }
 
   async #newSessionToken(): Promise<string> {
-    let sessionToken = new Uint8Array(32);
-    crypto.getRandomValues(sessionToken);
-
-    let tokenId = new Uint8Array(await crypto.subtle.digest('SHA-256', sessionToken)).toHex();
+    let { secret, hash: tokenId } = await newSecretToken();
     this.storage.sessions.put({ tokenId, created: new Date() });
-
-    return sessionToken.toBase64();
+    return secret.toBase64();
   }
 
   async login(passwordHash: Uint8Array): Promise<string | null> {
@@ -561,6 +621,19 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
   async setOwnDisplayName(name: string): Promise<void> {
     let profile = this.storage.profile.get();
     profile.name = name;
+    this.storage.profile.put(profile);
+    this.storage.profileRev.put(this.storage.profileRev.get() + 1);
+    this.#syncDirectory();
+  }
+
+  async setOwnCommitEmail(email: string | null): Promise<void> {
+    let profile = this.storage.profile.get();
+    if (email === null) {
+      delete profile.commitEmail;
+    } else {
+      validateCommitEmail(email);
+      profile.commitEmail = email;
+    }
     this.storage.profile.put(profile);
   }
 
@@ -1218,7 +1291,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     return (await Promise.all(promises)).filter(value => value !== null);
   }
 
-  async connectAccount(vendorId: string, resourceUrlPatterns?: string[]): Promise<{url: string}> {
+  async connectAccount(vendorId: string, resourceUrlPatterns?: string[]): Promise<ConnectFlowStart> {
     let vendor = this.vendors.get(vendorId);
     if (!vendor) {
       throw new Error("No such service: " + vendorId);
@@ -1239,10 +1312,11 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     let callback = this.ctx.exports.GatekeeperConnectCallbackImpl({props});
 
     let {url} = await vendor.connectAccount(callback, {resourceUrlPatterns});
+    let nonce = await this.openConnectFlow(accountId);
     logger.info("account connect started", {
       event: "account.connect.started", vendorId, accountId,
     });
-    return {url};
+    return { url, nonce };
   }
 
   // Iterate every connected-account record, skipping any that fails to load. A record can fail to
@@ -1447,10 +1521,13 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     return (record.account as unknown as SingletonAccountStub).startAppUi(context);
   }
 
-  async ensureAccountResources(accountId: number, resourceUrlPatterns: string[]): Promise<{url?: string}> {
+  async ensureAccountResources(accountId: number, resourceUrlPatterns: string[])
+      : Promise<ConnectFlowStart | null> {
     let record = this.storage.connectedAccounts.get(accountId);
     if (!record) throw new Error("No such account.");
-    return record.account.ensureResources(resourceUrlPatterns);
+    let { url } = await record.account.ensureResources(resourceUrlPatterns);
+    if (url === undefined) return null;
+    return { url, nonce: await this.openConnectFlow(accountId) };
   }
 
   async subscribeConnectedAccounts(
@@ -1617,10 +1694,11 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     }
   }
 
-  async reconnectAccount(accountId: number): Promise<{url: string}> {
+  async reconnectAccount(accountId: number): Promise<ConnectFlowStart> {
     let record = this.storage.connectedAccounts.get(accountId);
     if (!record) throw new Error("No such account.");
-    return record.account.reconnect();
+    let { url } = await record.account.reconnect();
+    return { url, nonce: await this.openConnectFlow(accountId) };
   }
 
   async startResourceConfigurator(
@@ -1637,9 +1715,11 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
    * links the account for AI Gateway billing: the login callback resolves this user by verified
    * email, then calls here to store the resulting grant. That grant covers billing only: sign-in
    * requests no gadget-facing resources, so any later resource access is authorized separately.
+   * Returns the id of the connected account the grant now backs, so the login callback — which the
+   * gatekeeper keeps for that account's lifetime — can find it again.
    */
   async linkConnectedAccountFromLogin(
-      account: Fetcher<GatekeeperUser>, vendorId: string, expiresAt?: Date): Promise<void> {
+      account: Fetcher<GatekeeperUser>, vendorId: string, expiresAt?: Date): Promise<number> {
     let description = await account.describe();
     let uniqueName = description.uniqueName;
 
@@ -1666,7 +1746,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         existing.credentialExpiresAt = expiresAt;
         existing.credentialsExpired = false;
         this.storage.connectedAccounts.put(existing);
-        return;
+        return existing.id;
       }
     }
 
@@ -1679,6 +1759,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       vendorId,
       credentialExpiresAt: expiresAt,
     });
+    return id;
   }
 
   // Find an existing connected account for the given vendor + identity (uniqueName), excluding
@@ -1735,11 +1816,198 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     let record = this.storage.connectedAccounts.get(accountId);
     if (!record) throw new Error("No such account.");
 
-    // Re-fetch description since the user may have re-authed with different info.
-    record.description = await record.account.describe();
     record.credentialsExpired = false;
     record.credentialExpiresAt = expiresAt;
     this.storage.connectedAccounts.put(record);
+
+    // Re-fetch the description since the user may have re-authed with different info. Best-effort:
+    // the credentials are live either way, and a record still showing as expired over a failed
+    // describe() would send the user back through a reconnect that changes nothing.
+    try {
+      record.description = await record.account.describe();
+      this.storage.connectedAccounts.put(record);
+    } catch (err) {
+      logger.warn("failed to refresh the description of a restored account", {
+        event: "account.describe.refresh.failed", vendorId: record.vendorId, accountId, error: err,
+      });
+    }
+  }
+
+  // --- Connect handoff (see connect-handoff.ts) ---
+
+  /**
+   * Start a connect / reconnect / ensure-resources flow for `accountId`: mints the nonce the Workshop
+   * tab gives the popup (see ConnectFlowStart) and keeps its hash, so completeConnectHandoff can
+   * check that the ticket the flow produces came back through that popup.
+   */
+  async openConnectFlow(accountId: number): Promise<string> {
+    let { secret, hash: nonceHash } = await newSecretToken();
+    let expiresAt = new Date(Date.now() + CONNECT_FLOW_LIFETIME_MS);
+    this.storage.pendingConnectFlows.put({ nonceHash, accountId, expiresAt });
+    await this.#armHandoffSweep();
+    return secret.toHex();
+  }
+
+  // Store a finished-but-unconfirmed flow and hand back the ticket its page must present, together
+  // with the flow's nonce, over the initiating user's session. Only the ticket's hash is kept, and
+  // only in this user's DO, so the ticket is redeemable by nobody else (completeConnectHandoff looks
+  // it up in the caller's own DO).
+  async #stagePendingHandoff(
+      record: Omit<PendingHandoffRecord, "ticketHash" | "expiresAt">): Promise<ConnectHandoff> {
+    let targetOrigin = handoffTargetOrigin(this.env);
+    let { secret, hash: ticketHash } = await newSecretToken();
+    let expiresAt = new Date(Date.now() + PENDING_HANDOFF_LIFETIME_MS);
+    this.storage.pendingHandoffs.put({ ...record, ticketHash, expiresAt });
+    await this.#armHandoffSweep();
+    return { targetOrigin, ticket: secret.toHex() };
+  }
+
+  /** A gatekeeper finished a connect flow for a reserved account id; stage it until confirmed. */
+  async stagePendingConnect(accountId: number, account: Fetcher<GatekeeperUser>, vendorId: string,
+                            credentialExpiresAt?: Date): Promise<ConnectHandoff> {
+    let description = await account.describe();
+    return this.#stagePendingHandoff({
+      kind: "connect", accountId, credentialExpiresAt, connect: { account, description, vendorId },
+    });
+  }
+
+  /**
+   * A gatekeeper finished a reconnect/ensureResources flow; its credentials stay staged there under
+   * `stageId`, which commitReconnect() names so the ticket activates exactly those credentials.
+   */
+  stagePendingRestore(accountId: number, stageId: string, credentialExpiresAt?: Date)
+      : Promise<ConnectHandoff> {
+    return this.#stagePendingHandoff({ kind: "restore", accountId, stageId, credentialExpiresAt });
+  }
+
+  /**
+   * Redeem a finished flow's handoff. Called by the Workshop's own /connect/handoff page in the popup
+   * over the popup's session; `nonce` proves the popup is the one this user's tab opened for that
+   * flow. The ticket's record is deleted before anything else, so a ticket is single-use however the
+   * rest goes (DO input gates serialize the read and delete) and a wrong nonce still spends it; the
+   * nonce's flow is deleted too, so a nonce cannot be retried against another ticket. A staged
+   * connect the redemption cannot activate is dropped like an unredeemed one, so no grant is left
+   * reachable in a gatekeeper with nothing to revoke it.
+   */
+  async completeConnectHandoff(ticket: string, nonce: string): Promise<void> {
+    let [ticketHash, nonceHash] =
+        await Promise.all([hashPresentedSecret(ticket), hashPresentedSecret(nonce)]);
+    let record: PendingHandoffRecord | undefined;
+    if (ticketHash !== undefined) {
+      record = this.storage.pendingHandoffs.get(ticketHash);
+      if (record) this.storage.pendingHandoffs.delete(ticketHash);
+    }
+    let flow: PendingConnectFlow | undefined;
+    if (nonceHash !== undefined) {
+      flow = this.storage.pendingConnectFlows.get(nonceHash);
+      if (flow) this.storage.pendingConnectFlows.delete(nonceHash);
+    }
+    let now = Date.now();
+    if (!record || record.expiresAt.getTime() <= now ||
+        !flow || flow.expiresAt.getTime() <= now || flow.accountId !== record.accountId) {
+      if (record) await this.#dropPendingConnect(record);
+      throw new Error("This connection attempt has expired. Please try again.");
+    }
+
+    if (record.kind === "connect") {
+      if (!record.connect) throw new Error("Corrupt pending connection.");
+      try {
+        await this.putConnectedAccount({
+          id: record.accountId, ...record.connect, credentialExpiresAt: record.credentialExpiresAt,
+        });
+      } catch (err) {
+        await this.#dropPendingConnect(record);
+        throw err;
+      }
+      logger.info("account connected", {
+        event: "account.connect.completed", vendorId: record.connect.vendorId,
+        accountId: record.accountId,
+      });
+    } else {
+      let account = this.storage.connectedAccounts.get(record.accountId);
+      if (!account) throw new Error("No such account.");
+      if (record.stageId === undefined) throw new Error("Corrupt pending reconnect.");
+      // A failed commit changed nothing live, and the gatekeeper's stage expires on its own.
+      await account.account.commitReconnect(record.stageId);
+      await this.markCredentialsRestored(record.accountId, record.credentialExpiresAt);
+      logger.info("account credentials restored", {
+        event: "account.reconnect.completed", vendorId: account.vendorId,
+        accountId: record.accountId,
+      });
+    }
+  }
+
+  // Drop a pending handoff that will never activate. A staged connect holds a victim's (or just an
+  // abandoned) grant in a reachable gatekeeper DO, so it is revoked, best-effort. A staged restore
+  // left nothing live: the gatekeeper's staged credentials stop being committable on their own
+  // (commitStagedCredentials refuses an expired stage), though they stay stored until the next
+  // reconnect overwrites them; deleting them from here is a follow-up.
+  async #dropPendingConnect(pending: PendingHandoffRecord): Promise<void> {
+    if (pending.kind === "connect" && pending.connect) {
+      try {
+        await pending.connect.account.revoke();
+      } catch (err) {
+        logger.warn("failed to revoke unconfirmed connection", {
+          event: "connect.handoff.revoke.failed", vendorId: pending.connect.vendorId,
+          accountId: pending.accountId, error: err,
+        });
+      }
+    }
+    logger.info("unconfirmed connection dropped", {
+      event: "connect.handoff.expired", handoffKind: pending.kind, accountId: pending.accountId,
+    });
+  }
+
+  // Arm the alarm for the soonest pending expiry (the alarm is used for nothing else).
+  async #armHandoffSweep(): Promise<void> {
+    let next: number | undefined;
+    let consider = (at: number) => { if (next === undefined || at < next) next = at; };
+    for (let flow of this.storage.pendingConnectFlows.list()) consider(flow.expiresAt.getTime());
+    try {
+      for (let pending of this.storage.pendingHandoffs.list()) consider(pending.expiresAt.getTime());
+    } catch (err) {
+      // A record whose stub no longer deserializes (its Worker was unbound) fails the listing, and
+      // without a keys-only listing it cannot be deleted either. Staging a new connect must not
+      // depend on listing old ones, so arm a retry instead: one warning per lifetime for this user
+      // until the Worker is bound again, while the grant the record holds is reachable by nobody.
+      logger.warn("failed to list pending handoffs", {
+        event: "connect.handoff.arm.failed", error: err,
+      });
+      consider(Date.now() + PENDING_HANDOFF_LIFETIME_MS);
+    }
+    if (next === undefined) {
+      await this.ctx.storage.deleteAlarm();
+    } else {
+      await this.ctx.storage.setAlarm(next);
+    }
+  }
+
+  /**
+   * Drop pending handoffs whose ticket never came back (see #dropPendingConnect) and flows whose
+   * nonce was never presented (nothing to revoke for those).
+   */
+  async alarm(): Promise<void> {
+    let now = Date.now();
+    let expiredFlows = Array.from(this.storage.pendingConnectFlows.list())
+        .filter(flow => flow.expiresAt.getTime() <= now);
+    for (let flow of expiredFlows) this.storage.pendingConnectFlows.delete(flow.nonceHash);
+    let expired: PendingHandoffRecord[] = [];
+    try {
+      for (let pending of this.storage.pendingHandoffs.list()) {
+        if (pending.expiresAt.getTime() <= now) expired.push(pending);
+      }
+    } catch (err) {
+      // Same failure mode as #connectedAccountRecords: a stub for a Worker that is no longer bound
+      // fails to deserialize. Leave the sweep for next time (#armHandoffSweep bounds the retry).
+      logger.warn("failed to list pending handoffs", {
+        event: "connect.handoff.sweep.failed", error: err,
+      });
+    }
+    for (let pending of expired) {
+      this.storage.pendingHandoffs.delete(pending.ticketHash);
+      await this.#dropPendingConnect(pending);
+    }
+    await this.#armHandoffSweep();
   }
 
   async getGatekeeperClassFor(accountId: number, url: string)
@@ -1818,16 +2086,13 @@ export class GatekeeperConnectCallbackImpl
     return this.ctx.exports.UserDurableObject.get(userId);
   }
 
-  async complete(account: Fetcher<GatekeeperUser>, expiresAt?: Date): Promise<void> {
-    let userStub = this.#getUserStub();
+  complete(account: Fetcher<GatekeeperUser>, expiresAt?: Date): Promise<ConnectHandoff> {
+    let {accountId, vendorId} = this.ctx.props;
+    return this.#getUserStub().stagePendingConnect(accountId, account, vendorId, expiresAt);
+  }
 
-    await userStub.putConnectedAccount({
-      id: this.ctx.props.accountId,
-      account,
-      description: await account.describe(),
-      vendorId: this.ctx.props.vendorId,
-      credentialExpiresAt: expiresAt,
-    });
+  reconnectComplete(stageId: string, expiresAt?: Date): Promise<ConnectHandoff> {
+    return this.#getUserStub().stagePendingRestore(this.ctx.props.accountId, stageId, expiresAt);
   }
 
   async credentialsExpired(): Promise<void> {

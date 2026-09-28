@@ -9,7 +9,10 @@
       "Choose \"Accounts in this organizational directory only\" (single tenant) — only members of your own tenant can sign in.",
       "Add a redirect URI of platform type \"Web\" matching the URI below.",
       "Under Certificates & secrets, create a client secret and copy its Value immediately (it is shown once). Record the expiry date: the admin center caps new secrets at 24 months, and sign-in stops working the day it expires.",
-      "Under API permissions, add the delegated Microsoft Graph permissions openid, profile, email, offline_access, User.Read and Mail.ReadWrite, then click \"Grant admin consent\".",
+      "Under API permissions, add the delegated Microsoft Graph permissions openid, profile, email, offline_access, User.Read and Mail.ReadWrite.",
+      "For the Microsoft Teams resource, add the delegated permissions Team.ReadBasic.All, Channel.ReadBasic.All, TeamMember.Read.All, ChannelMessage.Read.All and Chat.Read as well. All five are read-only, and most of them require a tenant administrator to consent.",
+      "For the SharePoint List resource, add the delegated permission Sites.ReadWrite.All as well. It is the narrowest delegated permission that can create list items, and it requires a tenant administrator to consent.",
+      "Click \"Grant admin consent\" and check that every permission then reads \"Granted\". A partly consented set leaves that resource unavailable rather than partly working: Teams needs all five before it can be connected at all, and the SharePoint List resource needs Sites.ReadWrite.All.",
       "Copy the Application (client) ID, the client secret value, and the Directory (tenant) ID from the app's Overview page here."
     ],
     "redirectUriTemplate": "{PUBLIC_BASE_URL}/gatekeeper/microsoft/oauth"

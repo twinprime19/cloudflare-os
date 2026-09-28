@@ -25,7 +25,7 @@ export const GRAPH_ORIGIN = "https://graph.microsoft.com";
 const GRAPH_BASE = `${GRAPH_ORIGIN}/v1.0`;
 
 /** Per-attempt ceiling on a Graph round trip. */
-const GRAPH_TIMEOUT_MS = 20 * 1000;
+export const GRAPH_TIMEOUT_MS = 20 * 1000;
 
 /** Longest provider error text echoed into an error a user or agent can see. */
 const MAX_GRAPH_ERROR_CHARS = 500;
@@ -124,7 +124,8 @@ type GraphAttachment = {
   isInline?: boolean;
 };
 
-type GraphCollection<T> = {
+/** Graph's collection envelope: the items, plus a link to the rest when there is more. */
+export type GraphCollection<T> = {
   value?: T[];
   "@odata.nextLink"?: string;
 };
@@ -156,7 +157,8 @@ export class GraphApiError extends Error {
   }
 }
 
-function truncate(value: string, max = MAX_GRAPH_ERROR_CHARS): string {
+/** Cap a provider string before it is echoed into an error a user or agent can see. */
+export function truncate(value: string, max = MAX_GRAPH_ERROR_CHARS): string {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
@@ -178,16 +180,46 @@ function truncate(value: string, max = MAX_GRAPH_ERROR_CHARS): string {
  * attached. Refusing them keeps "one segment stays one segment" literally true.
  */
 export function graphUrl(segments: string[], params?: Record<string, string>): string {
-  let path = segments.map(segment => {
-    if (segment === "" || segment === "." || segment === "..") {
-      throw new Error("Microsoft Graph path segments must not be empty or relative.");
-    }
-    return encodeURIComponent(segment);
-  }).join("/");
+  let path = segments.map(encodeSegment).join("/");
+  return `${GRAPH_BASE}/${path}${queryString(params)}`;
+}
+
+/** One path segment, percent-encoded, with the guard `graphUrl`'s doc comment describes. */
+function encodeSegment(segment: string): string {
+  if (segment === "" || segment === "." || segment === "..") {
+    throw new Error("Microsoft Graph path segments must not be empty or relative.");
+  }
+  return encodeURIComponent(segment);
+}
+
+function queryString(params?: Record<string, string>): string {
   let query = Object.entries(params ?? {})
       .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
       .join("&");
-  return `${GRAPH_BASE}/${path}${query ? `?${query}` : ""}`;
+  return query ? `?${query}` : "";
+}
+
+/**
+ * Build the Graph URL that addresses a SharePoint site by its host and server-relative path.
+ *
+ * Graph addresses a site as `/sites/{hostname}:/{site-path}`, which `graphUrl` cannot express: the
+ * whole `contoso.sharepoint.com:/sites/HR` string is one addressable unit, but it contains the `/`
+ * separators that `graphUrl` exists to encode away. So it is assembled here instead, under the same
+ * guard — every component goes through `encodeSegment`, so a component of `..` is refused rather
+ * than being allowed to collapse the path onto a different site (or off `/sites` entirely) with this
+ * account's bearer token attached.
+ *
+ * `sitePath` is the decoded server-relative path with no trailing slash (`/sites/HR`,
+ * `/teams/HR/sub`), as `parseSharePointListUrl` produces it; empty addresses the tenant root site.
+ * This is the only place that shape is built.
+ */
+export function graphSiteByPathUrl(
+    hostname: string, sitePath: string, params?: Record<string, string>): string {
+  let host = encodeSegment(hostname);
+  let relative = sitePath.startsWith("/") ? sitePath.slice(1) : sitePath;
+  if (!relative) return `${GRAPH_BASE}/sites/${host}${queryString(params)}`;
+  let path = relative.split("/").map(encodeSegment).join("/");
+  return `${GRAPH_BASE}/sites/${host}:/${path}${queryString(params)}`;
 }
 
 /**

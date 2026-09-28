@@ -5,6 +5,7 @@
   "description": "Building blocks for gatekeepers: connect-flow, credential, action, observation, and simulation primitives. Not a deployable Worker.",
   "type": "module",
   "exports": {
+    "./action-description": "./src/action-description.ts",
     "./action-files": "./src/action-files.ts",
     "./actions": "./src/actions.ts",
     "./auth-retry": "./src/auth-retry.ts",
@@ -13,11 +14,13 @@
     "./connect-nonce": "./src/connect-nonce.ts",
     "./connect-pages": "./src/connect-pages.ts",
     "./credential-expiry": "./src/credential-expiry.ts",
+    "./credential-stage": "./src/credential-stage.ts",
     "./credentials": "./src/credentials.ts",
     "./cursors": "./src/cursors.ts",
     "./endpoint": "./src/endpoint.ts",
     "./http-errors": "./src/http-errors.ts",
     "./observers": "./src/observers.ts",
+    "./oauth-client": "./src/oauth-client.ts",
     "./preview-oauth": "./src/preview-oauth.ts",
     "./response-body": "./src/response-body.ts",
     "./simulation": "./src/simulation.ts"
@@ -30,7 +33,7 @@
   "dependencies": {
     "@gadgets/backend-utils": "workspace:*",
     "@gadgets/workshop-shared": "workspace:*",
-    "jose": "^6.2.8"
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "catalog:",

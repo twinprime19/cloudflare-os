@@ -175,8 +175,10 @@ export function classifyMatch(search: string, pattern: string): MatchClassificat
  */
 export function getPlaceholderRanges(url: string): Array<{ start: number; end: number }> {
   const ranges: Array<{ start: number; end: number }> = []
-  // Named parameters: colon followed by word characters, preceded by / or start
-  const namedParamRegex = /(?<=\/):([a-zA-Z_]\w*)/g
+  // Named parameters: colon followed by word characters, preceded by / or start.
+  // A trailing colon disqualifies the match: SharePoint/OneDrive share links carry a literal
+  // "/:l:/" ("/:w:/", "/:x:/", …) segment that belongs to the URL, not a placeholder to fill.
+  const namedParamRegex = /(?<=\/):([a-zA-Z_]\w*)(?![\w:])/g
   let match
   while ((match = namedParamRegex.exec(url)) !== null) {
     // Include the colon in the range

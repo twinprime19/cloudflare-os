@@ -15,11 +15,12 @@
     "@gadgets/workshop-shared": "workspace:*",
     "capnweb": "catalog:",
     "vitest-evals": "0.16.1",
-    "zod": "^4.4.3"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@types/node": "^26.1.0",
+    "chess.js": "1.4.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

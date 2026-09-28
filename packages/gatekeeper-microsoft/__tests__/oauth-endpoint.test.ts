@@ -6,9 +6,13 @@ import worker, { GatekeeperVendor, UserAccount } from "../src/microsoft";
 
 const TENANT = "11111111-2222-3333-4444-555555555555";
 const BASE_URL = "https://gatekeeper.example/gatekeeper/microsoft";
-const IDENTITY_SCOPES = ["openid", "profile", "email", "User.Read", "offline_access"];
+const AUTH_SCOPES = ["openid", "profile", "email", "User.Read"];
+const IDENTITY_SCOPES = [...AUTH_SCOPES, "offline_access"];
 const DO_ID = "a".repeat(64);
 const INITIATION_NONCE = "n".repeat(64);
+// What the Workshop's callback returns for a completed flow: the origin its handoff page lives on
+// and the single-use ticket that page redeems.
+const HANDOFF = { targetOrigin: "https://workshop.example", ticket: "t".repeat(64) };
 
 const env = {
   CLIENT_ID: "client-id",
@@ -90,6 +94,23 @@ describe("authorization request", () => {
     // only have come from the token endpoint.
     expect(location.searchParams.get("response_type")).toBe("code");
     expect(location.searchParams.get("response_mode")).toBe("query");
+    // A persistent connection links the account the user is already signed in with, so the
+    // browser's Microsoft session may complete it silently.
+    expect(location.searchParams.has("prompt")).toBe(false);
+  });
+
+  it("asks Microsoft for the account picker on a sign-in-only flow", async () => {
+    await account.setCallback({} as never, INITIATION_NONCE, AUTH_SCOPES, true);
+
+    const response = await worker.fetch(
+      get(`/${DO_ID}/${INITIATION_NONCE}`), env as never, executionContext as never);
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("Location")!);
+    expect(location.searchParams.get("scope")).toBe(AUTH_SCOPES.join(" "));
+    // Signing out of Cloudflare OS leaves the Microsoft session alive; without the picker Entra
+    // would silently re-issue a code and sign the user straight back in.
+    expect(location.searchParams.get("prompt")).toBe("select_account");
   });
 
   it("shows the configuration page when the tenant is not set", async () => {
@@ -138,10 +159,10 @@ describe("completion redirect", () => {
     expect(body).toContain("…");
   });
 
-  it("closes the popup once the code is redeemed", async () => {
+  it("sends the popup to the Workshop with the ticket once the code is redeemed", async () => {
     await account.setCallback({
-      complete: async () => {}, credentialsExpired: async () => {},
-      credentialsRestored: async () => {},
+      complete: async () => HANDOFF, credentialsExpired: async () => {},
+      reconnectComplete: async () => HANDOFF,
     } as never, INITIATION_NONCE, IDENTITY_SCOPES, false);
     const begun = await account.beginOAuthFlow(INITIATION_NONCE);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
@@ -153,7 +174,12 @@ describe("completion redirect", () => {
       env as never, executionContext as never);
 
     expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
-    await expect(response.text()).resolves.toContain("window.close()");
+    // The ticket rides in the fragment to the Workshop's own handoff page, which redeems it over
+    // the popup's session. Nothing is connected until that redemption.
+    const body = await response.text();
+    expect(body).toContain(`var ticket = "${HANDOFF.ticket}"`);
+    expect(body).toContain(`var target = "${HANDOFF.targetOrigin}"`);
+    expect(body).toContain(`"/connect/handoff#" + encodeURIComponent(ticket)`);
     expect(context.storage.kv.get("refreshToken")).toBe("refresh-1");
   });
 

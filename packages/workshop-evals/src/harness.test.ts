@@ -29,14 +29,17 @@ const fakes = vi.hoisted(() => {
   const result: AgentTurnResult = { outcome, history, workpieces, usage: {} };
   const session: WorkshopAgentSession = {
     username: "agent",
+    connectionDrops: 0,
     runTurn: async () => result,
     approveActionsAndWait: async () => result,
     listActions: async () => ({ entries: [] }),
     connectedAccount: () => { throw new Error("connectedAccount is not used by this test"); },
     openGadget: async () => { throw new Error("openGadget is not used by this test"); },
+    uploadAttachment: async () => { throw new Error("uploadAttachment is not used by this test"); },
     acceptChanges: vi.fn(async () => {
       await new Promise(resolve => setTimeout(resolve, phaseDelayMs));
     }),
+    revertChanges: async () => { throw new Error("revertChanges is not used by this test"); },
     close: async () => {},
     [Symbol.asyncDispose]: async () => {},
   };

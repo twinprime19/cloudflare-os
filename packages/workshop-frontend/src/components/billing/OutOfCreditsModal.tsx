@@ -6,6 +6,7 @@ import { Plural, Trans } from '@lingui/react/macro'
 import { useOptionalAuthenticatedApi } from '../../AuthContext'
 import { buildAddCreditsUrl } from './creditsUrl'
 import ResetCountdown from './ResetCountdown'
+import { openConnectWindow } from '../../connectHandoff'
 
 interface OutOfCreditsModalProps {
   open: boolean
@@ -61,10 +62,13 @@ export default function OutOfCreditsModal({ open, onClose }: OutOfCreditsModalPr
     if (!auth) return
     setConnecting(true)
     try {
-      const { url } = await auth.authenticatedApi.connectAccount('cloudflare', [])
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch {
-      // ignore
+      openConnectWindow(await auth.authenticatedApi.connectAccount('cloudflare', []))
+    } catch (err) {
+      toasts.add({
+        title: 'Failed to start Cloudflare connection',
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'error',
+      })
     } finally {
       setConnecting(false)
     }

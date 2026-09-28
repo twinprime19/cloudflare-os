@@ -11,6 +11,6 @@
       "@gadgets/workshop-shared/*": ["../workshop-shared/src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "worker-runtimes"],
   "exclude": ["dist", "node_modules"]
 }

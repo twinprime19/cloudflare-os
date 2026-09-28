@@ -1060,7 +1060,9 @@ describe("agent step barrier", () => {
   function stepMsgs(text: string): { type: "message", message: string }[] {
     return [{ type: "message", message: text }];
   }
-  const NO_EXTRAS = { createdGadgets: [], createdWorktrees: [], addedBindings: [] };
+  const NO_EXTRAS = {
+    createdGadgets: [], createdWorktrees: [], addedBindings: [], worktreeCommits: [],
+  };
 
   it("persists the step message, appends rows in order, and materializes -- one transaction",
       () => withImpl(async impl => {
@@ -1199,6 +1201,7 @@ describe("agent step barrier", () => {
         { gadgetId: created.id, title: created.title, bindingName: "MY_GADGET" }],
       createdWorktrees: [],
       addedBindings: [],
+      worktreeCommits: [],
     })).toBe(true);
 
     // The stamp is the changes message's sequence: the durable record merge/revert compare
@@ -1259,6 +1262,7 @@ describe("reconcilePendingGadgets", () => {
         { gadgetId: created.id, title: created.title, bindingName: "MY_GADGET" }],
       createdWorktrees: [],
       addedBindings: [],
+      worktreeCommits: [],
     });
     let stamp = impl.storage.gadgets.get(created.id)!.pending!.sequence!;
 

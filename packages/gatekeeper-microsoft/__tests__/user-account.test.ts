@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { STAGED_CREDENTIALS_KEY } from "@gadgets/gatekeeper-kit/credential-stage";
+
 import { UserAccount } from "../src/microsoft";
 
 const TENANT = "11111111-2222-3333-4444-555555555555";
 const TOKEN_URL = `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/token`;
 const AUTH_SCOPES = ["openid", "profile", "email", "User.Read"];
 const IDENTITY_SCOPES = [...AUTH_SCOPES, "offline_access"];
+// The resource scopes a connection asks for per grantable resource, mirroring the vendor's table.
+const MAIL_SCOPES = ["Mail.ReadWrite"];
+const TEAMS_SCOPES = [
+  "Team.ReadBasic.All", "Channel.ReadBasic.All", "TeamMember.Read.All",
+  "ChannelMessage.Read.All", "Chat.Read",
+];
 
 const env = {
   CLIENT_ID: "client-id",
@@ -42,12 +50,22 @@ function fakeContext() {
   };
 }
 
+// The handoffs the Workshop's callback mints, which the flow's final page delivers to the browser.
+const HANDOFF = { targetOrigin: "https://workshop.example", ticket: "a".repeat(64) };
+const RECONNECT_HANDOFF = { targetOrigin: "https://workshop.example", ticket: "b".repeat(64) };
+
 function fakeCallback() {
   return {
-    complete: vi.fn(async () => {}),
+    complete: vi.fn(async () => HANDOFF),
     credentialsExpired: vi.fn(async () => {}),
-    credentialsRestored: vi.fn(async () => {}),
+    reconnectComplete: vi.fn(async (_stageId: string) => RECONNECT_HANDOFF),
   };
+}
+
+/** The stage id the account reported to the Workshop for its most recent reconnect. */
+function stagedId(callback: ReturnType<typeof fakeCallback>): string {
+  expect(callback.reconnectComplete).toHaveBeenCalled();
+  return callback.reconnectComplete.mock.calls.at(-1)![0];
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -62,9 +80,9 @@ function newAccount(context = fakeContext()) {
 
 /** Drive a full connect through the nonce lifecycle and return what the token endpoint saw. */
 async function connect(account: UserAccount, callback: ReturnType<typeof fakeCallback>,
-                       options: { authOnly?: boolean } = {}) {
+                       options: { authOnly?: boolean; scopes?: string[] } = {}) {
   const initiationNonce = "n".repeat(64);
-  const scopes = options.authOnly ? AUTH_SCOPES : IDENTITY_SCOPES;
+  const scopes = options.scopes ?? (options.authOnly ? AUTH_SCOPES : IDENTITY_SCOPES);
   await account.setCallback(callback as never, initiationNonce, scopes, options.authOnly ?? false);
   const begun = await account.beginOAuthFlow(initiationNonce);
   expect(begun).not.toBeNull();
@@ -91,6 +109,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Collect the structured log records written to `console.warn` from here on. */
+function captureWarnings(): Record<string, unknown>[] {
+  const warnings: Record<string, unknown>[] = [];
+  vi.spyOn(console, "warn").mockImplementation(
+      (...args: unknown[]) => void warnings.push(...args as Record<string, unknown>[]));
+  return warnings;
+}
+
 function lastTokenRequestBody(): URLSearchParams {
   const call = fetchMock.mock.calls.at(-1) as [string, RequestInit];
   expect(call[0]).toBe(TOKEN_URL);
@@ -109,7 +135,7 @@ describe("connect flow", () => {
       id_token: idToken({ tid: TENANT, oid: "object-1" }),
     }));
 
-    await expect(connect(account, callback)).resolves.toBe(true);
+    await expect(connect(account, callback)).resolves.toEqual(HANDOFF);
 
     const body = lastTokenRequestBody();
     expect(body.get("grant_type")).toBe("authorization_code");
@@ -125,7 +151,7 @@ describe("connect flow", () => {
     // so complete() must be called with the user stub alone.
     expect(callback.complete).toHaveBeenCalledTimes(1);
     expect(callback.complete.mock.calls[0]).toHaveLength(1);
-    expect(callback.credentialsRestored).not.toHaveBeenCalled();
+    expect(callback.reconnectComplete).not.toHaveBeenCalled();
   });
 
   it("refuses a persistent connection that came back with no refresh token", async () => {
@@ -146,18 +172,18 @@ describe("connect flow", () => {
     // The initiation nonce is consumed by the first use.
     expect(await account.beginOAuthFlow("n".repeat(64))).toBeNull();
 
-    expect(await account.acceptAuthCode("auth-code", "z".repeat(64))).toBe(false);
+    expect(await account.acceptAuthCode("auth-code", "z".repeat(64))).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
 
     fetchMock.mockResolvedValue(jsonResponse({
       access_token: "access-1", expires_in: 3600, refresh_token: "refresh-1", scope: "openid",
     }));
-    expect(await account.acceptAuthCode("auth-code", begun!.oauthNonce)).toBe(true);
+    expect(await account.acceptAuthCode("auth-code", begun!.oauthNonce)).toEqual(HANDOFF);
     // The OAuth nonce is single-use too.
-    expect(await account.acceptAuthCode("auth-code", begun!.oauthNonce)).toBe(false);
+    expect(await account.acceptAuthCode("auth-code", begun!.oauthNonce)).toBeNull();
   });
 
-  it("reports restoration rather than completion when the same account reconnects", async () => {
+  it("stages a reconnect's grant and makes it live only once the Workshop commits it", async () => {
     const { context, account } = newAccount();
     const callback = fakeCallback();
     fetchMock.mockResolvedValue(jsonResponse({
@@ -170,11 +196,20 @@ describe("connect flow", () => {
       access_token: "access-2", expires_in: 3600, refresh_token: "refresh-2", scope: "openid",
       id_token: idToken({ tid: TENANT, oid: "object-1" }),
     }));
-    expect(await reconnect(account)).toBe(true);
+    expect(await reconnect(account)).toEqual(RECONNECT_HANDOFF);
+
+    // The reconnect URL is a bearer capability, so whoever finished the flow has changed nothing
+    // yet: gadgets bound to this account keep reading the token it already had.
+    expect(context.storage.kv.get("refreshToken")).toBe("refresh-1");
+    expect(callback.complete).toHaveBeenCalledTimes(1);
+    expect(callback.reconnectComplete).toHaveBeenCalledTimes(1);
+
+    await account.commitReconnect(stagedId(callback));
 
     expect(context.storage.kv.get("refreshToken")).toBe("refresh-2");
-    expect(callback.complete).toHaveBeenCalledTimes(1);
-    expect(callback.credentialsRestored).toHaveBeenCalledTimes(1);
+    // The stage is spent, so the ticket cannot be replayed and no other id can take it.
+    await expect(account.commitReconnect(stagedId(callback)))
+      .rejects.toThrow(/awaiting confirmation/i);
   });
 
   it("refuses a reconnect that signs in as a different Microsoft account", async () => {
@@ -196,9 +231,9 @@ describe("connect flow", () => {
 
     expect(context.storage.kv.get("refreshToken")).toBe("refresh-1");
     expect(context.storage.kv.get("idTokenClaims")).toEqual({ tid: TENANT, oid: "object-1" });
-    expect(callback.credentialsRestored).not.toHaveBeenCalled();
-    // The reconnect stays armed so the user can retry with the right account.
-    expect(context.storage.kv.get("reconnecting")).toBe(true);
+    expect(callback.reconnectComplete).not.toHaveBeenCalled();
+    // The intruder's grant is not even staged, so there is nothing a later commit could activate.
+    expect(context.storage.kv.get(STAGED_CREDENTIALS_KEY)).toBeUndefined();
   });
 
   it("refuses a reconnect whose grant names no principal at all", async () => {
@@ -232,7 +267,7 @@ describe("connect flow", () => {
 
     expect(context.storage.kv.get("refreshToken")).toBe("refresh-1");
     expect(context.storage.kv.get("idTokenClaims")).toBeUndefined();
-    expect(context.storage.kv.get("reconnecting")).toBe(true);
+    expect(context.storage.kv.get(STAGED_CREDENTIALS_KEY)).toBeUndefined();
   });
 
   it("discards the whole grant when the Workshop cannot accept the completed connection",
@@ -253,6 +288,72 @@ describe("connect flow", () => {
     expect(context.storage.kv.get("accessToken")).toBeUndefined();
     expect(context.storage.kv.get("idTokenClaims")).toBeUndefined();
     expect(context.storage.kv.get("grantScopes")).toBeUndefined();
+  });
+});
+
+describe("consent coverage", () => {
+  it("names the scopes a partly consented resource came back without", async () => {
+    // A resource is usable only when every one of its scopes is granted, so a declined permission
+    // leaves it unavailable with nothing else in the system saying which one is missing.
+    const warnings = captureWarnings();
+    const { account } = newAccount();
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-1",
+      expires_in: 3600,
+      refresh_token: "refresh-1",
+      // The administrator consented to the team and channel reads and declined the message ones.
+      scope: "openid profile email https://graph.microsoft.com/User.Read " +
+          "https://graph.microsoft.com/Team.ReadBasic.All " +
+          "https://graph.microsoft.com/Channel.ReadBasic.All " +
+          "https://graph.microsoft.com/TeamMember.Read.All",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+
+    await expect(connect(account, fakeCallback(), {
+      scopes: [...IDENTITY_SCOPES, ...TEAMS_SCOPES],
+    })).resolves.toEqual(HANDOFF);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      event: "microsoft.consent.resource.ungranted",
+      resource: "https://teams.microsoft.com/*",
+      missingScopes: ["ChannelMessage.Read.All", "Chat.Read"],
+    });
+  });
+
+  it("says nothing about a resource this connection never asked for", async () => {
+    // A mail-only connection is not short of the Teams permissions; it never requested them.
+    const warnings = captureWarnings();
+    const { account } = newAccount();
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-1",
+      expires_in: 3600,
+      refresh_token: "refresh-1",
+      scope: "openid profile email https://graph.microsoft.com/User.Read " +
+          "https://graph.microsoft.com/Mail.ReadWrite",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+
+    await expect(connect(account, fakeCallback(), {
+      scopes: [...IDENTITY_SCOPES, ...MAIL_SCOPES],
+    })).resolves.toEqual(HANDOFF);
+
+    expect(warnings).toEqual([]);
+  });
+
+  it("says nothing for a sign-in-only grant, which asks for no resource at all", async () => {
+    const warnings = captureWarnings();
+    const { account } = newAccount();
+    fetchMock.mockResolvedValue(jsonResponse({
+      access_token: "access-auth",
+      expires_in: 3600,
+      scope: "openid profile email https://graph.microsoft.com/User.Read",
+      id_token: idToken({ tid: TENANT, oid: "object-1" }),
+    }));
+
+    await expect(connect(account, fakeCallback(), { authOnly: true })).resolves.toEqual(HANDOFF);
+
+    expect(warnings).toEqual([]);
   });
 });
 
@@ -356,7 +457,7 @@ describe("mint failure taxonomy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("clears a recorded failure when a reconnect supplies new credentials", async () => {
+  it("clears a recorded failure when a committed reconnect supplies new credentials", async () => {
     const { context, account } = newAccount();
     const callback = fakeCallback();
     context.storage.kv.put("callback", callback);
@@ -371,9 +472,14 @@ describe("mint failure taxonomy", () => {
       id_token: idToken({ tid: TENANT, oid: "object-1" }),
     }));
     await reconnect(account);
+    // The staged grant is not the one the failure was recorded against, so the cooldown that keeps
+    // callers off the dead refresh token stands until the commit.
+    expect(context.storage.kv.get("mintFailure")).toBeDefined();
+
+    await account.commitReconnect(stagedId(callback));
 
     expect(context.storage.kv.get("mintFailure")).toBeUndefined();
-    expect(callback.credentialsRestored).toHaveBeenCalledTimes(1);
+    expect(context.storage.kv.get("refreshToken")).toBe("refresh-3");
   });
 
   it("treats a Graph claims challenge as credential death", async () => {
@@ -406,7 +512,7 @@ describe("sign-in-only grants", () => {
       id_token: idToken({ tid: TENANT, oid: "object-1" }),
     }));
 
-    await expect(connect(account, callback, { authOnly: true })).resolves.toBe(true);
+    await expect(connect(account, callback, { authOnly: true })).resolves.toEqual(HANDOFF);
 
     // No refresh token was requested, so none is stored...
     expect(lastTokenRequestBody().get("scope")).toBe(AUTH_SCOPES.join(" "));

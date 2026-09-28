@@ -57,17 +57,24 @@ packages/workshop-frontend/src/components/chat/ChatMessage.tsx
 packages/workshop-frontend/src/rpcErrors.ts
 
 # Backend failure text matched with `.includes()` to decide a submit is retryable, held in `const`s.
-packages/workshop-frontend/src/otClient.ts|Agent is running
-packages/workshop-frontend/src/otClient.ts|The chat is changing too quickly
+packages/workshop-frontend/src/features/code/otClient.ts|Agent is running
+packages/workshop-frontend/src/features/code/otClient.ts|The chat is changing too quickly
+
+# Server-invariant diagnostics thrown inside the code view's data layer. Neither reaches the UI as
+# text: otClient's error goes to `onFatalError`, which logs, reports it to the error backend and
+# shows the fixed (localized) code-view failure state; the commit file store's error rejects the
+# file read, which the code view renders as its own fixed "Failed to load this file." with a retry.
+packages/workshop-frontend/src/features/code/otClient.ts|edit of a path absent at its base commit: {0} @ {0}
+packages/workshop-frontend/src/features/code/commitFileStore.ts|readFilesAtCommit answered none of {0} paths
 
 # Tailwind class lists held as shared constants.
 packages/workshop-frontend/src/components/menuStyles.ts
-packages/workshop-frontend/src/diff/diffRenderer.ts|gadgets-deleted-num-row gadgets-replacement-num-row
+packages/workshop-frontend/src/features/code/diff/diffRenderer.ts|gadgets-deleted-num-row gadgets-replacement-num-row
 
 # CSS passed to APIs that parse it as CSS: a media query in theme.ts; a font stack plus padding and
 # border values in the CodeMirror theme.
 packages/workshop-frontend/src/theme.ts
-packages/workshop-frontend/src/components/codeTheme.ts
+packages/workshop-frontend/src/features/code/codeTheme.ts
 # Telemetry facts reported to the error backend: `family` and `platform` discriminants, never shown.
 # The browser and OS names are covered by PROPER_NOUNS; 'Other' is the fallback value.
 packages/workshop-frontend/src/errorReporting.ts
@@ -100,10 +107,10 @@ packages/workshop-frontend/src/rateLimitedCapability.ts
 # assigned here as plain object-literal values so the detector cannot see they are a closed enum
 # rather than copy. Never translate these -- see the type's own doc comment and `diffStatusLabel`,
 # the translated label callers must render instead of the raw discriminant.
-packages/workshop-frontend/src/diff/diffModel.ts|Added
-packages/workshop-frontend/src/diff/diffModel.ts|Deleted
-packages/workshop-frontend/src/diff/diffModel.ts|Modified
-packages/workshop-frontend/src/diff/diffModel.ts|Unchanged
+packages/workshop-frontend/src/features/code/diff/diffModel.ts|Added
+packages/workshop-frontend/src/features/code/diff/diffModel.ts|Deleted
+packages/workshop-frontend/src/features/code/diff/diffModel.ts|Modified
+packages/workshop-frontend/src/features/code/diff/diffModel.ts|Unchanged
 
 # Test fixture factory: `entry()` builds `Resource ${id}` / `Action ${id}` as ActionLogEntry
 # stand-ins for the action-store hook tests. Never rendered in the product, and wrapping them would

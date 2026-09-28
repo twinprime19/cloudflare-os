@@ -11,7 +11,7 @@ import { measureHistory, toTranscriptEvents } from "./transcript.js";
 import {
   openLocalEvalTarget, type LocalEvalTarget, type LocalModelAccess,
 } from "./target.js";
-import { EvalVerifier } from "./verifier.js";
+import { agentReplies, EvalVerifier } from "./verifier.js";
 
 class EvalDeadlineError extends Error {}
 
@@ -108,7 +108,8 @@ export function createWorkshopHarness(
             });
             break;
           }
-          const verifier = new EvalVerifier(opened.session, result.workpieces);
+          const replies = agentReplies(result.history, previousSequence);
+          const verifier = new EvalVerifier(opened.session, result.workpieces, replies);
           let checks: EvalCheck[];
           try {
             checks = await beforeDeadline(
@@ -116,7 +117,7 @@ export function createWorkshopHarness(
                 "Eval verification exceeded its time budget", signal);
           } catch (error) {
             checks = [...verifier.results(), {
-              id: "verifier.timeout",
+              id: "verifier.incomplete",
               pass: false,
               evidence: error instanceof Error ? error.message : String(error),
             }];
@@ -177,14 +178,14 @@ export function createWorkshopHarness(
               throw error;
             }
 
-            const afterAccept = new EvalVerifier(session, result.workpieces);
+            const afterAccept = new EvalVerifier(session, result.workpieces, replies);
             try {
               checks.push(...await beforeDeadline(
                   () => afterAccept.collect(verifyAfterAccept), verificationDeadline,
                   "Post-accept verification exceeded its time budget", signal));
             } catch (error) {
               checks.push(...afterAccept.results(), {
-                id: "post-accept-verifier.timeout",
+                id: "post-accept-verifier.incomplete",
                 pass: false,
                 evidence: error instanceof Error ? error.message : String(error),
               });

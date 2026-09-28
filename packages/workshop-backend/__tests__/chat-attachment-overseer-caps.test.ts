@@ -20,6 +20,7 @@ import type {
   AiChatAuthorInfo, ChatAttachmentHandle, ChatAttachmentRef,
 } from "@gadgets/workshop-shared/api";
 import { validateChatAttachmentUpload } from "../src/chat-attachment-validation.js";
+import { parseWorkbookInProcess } from "../src/workbook-parse.js";
 import type { OverseerDurableObject } from "../src/overseer.js";
 
 declare module "cloudflare:workers" {
@@ -144,9 +145,24 @@ describe("canonicalizeChatAttachmentRefs", () => {
 
     expect(Array.isArray(canonical)).toBe(false);
     expect(canonical).toEqual({
-      refs: [{ id: handle.id, mimeType: "text/markdown", name: "report.md", size: 32 }],
+      // The ref carries the type the document arrived as: `mimeType` describes the stored text,
+      // and the staged record that knew the difference is gone once the message is written.
+      refs: [{
+        id: handle.id, mimeType: "text/markdown", name: "report.md", size: 32,
+        convertedFrom: DOCX_MIME_TYPE,
+      }],
       convertedBytes: 32,
     });
+  }));
+
+  // Nothing is invented for an attachment stored as it arrived: the field is what distinguishes
+  // Markdown extracted from a document from Markdown the user wrote.
+  it("leaves the original type off a ref that was never converted", () => withImpl(async impl => {
+    let handle = stage(impl, { bytes: 24, mimeType: "text/markdown", name: "notes.md" });
+
+    let canonical = impl.canonicalizeChatAttachmentRefs([handle], "google");
+
+    expect(canonical.refs[0]).not.toHaveProperty("convertedFrom");
   }));
 
   // Markdown a user wrote and attached is stored as-is and bounded by the storage caps; only text
@@ -239,14 +255,17 @@ describe("document conversion environment", () => {
   // has observed sensitive data must not do -- the same reason web fetch is refused there.
   it("refuses to convert an upload in a workspace under sharing lockdown",
       () => withImpl(async impl => {
-    impl.storage.prohibitAllSharing.put(true);
+    impl.storage.containsRestrictedData.put(true);
 
     expect(() => impl.getDocumentConversionEnv())
         .toThrow("prohibited from converting uploaded documents");
     await expect(validateChatAttachmentUpload(
         { mimeType: DOCX_MIME_TYPE, content: ooxmlBytes(), name: "quarterly.docx" },
         "google",
-        () => impl.getDocumentConversionEnv(),
+        {
+          parseWorkbook: parseWorkbookInProcess,
+          getConversionEnv: () => impl.getDocumentConversionEnv(),
+        },
     )).rejects.toThrow("prohibited from converting uploaded documents");
   }));
 });

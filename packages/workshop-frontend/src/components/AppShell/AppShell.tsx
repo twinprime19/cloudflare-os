@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { List, X } from '@phosphor-icons/react'
 import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import TopBarNotice from '../../TopBarNotice'
 import ReconnectingChip from '../ReconnectingChip'
 import { useConnectionLost } from '../../RpcContext'
+import { resumeConnection } from '../../connectionPause'
+import { useConnectionPaused } from '../../useConnectionPaused'
 import Sidebar from './Sidebar'
 import CommandPalette from './CommandPalette'
 import { OPEN_COMMAND_PALETTE_EVENT } from './commandPaletteBus'
@@ -36,6 +39,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const drawerRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const connectionLost = useConnectionLost()
+  // The shell's routes have no idle timer of their own, but the server can still park them: a page
+  // that keeps an Overseer stub open (the Share modal on the home page and in the rail) holds a
+  // workspace session whose lease expires, and the socket parks wherever the user is standing.
+  // Without a chip here nothing dials again short of a reload, so this is the resume control for
+  // every route outside the workspace editor, which carries its own.
+  const paused = useConnectionPaused()
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((prev) => {
@@ -143,7 +152,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       >
         {/* Top bar. Same height as the sidebar's brand row (h-14) so they read as one continuous
             chrome strip across the top. Mostly empty — carries the mobile hamburger on the left,
-            any admin TopBarNotice centered, and the reconnecting chip on the right. */}
+            any admin TopBarNotice centered, and the connection chip on the right. */}
         <div className="relative flex h-14 shrink-0 items-center justify-between border-b border-kumo-line bg-kumo-base px-3">
           <button
             type="button"
@@ -159,7 +168,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               hidden, leaving this the only in-flow child, which `justify-between` would park on the
               left. */}
           <div className="ml-auto flex items-center gap-2">
-            {connectionLost && <ReconnectingChip />}
+            {paused
+              ? (
+                <ReconnectingChip onClick={resumeConnection}>
+                  <Trans>Paused — click to reconnect</Trans>
+                </ReconnectingChip>
+              )
+              : connectionLost ? <ReconnectingChip /> : null}
             <span aria-hidden="true" className="h-11 w-11 md:hidden" />
           </div>
         </div>

@@ -1,25 +1,45 @@
 import { WorkerEntrypoint, DurableObject, RpcStub, RpcTarget } from "cloudflare:workers";
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import {
-  AccountDescription, Gatekeeper, GatekeeperConnectCallback, GatekeeperConnectOptions,
-  GatekeeperUser, GatekeeperUserVerifier, GatekeeperVendor as GatekeeperVendorIface,
-  ResourceConfiguratorFrame, SupportedResource, VendorDescription, stripTrailingSlashes,
+  AccountDescription, ConnectHandoff, Gatekeeper, GatekeeperConnectCallback,
+  GatekeeperConnectOptions, GatekeeperUser, GatekeeperUserVerifier,
+  GatekeeperVendor as GatekeeperVendorIface, ResourceConfiguratorFrame, SupportedResource,
+  VendorDescription, stripTrailingSlashes,
 } from "@gadgets/workshop-shared/gatekeeper";
+import { connectHandoffPageHtml, htmlResponse } from "@gadgets/gatekeeper-kit/connect-pages";
+import { commitStagedCredentials, stageCredentials } from "@gadgets/gatekeeper-kit/credential-stage";
 import {
   AccessTokenRequest, EntraAccessToken, EntraTokenGrant, IdTokenClaims, ProfilePhoto, TokenFailure,
   authorizeEndpoint, exchangeAuthCode, fetchAvatarDataUrl, fetchGraphProfile, fetchProfilePhoto,
-  fetchVerifiedDomains, grantCoversScopes, refreshAccessToken, resolveVerifiedEmail,
+  fetchVerifiedDomains, grantCoversScopes, normalizeScope, refreshAccessToken, resolveVerifiedEmail,
 } from "./microsoft-api";
+import { GraphApiError } from "./graph-api";
+import { GraphSharePointApi } from "./graph-sharepoint-api";
 import type { OutlookMailGatekeeperImplProps } from "./outlook-mail";
+import type { TeamsGatekeeperImplProps } from "./teams";
+import type { SharePointListGatekeeperImplProps } from "./sharepoint-list";
+import {
+  SharePointUrlError, isSharePointHost, parseSharePointListUrl, type SharePointListUrl,
+} from "./sharepoint-url";
 import type {
   OutlookMailConfiguratorRpc,
 } from "./configurator/outlook-mail-configurator-types";
+import type { TeamsConfiguratorRpc } from "./configurator/teams-configurator-types";
+import type {
+  SharePointListConfiguratorRpc,
+} from "./configurator/sharepoint-list-configurator-types";
 import MICROSOFT_LOGO_SVG from "./microsoft-logo.svg";
 import OUTLOOK_MAIL_CONFIGURATOR_HTML from "./generated/outlook-mail-configurator-ui.txt";
+import TEAMS_CONFIGURATOR_HTML from "./generated/teams-configurator-ui.txt";
+import SHAREPOINT_LIST_CONFIGURATOR_HTML from "./generated/sharepoint-list-configurator-ui.txt";
 import TYPES_CODE from "./types.txt";
+import TEAMS_TYPES_CODE from "./teams-types.txt";
+import SHAREPOINT_TYPES_CODE from "./sharepoint-types.txt";
 import { obsContext } from "./observability.js";
 
 export { OutlookMailGatekeeperImpl } from "./outlook-mail";
+export { TeamsGatekeeperImpl } from "./teams";
+export { SharePointListGatekeeperImpl } from "./sharepoint-list";
 
 // Vendor id = GATEKEEPER_<NAME> binding suffix (lowercased).
 const VENDOR_ID = "microsoft";
@@ -33,6 +53,19 @@ type StoredNonce = {
   value: string;
   expiresAt: number;
   stage: "initiation" | "oauth";
+  /**
+   * Set when this flow reconnects an existing account, so its grant is staged rather than made
+   * live. The mode travels with the flow instead of living on the account: committing one
+   * reconnect while another is in flight must not change how that other flow lands.
+   */
+  reconnect?: true;
+};
+
+/** What a reconnect flow obtained, held in escrow until commitReconnect() writes it live. */
+type StagedGrant = {
+  grant: EntraTokenGrant;
+  /** The scopes this flow asked for, recorded as `grantScopes` when the stage is committed. */
+  scopes: string[];
 };
 
 // The last mint that failed permanently, kept in storage so an evicted object doesn't rediscover a
@@ -143,14 +176,6 @@ function getOAuthConfig(env: Env): OAuthConfig | null {
 
 // =======================================================================================
 
-const SELF_CLOSING_HTML = `<!DOCTYPE html>
-<html lang="en">
-  <body>
-    <script type="text/javascript">window.close();</script>
-    <p>Authorization complete. You may close this tab and return to Cloudflare OS.
-  </body>
-</html>`;
-
 const INVALID_LINK_HTML = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -198,11 +223,47 @@ const OUTLOOK_MAIL_RESOURCE: SupportedResource = {
   grantable: true,
 };
 
+const TEAMS_RESOURCE: SupportedResource = {
+  urlPattern: "https://teams.microsoft.com/*",
+  title: "Microsoft Teams",
+  description: "Read teams, channels, chats, and messages. Read-only.",
+  grantable: true,
+};
+
+// A list is addressed by the page URL a user pastes, and every SharePoint Online tenant serves it
+// from its own host, so the pattern's host is a wildcard. One consequence, accepted: the Workshop's
+// `extractBaseUrl` cannot derive a concrete base URL from a wildcard host, so the picker offers no
+// pre-filled address and the configurator collects the whole URL.
+const SHAREPOINT_LIST_RESOURCE: SupportedResource = {
+  urlPattern: "https://*.sharepoint.com/*",
+  title: "SharePoint List",
+  description: "Read a list's columns and items, and create new items.",
+  grantable: true,
+};
+
 // `Mail.ReadWrite` covers reading messages and folders, flipping read state, moving messages, and
 // creating drafts. `Mail.Send` is deliberately absent: this gatekeeper never sends mail, it leaves
 // drafts for the user.
+//
+// The Teams scopes are all `Read`/`ReadBasic`: there is no Teams permission here that can write, so
+// the read-only promise of that resource holds at the grant as well as in the code. Several of them
+// require a tenant administrator's consent, which is why a partly consented grant is logged (see
+// `logUngrantedResources`) instead of quietly leaving the resource unavailable.
+//
+// `Sites.ReadWrite.All` is the narrowest delegated permission that covers reading a list's columns
+// and items and creating an item in it: Graph's granular site permissions (`Sites.Selected`) are
+// application-only, so a delegated connection cannot be scoped to one site. Every request still
+// runs as the signed-in user, so the connection can only reach what that user can already open.
 const RESOURCE_SCOPES: {resource: SupportedResource, scopes: string[]}[] = [
   { resource: OUTLOOK_MAIL_RESOURCE, scopes: ["Mail.ReadWrite"] },
+  {
+    resource: TEAMS_RESOURCE,
+    scopes: [
+      "Team.ReadBasic.All", "Channel.ReadBasic.All", "TeamMember.Read.All",
+      "ChannelMessage.Read.All", "Chat.Read",
+    ],
+  },
+  { resource: SHAREPOINT_LIST_RESOURCE, scopes: ["Sites.ReadWrite.All"] },
 ];
 
 const SUPPORTED_RESOURCES: SupportedResource[] = RESOURCE_SCOPES.map(entry => entry.resource);
@@ -239,6 +300,41 @@ function grantedResourcesFromScopes(grantedOAuthScopes: string[]): string[] {
   return RESOURCE_SCOPES
       .filter(entry => grantCoversScopes(grantedOAuthScopes, entry.scopes))
       .map(entry => entry.resource.urlPattern);
+}
+
+/**
+ * Log every resource this consent round trip asked for but did not come back able to use.
+ *
+ * A resource counts as granted only when the response covers ALL of its scopes, so one permission
+ * an administrator declined leaves the whole resource unavailable — and the symptom is an
+ * `ensureResources()` that keeps handing back a reconnect URL, with nothing anywhere saying which
+ * permission is missing. This names them at the moment the grant lands, which is the only point
+ * where what was asked for and what came back are both in hand.
+ *
+ * Only resources this round trip actually requested are considered: a mail-only connection is not
+ * missing the Teams permissions, it never asked for them.
+ */
+function logUngrantedResources(requestedScopes: string[], grantedScopes: string[]): void {
+  let requested = new Set(requestedScopes.map(normalizeScope));
+  for (let entry of RESOURCE_SCOPES) {
+    if (!entry.scopes.every(scope => requested.has(normalizeScope(scope)))) continue;
+    if (grantCoversScopes(grantedScopes, entry.scopes)) continue;
+    logger.warn("Microsoft consent did not cover a requested resource", {
+      event: "microsoft.consent.resource.ungranted",
+      resource: entry.resource.urlPattern,
+      missingScopes: entry.scopes.filter(scope => !grantCoversScopes(grantedScopes, [scope])),
+      grantedScopes,
+    });
+  }
+}
+
+/** Why a list lookup failed, in words that can be shown to whoever pasted the URL. */
+function sharePointFailureReason(err: unknown): string {
+  // A GraphApiError message is built for display already: provider text, truncated, no ids. The
+  // trailing stop is dropped because the sentence this lands in supplies its own. Anything else
+  // came from the network or the token path, where the text is not ours to echo.
+  if (err instanceof GraphApiError) return err.message.replace(/\.$/, "");
+  return "the request to Microsoft did not complete";
 }
 
 const MICROSOFT_LOGO_URL = `data:image/svg+xml,${encodeURIComponent(MICROSOFT_LOGO_SVG)}`;
@@ -292,6 +388,11 @@ export default {
       newUrl.searchParams.set("response_mode", "query");
       newUrl.searchParams.set("scope", begun.scopes.join(" "));
       newUrl.searchParams.set("state", `${doId}:${begun.oauthNonce}`);
+      // Signing out of Cloudflare OS does not end the browser's Microsoft session, so without this
+      // Entra would silently re-issue a code for the same account and a signed-out user would land
+      // straight back in. The account picker makes sign-in a deliberate choice again. Persistent
+      // connections skip it: the user is already signed in and is linking that same account.
+      if (begun.authOnly) newUrl.searchParams.set("prompt", "select_account");
 
       return Response.redirect(newUrl.toString(), 302);
     } else if (relPath === "/oauth") {
@@ -325,16 +426,13 @@ export default {
 
       let userObjectId = ctx.exports.UserAccount.idFromString(doId);
       let stub: DurableObjectStub<UserAccount> = ctx.exports.UserAccount.get(userObjectId);
-      if (!await stub.acceptAuthCode(code, oauthNonce)) {
+      let handoff = await stub.acceptAuthCode(code, oauthNonce);
+      if (!handoff) {
         return new Response(INVALID_LINK_HTML, {
           headers: { "Content-Type": "text/html; charset=utf-8" }
         });
       }
-      return new Response(SELF_CLOSING_HTML, {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8"
-        }
-      });
+      return htmlResponse(connectHandoffPageHtml(handoff));
     } else {
       return new Response("Not Found", {status: 404});
     }
@@ -395,8 +493,16 @@ export class GatekeeperVendor extends WorkerEntrypoint<Env> implements Gatekeepe
     return SUPPORTED_RESOURCES;
   }
 
+  /**
+   * Every resource type's types, joined.
+   *
+   * A plain concatenation, which is only safe because the per-resource files were written not to
+   * collide: the Teams and SharePoint types reach `Cursor` through an inline import rather than
+   * importing and re-exporting it as the mail types do, so the joined text declares each name
+   * once. Each `Gatekeeper.getTypeScriptTypes()` still serves only its own file.
+   */
   async getTypeScriptTypes(): Promise<string> {
-    return TYPES_CODE;
+    return [TYPES_CODE, TEAMS_TYPES_CODE, SHAREPOINT_TYPES_CODE].join("\n");
   }
 }
 
@@ -475,18 +581,19 @@ export class UserAccount extends DurableObject<Env> {
   }
 
   /**
-   * Prepare this account for a reconnect flow. The next acceptAuthCode() call will replace the
-   * existing refresh token and notify via credentialsRestored() instead of complete().
+   * Prepare this account for a reconnect flow. The next acceptAuthCode() call stages the grant it
+   * obtains and reports it via reconnectComplete() instead of complete(); the existing refresh
+   * token keeps serving until commitReconnect() makes the staged one live.
    *
    * `requestedScopes` is the full set of OAuth scopes to request on the reauthorization.
    */
   async prepareReconnect(initiationNonce: string, requestedScopes: string[]) {
-    this.ctx.storage.kv.put<boolean>("reconnecting", true);
     this.ctx.storage.kv.put<string[]>("requestedScopes", requestedScopes);
     this.ctx.storage.kv.put<StoredNonce>("nonce", {
       value: initiationNonce,
       expiresAt: Date.now() + INITIATION_NONCE_LIFETIME_MS,
       stage: "initiation",
+      reconnect: true,
     });
   }
 
@@ -516,10 +623,11 @@ export class UserAccount extends DurableObject<Env> {
 
   /**
    * Called by the fetch handler when the user visits the initiation URL. Verifies the initiation
-   * nonce, consumes it, and returns a fresh OAuth nonce plus the scopes to request. Returns null if
-   * the nonce is invalid or expired.
+   * nonce, consumes it, and returns a fresh OAuth nonce plus the scopes to request and whether the
+   * flow is sign-in only. Returns null if the nonce is invalid or expired.
    */
-  async beginOAuthFlow(initiationNonce: string): Promise<{oauthNonce: string, scopes: string[]} | null> {
+  async beginOAuthFlow(initiationNonce: string):
+      Promise<{oauthNonce: string, scopes: string[], authOnly: boolean} | null> {
     let stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (!stored || stored.stage !== "initiation" ||
         Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, initiationNonce)) {
@@ -532,20 +640,23 @@ export class UserAccount extends DurableObject<Env> {
       value: oauthNonce,
       expiresAt: Date.now() + OAUTH_NONCE_LIFETIME_MS,
       stage: "oauth",
+      reconnect: stored.reconnect,
     });
     let scopes = this.ctx.storage.kv.get<string[]>("requestedScopes") ?? IDENTITY_SCOPES;
-    return {oauthNonce, scopes};
+    let authOnly = this.ctx.storage.kv.get<boolean>("authOnly") ?? false;
+    return {oauthNonce, scopes, authOnly};
   }
 
   /**
-   * Returns false if the OAuth nonce is invalid or expired.
+   * Finishes the OAuth code exchange and returns the handoff for the page the browser lands on, or
+   * null if the OAuth nonce is invalid or expired.
    */
-  async acceptAuthCode(code: string, oauthNonce: string): Promise<boolean> {
+  async acceptAuthCode(code: string, oauthNonce: string): Promise<ConnectHandoff | null> {
     // Verify and consume the OAuth nonce.
     let stored = this.ctx.storage.kv.get<StoredNonce>("nonce");
     if (!stored || stored.stage !== "oauth" ||
         Date.now() >= stored.expiresAt || !constantTimeEqual(stored.value, oauthNonce)) {
-      return false;
+      return null;
     }
     this.ctx.storage.kv.delete("nonce");
 
@@ -564,7 +675,6 @@ export class UserAccount extends DurableObject<Env> {
 
       let scopes = this.ctx.storage.kv.get<string[]>("requestedScopes") ?? IDENTITY_SCOPES;
       let authOnly = this.ctx.storage.kv.get<boolean>("authOnly") ?? false;
-      let reconnecting = !!this.ctx.storage.kv.get<boolean>("reconnecting");
 
       let grant = await exchangeAuthCode({
         ...config,
@@ -591,7 +701,7 @@ export class UserAccount extends DurableObject<Env> {
       // openid-scoped grant, so "no principal recorded" is not a legitimate established account —
       // it is a state we cannot verify, and an unverifiable reconnect is exactly what this check
       // exists to refuse. The grant is left untouched, as if the user had refused consent.
-      if (reconnecting) {
+      if (stored.reconnect) {
         let priorObjectId = this.ctx.storage.kv.get<IdTokenClaims>("idTokenClaims")?.oid;
         if (!priorObjectId || grant.idTokenClaims?.oid !== priorObjectId) {
           throw new Error(
@@ -600,20 +710,35 @@ export class UserAccount extends DurableObject<Env> {
         }
       }
 
+      // A sign-in-only grant asks for no resource scopes, so it has nothing to be short of.
+      if (!authOnly) logUngrantedResources(scopes, grant.grantedScopes);
+      this.ctx.storage.kv.delete("requestedScopes");
+
+      if (stored.reconnect) {
+        // The reconnect URL is a bearer capability, so the new grant is only staged until the
+        // Workshop has confirmed the browser that finished the flow is the owner's (see
+        // commitReconnect). Gadgets bound to this account keep reading the current token
+        // meanwhile, and a recorded mint failure still describes it, so both stand until the
+        // commit.
+        let stageId = stageCredentials<StagedGrant>(
+            this.ctx.storage.kv, { grant, scopes }, Date.now());
+        return { callback, stageId, authOnly };
+      }
+
       this.#storeGrant(grant);
       this.ctx.storage.kv.put<string[]>("grantScopes", scopes);
-      this.ctx.storage.kv.delete("requestedScopes");
       // These credentials are new, so any recorded permanent failure no longer applies.
       this.ctx.storage.kv.delete("mintFailure");
 
-      if (reconnecting) this.ctx.storage.kv.delete("reconnecting");
-      return { callback, reconnecting, authOnly };
+      return { callback, stageId: undefined, authOnly };
     });
 
     let callback = completion.callback;
-    if (completion.reconnecting) {
-      // Reconnect flow: credentials replaced above, notify restoration.
-      await callback.credentialsRestored();
+    let handoff: ConnectHandoff;
+    if (completion.stageId !== undefined) {
+      // Reconnect flow: the grant is staged, so the Workshop is told what to commit rather than
+      // that the credentials are already live.
+      handoff = await callback.reconnectComplete(completion.stageId);
     } else {
       // Initial connect flow: create the user entrypoint and notify completion.
       //
@@ -623,7 +748,7 @@ export class UserAccount extends DurableObject<Env> {
       // is reported when it happens, via credentialsExpired().
       try {
         let props: GatekeeperUserImplProps = { userObjectId: this.ctx.id.toString() };
-        await callback.complete(this.ctx.exports.GatekeeperUserImpl({props}));
+        handoff = await callback.complete(this.ctx.exports.GatekeeperUserImpl({props}));
       } catch (err) {
         // Nobody received a usable account, so the whole grant is orphaned — not just the refresh
         // token. Leaving the access token behind would let a concurrent mint publish it for an
@@ -638,7 +763,21 @@ export class UserAccount extends DurableObject<Env> {
       }
     }
 
-    return true;
+    return handoff;
+  }
+
+  /** Makes the grant staged under `stageId` live; see GatekeeperUser.commitReconnect. */
+  async commitReconnect(stageId: string): Promise<void> {
+    await this.#updateCredentials(async () => {
+      let staged = commitStagedCredentials<StagedGrant>(
+          this.ctx.storage.kv, Date.now(), stageId);
+      if (!staged) throw new Error("No reconnect is awaiting confirmation. Please try again.");
+      this.#storeGrant(staged.grant);
+      this.ctx.storage.kv.put<string[]>("grantScopes", staged.scopes);
+      // These credentials are new, so any recorded permanent failure no longer applies — and
+      // clearing it re-arms the one-shot expiry notification for whatever kills them next.
+      this.ctx.storage.kv.delete("mintFailure");
+    });
   }
 
   hasRefreshToken() {
@@ -942,7 +1081,71 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
       };
     }
 
+    // Teams is a whole-instance resource: one connected account has exactly one Teams surface, and
+    // every deep link into it (a channel, a chat, a single message) is that same surface. So the
+    // path is not consulted, unlike the mailbox's — but the host still is, exactly, so that
+    // `teams.microsoft.com.example.com` does not bind it.
+    if (parsed.hostname === "teams.microsoft.com") {
+      let props: TeamsGatekeeperImplProps = { userObjectId: this.ctx.props.userObjectId };
+      return {
+        class: this.ctx.exports.TeamsGatekeeperImpl({props}),
+        resource: TEAMS_RESOURCE,
+      };
+    }
+
+    // A pasted list page names its list by site path and URL name; Graph works in ids. Resolving
+    // them here, once, is what makes the binding survive the list being renamed or moved later —
+    // and it is also the first moment the account's own access to the list is tested, so a URL the
+    // user cannot open fails while they are still looking at the picker.
+    //
+    // A parse failure on a SharePoint host is shown as the parser wrote it: the user meant this
+    // resource, and only that message names what to paste instead. Off a SharePoint host the same
+    // failure means something else — the URL is not this vendor's at all — so it falls through to
+    // the routing error below.
+    let listUrl: SharePointListUrl | undefined;
+    try {
+      listUrl = parseSharePointListUrl(url);
+    } catch (err) {
+      if (!(err instanceof SharePointUrlError) || isSharePointHost(parsed.hostname)) throw err;
+    }
+    if (listUrl) {
+      let { siteId, listId } = await this.#resolveSharePointList(listUrl);
+      let props: SharePointListGatekeeperImplProps = {
+        userObjectId: this.ctx.props.userObjectId, siteId, listId,
+      };
+      return {
+        class: this.ctx.exports.SharePointListGatekeeperImpl({props}),
+        resource: SHAREPOINT_LIST_RESOURCE,
+      };
+    }
+
     throw new Error(`The Microsoft gatekeeper cannot connect this URL: ${url}`);
+  }
+
+  /**
+   * The site and list ids a pasted list URL stands for.
+   *
+   * Two Graph requests, each under the same 20 s ceiling every other call here uses, because the
+   * picker waits on this: the site, then the list on it. A failure is reported in the connecting
+   * user's terms — the provider's own words are display-safe (`GraphApiError` builds them from a
+   * truncated Graph message), and anything else is reported as a failed request rather than echoed.
+   */
+  async #resolveSharePointList(listUrl: SharePointListUrl): Promise<{
+    siteId: string;
+    listId: string;
+  }> {
+    let api = new GraphSharePointApi(
+        async opts => (await this.#account().getAccessToken(opts)).token);
+    try {
+      let site = await api.resolveSite(listUrl.hostname, listUrl.sitePath);
+      let list = await api.resolveListByUrl(site.id, listUrl.listSegment);
+      return { siteId: site.id, listId: list.id };
+    } catch (err) {
+      throw new Error(
+          `Could not open that SharePoint list: ${sharePointFailureReason(err)}. Check the URL ` +
+          "and that your account can open it.",
+          { cause: err });
+    }
   }
 
   async startResourceConfigurator(
@@ -951,6 +1154,20 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
       return {
         iframeHtml: OUTLOOK_MAIL_CONFIGURATOR_HTML,
         ui: new RpcStub(new OutlookMailConfiguratorUI()),
+      };
+    }
+
+    if (resourceUrlPattern === TEAMS_RESOURCE.urlPattern) {
+      return {
+        iframeHtml: TEAMS_CONFIGURATOR_HTML,
+        ui: new RpcStub(new TeamsConfiguratorUI()),
+      };
+    }
+
+    if (resourceUrlPattern === SHAREPOINT_LIST_RESOURCE.urlPattern) {
+      return {
+        iframeHtml: SHAREPOINT_LIST_CONFIGURATOR_HTML,
+        ui: new RpcStub(new SharePointListConfiguratorUI()),
       };
     }
 
@@ -967,6 +1184,10 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
     // Re-request the scopes already granted so a plain reconnect doesn't narrow access.
     await account.prepareReconnect(initiationNonce, await account.getGrantScopes());
     return { url: `${getBaseUrl(this.env)}/${this.ctx.props.userObjectId}/${initiationNonce}` };
+  }
+
+  async commitReconnect(stageId: string): Promise<void> {
+    await this.#account().commitReconnect(stageId);
   }
 
   async ensureResources(resourceUrlPatterns: string[]): Promise<{url?: string}> {
@@ -1003,23 +1224,72 @@ export class GatekeeperUserImpl extends WorkerEntrypoint<Env, GatekeeperUserImpl
 //
 // Opaque capability standing for "this account", handed to Gatekeeper.addObserver() and passed back
 // to this same gatekeeper, which may therefore trust what it reports. It carries the account id in
-// props so any future access check runs against the observer's own Microsoft token rather than the
-// resource owner's. No resource type consults it yet, so it exposes no checks.
+// props so every access check runs against the observer's own Microsoft token rather than the
+// resource owner's.
 
 type MicrosoftVerifierProps = {
   userObjectId: string;
 };
 
+/**
+ * The non-standard method the SharePoint list gatekeeper calls on its own verifier (see its
+ * addObserver). Not part of the generic GatekeeperUserVerifier contract, which has no methods: the
+ * overseer only promises to hand a verifier back to the gatekeeper whose account minted it, which is
+ * what makes calling a private method on it sound.
+ */
+export interface SharePointVerifierApi extends GatekeeperUserVerifier {
+  hasListAccess(siteId: string, listId: string): Promise<boolean>;
+}
+
 @validateRpc()
 export class MicrosoftVerifier extends WorkerEntrypoint<Env, MicrosoftVerifierProps>
-    implements GatekeeperUserVerifier {
+    implements SharePointVerifierApi {
+  #account(): DurableObjectStub<UserAccount> {
+    let id = this.ctx.exports.UserAccount.idFromString(this.ctx.props.userObjectId);
+    return this.ctx.exports.UserAccount.get(id);
+  }
+
+  /**
+   * Can this account open that list?
+   *
+   * Reading the list's own metadata is the cheapest question SharePoint answers with the permission
+   * the observer would need. A refusal and a list that is invisible to them are the same answer
+   * here: no. Anything else is an outage or a misconfiguration, not a verdict, and is reported as
+   * such — deliberately without ids or provider text, because the message is shown to whoever tried
+   * to add the collaborator.
+   */
+  async hasListAccess(siteId: string, listId: string): Promise<boolean> {
+    let api = new GraphSharePointApi(
+        async opts => (await this.#account().getAccessToken(opts)).token);
+    try {
+      await api.describeList(siteId, listId);
+      return true;
+    } catch (err) {
+      if (err instanceof GraphApiError && (err.status === 403 || err.status === 404)) return false;
+      // The cause carries the provider's own words for the logs; the message deliberately does not.
+      throw new Error("Could not verify SharePoint access right now.", { cause: err });
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Resource configurator
 //
-// RPC interface exposed to the resource-selection iframe. The mailbox is a singleton — a connected
-// account has exactly one — so the frame confirms the choice and needs nothing from the gatekeeper.
+// RPC interface exposed to the resource-selection iframe. The mailbox and the Teams surface are
+// singletons — a connected account has exactly one of each — so those frames confirm the choice and
+// need nothing from the gatekeeper. A SharePoint list is not: its frame collects the pasted URL,
+// and still needs nothing from the gatekeeper because the URL is only ever validated server-side.
 
 @validateRpc()
 export class OutlookMailConfiguratorUI extends RpcTarget implements OutlookMailConfiguratorRpc {}
+
+@validateRpc()
+export class TeamsConfiguratorUI extends RpcTarget implements TeamsConfiguratorRpc {}
+
+// The list frame collects the pasted URL and nothing else. It needs no capability either: deciding
+// whether a URL really names a list the account can open takes the account's own token, so that
+// answer is produced where the binding is created (`getGatekeeperClassFor`) and on every reopen
+// (`describe`), not in a sandboxed frame that could only ask for it.
+@validateRpc()
+export class SharePointListConfiguratorUI extends RpcTarget
+    implements SharePointListConfiguratorRpc {}

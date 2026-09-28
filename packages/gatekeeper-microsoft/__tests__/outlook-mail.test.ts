@@ -406,6 +406,14 @@ describe("message capability from an id", () => {
 });
 
 describe("queued mutations", () => {
+  // The observed message every action description starts with, as literal fields.
+  const MESSAGE_FIELDS = [
+    { label: "Subject", kind: "inline", value: "Quarterly report" },
+    { label: "From", kind: "inline", value: "bob@example.com" },
+    { label: "Received", kind: "inline", value: "2026-08-01T10:00:00.000Z" },
+    { label: "Message id", kind: "inline", value: "AAMkImmutable1" },
+  ];
+
   it("queues mark-read without writing and returns nothing", async () => {
     const calls = stubFetch();
     const session = await startSession();
@@ -421,6 +429,11 @@ describe("queued mutations", () => {
       implementsRevert: false,
       awaitDecision: true,
       actionKind: { tag: "outlookMarkRead" },
+      descriptionIsComplete: true,
+      fields: [
+        ...MESSAGE_FIELDS,
+        { label: "Mark as", kind: "inline", value: "read" },
+      ],
     });
   });
 
@@ -435,8 +448,13 @@ describe("queued mutations", () => {
     expect(approvals.actions[0].description).toMatchObject({
       title: "Move to Archive: Quarterly report",
       actionKind: { tag: "outlookMoveMessage" },
+      descriptionIsComplete: true,
+      fields: [
+        ...MESSAGE_FIELDS,
+        { label: "Destination folder", kind: "inline", value: "Archive" },
+        { label: "Destination folder id", kind: "inline", value: "folder-archive" },
+      ],
     });
-    expect(approvals.actions[0].description.description).toContain("Archive");
   });
 
   it("queues a reply draft with the body the approver will see", async () => {
@@ -450,10 +468,17 @@ describe("queued mutations", () => {
     expect(approvals.actions[0].description).toMatchObject({
       title: "Reply-all draft: Quarterly report",
       actionKind: { tag: "outlookReplyDraft" },
+      descriptionIsComplete: true,
+      fields: [
+        ...MESSAGE_FIELDS,
+        { label: "Reply to", kind: "inline", value: "everyone" },
+        {
+          label: "Draft recipients", kind: "list",
+          items: ["bob@example.com", "me@example.com", "team@example.com"],
+        },
+        { label: "Draft body", kind: "text", value: "Thanks, reviewing now." },
+      ],
     });
-    const description = String(approvals.actions[0].description.description);
-    expect(description).toContain("Thanks, reviewing now.");
-    expect(description).toContain("team@example.com");
   });
 
   it("rejects a relative destination folder id before queueing anything", async () => {
@@ -597,15 +622,13 @@ describe("credential death", () => {
 });
 
 describe("agent catalog", () => {
-  it("lists folders and authorizes the observation", async () => {
+  it("lists folders with their message counts", async () => {
     stubFetch();
-    const authorizer = fakeApprovalQueue();
 
-    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog();
 
     expect(catalog!.entries.map(entry => entry.title)).toEqual(["Inbox", "Archive"]);
     expect(catalog!.entries[0].description).toContain("3 unread");
-    expect(authorizer.observations[0].title).toBe("Outlook folder catalog");
   });
 
   it("caps a large mailbox at 25 folders and flags the catalog truncated", async () => {
@@ -616,14 +639,12 @@ describe("agent catalog", () => {
       unreadItemCount: 0,
     }));
     stubFetch(() => jsonResponse({ value: manyFolders }));
-    const authorizer = fakeApprovalQueue();
 
-    const catalog = await gatekeeper.getAgentCatalog(authorizer.queue as never);
+    const catalog = await gatekeeper.getAgentCatalog();
 
     expect(catalog!.entries).toHaveLength(25);
     expect(catalog!.truncated).toBe(true);
     expect(catalog!.entries[0].title).toBe("Folder 0");
-    expect(authorizer.observations[0].description).toContain("25 Outlook mail folder(s)");
   });
 });
 

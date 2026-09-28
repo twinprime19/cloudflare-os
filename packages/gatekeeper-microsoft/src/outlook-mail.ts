@@ -7,7 +7,8 @@
 // Approval model:
 //   submitAction (requires approval): markRead, markUnread, moveToFolder, createReplyDraft,
 //                                     createReplyAllDraft
-//   authorizeObservation (audit-only): all reads
+//   authorizeObservation (audit-only): all session reads; the agent catalog is not one of them,
+//                                      see getAgentCatalog
 //
 // Mutations return `void` and nothing is written to the mailbox before approval — no draft is
 // created, no id is minted, and no later read reflects a queued action. Simulating pending state
@@ -22,10 +23,15 @@ import { DurableObject, RpcStub, RpcTarget } from "cloudflare:workers";
 import { validateRpc } from "capnweb-validate";
 import {
   ActionKind, AgentCatalog, ApprovalQueue, Cursor, Gatekeeper,
-  GatekeeperUserVerifier, ObservationAuthorizer, ResourceDescription, boundAgentCatalog,
+  GatekeeperUserVerifier, ResourceDescription, boundAgentCatalog,
 } from "@gadgets/workshop-shared/gatekeeper";
+import {
+  type ActionDescriptionBuilder, buildDescription, type RenderedDescription,
+} from "@gadgets/gatekeeper-kit/action-description";
+import { formatApprovalField, sanitizeApprovalTitle } from "./approval-text";
 import { AccessTokenCache, AccessTokenRequest } from "./auth-retry";
 import { GraphMailApi, MAX_REPLY_BODY_BYTES, validateSearchQuery } from "./graph-api";
+import { MAX_PENDING_ACTIONS, PendingActionStore } from "./pending-actions";
 import type {
   OutlookAttachmentInfo, OutlookFolder, OutlookFolderEntry, OutlookFolderInfo, OutlookMailSession,
   OutlookMessage, OutlookMessageEntry, OutlookMessageInfo,
@@ -39,52 +45,12 @@ export const OUTLOOK_MAIL_URL = "https://outlook.office.com/mail/";
 /** Ceiling on pages a single cursor will pull, so an agent cannot walk an entire mailbox. */
 const MAX_CURSOR_PAGES = 40;
 
-/** Ceiling on queued-but-undecided actions, matching the Gmail gatekeeper. */
-const MAX_PENDING_ACTIONS = 100;
-
 /**
  * Ceiling on folders offered to the agent catalog. Folders are the one item class here that grows
  * with the mailbox, so they are bounded well under the shared AGENT_CATALOG_MAX_ENTRIES ceiling;
  * folders past the cap stay reachable through the session's listFolders().
  */
 const MAX_CATALOG_FOLDERS = 25;
-
-/** Longest single-line value echoed into an approval title. */
-const MAX_APPROVAL_TITLE_CHARS = 200;
-
-class PendingActionStore<Action> {
-  #kv: DurableObjectStorage["kv"];
-
-  constructor(kv: DurableObjectStorage["kv"]) {
-    this.#kv = kv;
-  }
-
-  #actionKey(id: number): string {
-    return `pending:action:${id}`;
-  }
-
-  submit(action: Action): number {
-    let id = this.#kv.get<number>("pending:nextActionId") ?? 1;
-    this.#kv.put("pending:nextActionId", id + 1);
-    this.#kv.put(this.#actionKey(id), action);
-    return id;
-  }
-
-  get(id: number): Action | undefined {
-    return this.#kv.get<Action>(this.#actionKey(id));
-  }
-
-  list(): {id: number, action: Action}[] {
-    return [...this.#kv.list<Action>({prefix: "pending:action:"})]
-        .map(([key, action]) => ({id: Number(key.slice("pending:action:".length)), action}))
-        .filter(({id}) => Number.isFinite(id))
-        .toSorted((a, b) => a.id - b.id);
-  }
-
-  remove(id: number): void {
-    this.#kv.delete(this.#actionKey(id));
-  }
-}
 
 // ── Action types ────────────────────────────────────────────────────
 //
@@ -109,24 +75,26 @@ type OutlookMailSessionContext = {
   pendingActions: PendingActionStore<OutlookMailAction>;
 };
 
-function sanitizeApprovalTitle(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").slice(0, MAX_APPROVAL_TITLE_CHARS);
-}
-
-function formatApprovalField(label: string, value: string): string {
-  // Use a fence longer than any backtick run in the value, so untrusted email fields render
-  // verbatim and cannot forge surrounding approval Markdown.
-  let fence = "```";
-  while (value.includes(fence)) fence += "`";
-  return `**${label}:**\n\n${fence}\n${value}\n${fence}`;
-}
-
 function describeMessage(info: OutlookMessageInfo): string {
   return [
     formatApprovalField("Subject", info.subject),
     formatApprovalField("From", info.from?.address ?? "(unknown sender)"),
     formatApprovalField("Received", info.receivedAt.toISOString()),
   ].join("\n\n");
+}
+
+/**
+ * Starts an action description with the message the action targets: its observed subject, sender
+ * and received time, and the immutable id the executor sends to Graph. Each caller then adds every
+ * value its action variant carries, so the builder sees all of it before judging completeness.
+ */
+function describeMessageAction(
+    intro: string, info: OutlookMessageInfo, messageId: string): ActionDescriptionBuilder {
+  return buildDescription(intro)
+      .inline("Subject", info.subject)
+      .inline("From", info.from?.address ?? "(unknown sender)")
+      .inline("Received", info.receivedAt.toISOString())
+      .inline("Message id", messageId);
 }
 
 /**
@@ -143,7 +111,9 @@ function describeAttachments(attachments: OutlookAttachmentInfo[]): string {
 async function submitOutlookAction(
     ctx: OutlookMailSessionContext,
     action: OutlookMailAction,
-    desc: { title: string; description: string; actionKind: ActionKind }): Promise<void> {
+    // The approver-facing text is always built with `buildDescription`, so every value the action
+    // carries is shown in full and the completeness claim is the builder's, never hand-set.
+    desc: { title: string; actionKind: ActionKind } & RenderedDescription): Promise<void> {
   if (ctx.pendingActions.list().length >= MAX_PENDING_ACTIONS) {
     throw new Error(
         "Too many pending Outlook actions. Resolve existing actions before adding more.");
@@ -416,9 +386,10 @@ class OutlookMessageStub extends RpcTarget implements OutlookMessage {
         {
           title: sanitizeApprovalTitle(
               `${read ? "Mark read" : "Mark unread"}: ${info.subject}`),
-          description:
-              `Mark this Outlook message as ${read ? "read" : "unread"}.\n\n` +
-              describeMessage(info),
+          ...describeMessageAction(
+              "Change the read state of this Outlook message.", info, this.#messageId)
+              .inline("Mark as", read ? "read" : "unread")
+              .finish(),
           actionKind: MARK_READ_ACTION,
         });
   }
@@ -442,10 +413,11 @@ class OutlookMessageStub extends RpcTarget implements OutlookMessage {
         { type: "move", messageId: this.#messageId, destinationFolderId: folder.id },
         {
           title: sanitizeApprovalTitle(`Move to ${folder.name}: ${info.subject}`),
-          description:
-              "Move this Outlook message to another folder.\n\n" +
-              `${describeMessage(info)}\n\n` +
-              formatApprovalField("Destination folder", folder.name),
+          ...describeMessageAction(
+              "Move this Outlook message to another folder.", info, this.#messageId)
+              .inline("Destination folder", folder.name)
+              .inline("Destination folder id", folder.id)
+              .finish(),
           actionKind: MOVE_MESSAGE_ACTION,
         });
   }
@@ -473,8 +445,9 @@ class OutlookMessageStub extends RpcTarget implements OutlookMessage {
     let info = await this.#readInfoForAction("draft a reply to");
     let recipients = replyAll
         ? [info.from?.address, ...info.to.map(entry => entry.address),
-           ...info.cc.map(entry => entry.address)].filter(Boolean).join(", ")
-        : info.from?.address ?? "(unknown sender)";
+           ...info.cc.map(entry => entry.address)]
+            .filter((address): address is string => Boolean(address))
+        : [info.from?.address ?? "(unknown sender)"];
 
     await submitOutlookAction(
         this.#ctx,
@@ -482,12 +455,13 @@ class OutlookMessageStub extends RpcTarget implements OutlookMessage {
         {
           title: sanitizeApprovalTitle(
               `${replyAll ? "Reply-all draft" : "Reply draft"}: ${info.subject}`),
-          description:
+          ...describeMessageAction(
               "Create a reply draft in the Outlook mailbox. The draft is not sent; it is left in " +
-              "Drafts for the user to review.\n\n" +
-              `${describeMessage(info)}\n\n` +
-              `${formatApprovalField("Draft recipients", recipients)}\n\n` +
-              formatApprovalField("Draft body", body),
+              "Drafts for the user to review.", info, this.#messageId)
+              .inline("Reply to", replyAll ? "everyone" : "sender")
+              .list("Draft recipients", recipients)
+              .verbatim("Draft body", body)
+              .finish(),
           actionKind: REPLY_DRAFT_ACTION,
         });
   }
@@ -640,10 +614,11 @@ export class OutlookMailGatekeeperImpl
 
   /**
    * Folder names, so an agent can discover where mail lives (and where it could be moved) without
-   * paging the session API.
+   * paging the session API. The Workshop loads this into every chat's prompt on every turn, with no
+   * approval in the way; folder names are the account owner's own text, unlike the message content
+   * every read here is authorized for.
    */
-  async getAgentCatalog(
-      authorizer: RpcStub<ObservationAuthorizer>): Promise<AgentCatalog | null> {
+  async getAgentCatalog(): Promise<AgentCatalog | null> {
     let folders = await this.#api().listFolders();
     let entries = folders
         .slice(0, MAX_CATALOG_FOLDERS)
@@ -658,12 +633,6 @@ export class OutlookMailGatekeeperImpl
     // A mailbox can hold more folders than the catalog advertises; boundAgentCatalog only flags its
     // own shared ceiling, so the drop at MAX_CATALOG_FOLDERS is reported here.
     if (folders.length > MAX_CATALOG_FOLDERS) catalog.truncated = true;
-    if (catalog.entries.length > 0) {
-      await authorizer.authorizeObservation({
-        title: "Outlook folder catalog",
-        description: `Listed ${catalog.entries.length} Outlook mail folder(s).`,
-      });
-    }
     return catalog;
   }
 
